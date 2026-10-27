@@ -7,8 +7,10 @@
 | 항목 | 결정 |
 |---|---|
 | 언어 | **Go** 확정 |
-| 해커톤 | **하루**. 설계와 작업 분해는 사전에, 구현과 통합은 당일 |
-| AI | 제품 안의 AI 기능은 범위에서 뺀다. AI는 **개발 수단**(병렬 AI 세션)이다 |
+| 해커톤 | **하루, 2명**. 대회 규칙상 **코드는 당일 처음부터** 작성한다. 사전에는 설계 문서, 작업카드, AI 지시문, 개발 환경만 준비한다 |
+| 심사 | 서류 심사 기준은 창의성 30, **업무 도구 실용성 30**, 구현 가능성 20, 기대 효과 20 ("사내에서 실제 업무 도구로 쓸 수 있는가") |
+| 1단계 연결 방식 | 기존 Control-M 잡 명령 앞에 붙이는 **`contune exec` 래퍼를 컷 1**로 만든다. 매니저가 직접 실행하는 스케줄러는 컷 2 |
+| AI | 제품 안의 AI 기능은 범위에서 뺀다. AI는 **개발 수단**(사람 1명당 AI 세션 2개, 모두 4개)이다 |
 | 업무 지표 | 업무모니터링은 사내 개발 **APM**(CS 프로그램)이다. 실제 수집은 나중이지만 **수집 통로는 시스템 지표와 하나**로 만든다 |
 | 시연 | 컨테이너 3개 + **시뮬레이터 수집기**. 수치만 가짜이고, 각 에이전트의 수집 체계(수집기 등록, 설정, 수집 루프, 전송)는 실제와 같다 |
 
@@ -31,15 +33,15 @@
 | 잡 정의 | YAML 파일 | 정의의 기준은 파일 하나(git으로 관리). UI는 조회와 실행만 하고 CRUD 화면은 만들지 않습니다. |
 | 웹 | `net/http`(Go 1.22 라우팅) + `embed` + vanilla JS + **uPlot** | 빌드 단계가 없습니다. 플로우(DAG) 화면은 단계(레벨)별 열 배치 HTML로 그려 외부 라이브러리를 늘리지 않습니다. |
 | 통신 | HTTP/JSON, `Authorization: Bearer <에이전트 토큰>` | curl로 디버깅할 수 있고, 표준 TLS, 프록시, 로드밸런서를 그대로 쓸 수 있습니다. |
-| 사내망 대비 | `go mod vendor` + uPlot 파일을 저장소에 포함 | 당일 외부 다운로드 실패를 막습니다. 웹 화면은 외부 CDN을 쓰지 않습니다. |
+| 사내망 대비 | 당일 첫 커밋에서 `go mod vendor` + uPlot 파일을 저장소에 포함 | 이후 세션들이 외부 다운로드에 막히지 않습니다. 모듈을 받을 수 있는지는 사전에 확인만 합니다. 웹 화면은 외부 CDN을 쓰지 않습니다. |
 
-> 바이너리는 하나이고 서브커맨드로 역할을 나눕니다: `contune manager`, `contune agent`, `contune dev`(매니저 + 에이전트 3개를 한 프로세스로, 노트북 시연용), `contune exec -- <cmd>`(래퍼 모드), `contune burn`(시연용 CPU 부하 잡).
+> 바이너리는 하나이고 서브커맨드로 역할을 나눕니다: `contune manager`, `contune agent`, `contune exec --job <이름> -- <기존 명령>`(기존 배치 래퍼, §6.1), `contune dev`(매니저 + 에이전트 3개를 한 프로세스로, 노트북 시연용), `contune burn`(시연용 CPU 부하 잡).
 
 ## 3. 기존 세 도구와의 대응
 
 | 기존 도구 | 지금 하는 일 | contune에서 맡는 곳 |
 |---|---|---|
-| **Control-M** | 주로 새벽에 배치를 기동하고 종료를 확인한다 | 스케줄러(매니저) + 배치 실행기(에이전트) |
+| **Control-M** | 주로 새벽에 배치를 기동하고 종료를 확인한다 | 1단계: Control-M이 그대로 기동하고 `contune exec` 래퍼가 실행 ID를 붙인다. 이후: 스케줄러(매니저) + 배치 실행기(에이전트) |
 | **APM** (사내 개발, CS 프로그램) | Control-M이 기동한 프로세스의 **처리 현황**(초당 주문 건수, 응답시간)을 보여준다 | `biz.*` 지표. 시스템 지표와 **같은 통로**로 수집하고, 기동 실행의 `exec_id`로 연결한다 |
 | **onTune** | 서버·프로세스 자원을 보여준다 | `host.*` 지표(수집기) + `job.*` 지표(프로세스 추적기) |
 
@@ -49,15 +51,17 @@
 
 ```mermaid
 flowchart TB
+  CM["Control-M (기존, 그대로)"] -- "기동" --> X["contune exec 래퍼<br/>Setpgid · CONTUNE_EXEC_ID 전달<br/>출력과 종료 코드는 그대로"]
   subgraph AG["contune agent (대상 서버마다 1개)"]
     P["수집기 Probe<br/>procfs · sim · push · script"]
     T["ProcessTracker<br/>잡 PGID → job.* 지표"]
     S["shipper<br/>1초 묶음 · 메모리 버퍼"]
-    E["Executor<br/>fork/exec · 로그 파일 · 타임아웃<br/>CONTUNE_EXEC_ID 전달"]
+    E["Runner<br/>로컬 API · 이벤트 재전송 큐<br/>Executor (컷 2: 매니저 명령 실행)"]
     P --> S
     T --> S
     E -.->|PID 등록/해제| T
   end
+  X -- "POST 127.0.0.1/local/v1/runs<br/>시작·종료 알림, 실패해도 배치는 계속" --> E
   subgraph MG["contune manager (1대)"]
     I["ingest"]
     MS[("metrics.db<br/>MetricStore")]
@@ -80,7 +84,7 @@ flowchart TB
   Q -- "GET /agent/commands<br/>롱폴링 (에이전트가 요청)" --> E
 ```
 
-> 모든 연결은 **에이전트가 매니저 쪽으로** 엽니다(방화벽 신청: 매니저 포트 1개).
+> 모든 연결은 **에이전트가 매니저 쪽으로** 엽니다(방화벽 신청: 매니저 포트 1개). 래퍼는 같은 서버의 에이전트에만 루프백으로 알립니다.
 
 **단방향 연결로 하는 이유**
 - 사내망에서 대상 서버에 **인바운드 포트를 여는 신청**은 어렵습니다. 에이전트가 바깥으로 나가는 연결만 쓰면 방화벽 작업이 매니저 포트 하나로 끝납니다.
@@ -175,7 +179,7 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 
 ### 5.5 기동한 프로세스와 업무 지표 잇기
 
-- Executor는 자식 프로세스에 환경변수 `CONTUNE_EXEC_ID`, `CONTUNE_FLOW`, `CONTUNE_STEP`을 넘깁니다(해커톤 범위, 한 줄).
+- 래퍼와 Executor는 자식 프로세스에 환경변수 `CONTUNE_EXEC_ID`, `CONTUNE_FLOW`, `CONTUNE_STEP`을 넘깁니다(해커톤 범위, 한 줄). Control-M이 기동한 프로세스도 래퍼를 거치면 같은 ID를 받습니다.
 - 그 프로세스가 `push` 수집기로 업무 지표를 보낼 때 `exec_id`를 붙이면, **어느 실행이 띄운 프로세스의 처리량인지** 바로 알 수 있습니다(2~3단계).
 - Control-M이 기동하고 APM이 지켜보는 **상주 프로세스**(장 시작 전 기동, 장 마감 후 정지)는 스텝 종류 `kind: service`로 다룹니다(2단계). 성공 기준은 "종료 코드 0"이 아니라 "기동 후 살아 있음"입니다.
 
@@ -186,8 +190,8 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 | 메서드 · 경로 | 신뢰성 | 내용 |
 |---|---|---|
 | `POST /api/v1/agent/metrics` | **유실 허용** (실패하면 버퍼에 두고 다음에 재시도, 넘치면 버림) | 1초마다 샘플 묶음 전송 |
-| `POST /api/v1/agent/events` | **반드시 전달** (성공할 때까지 재시도). 매니저는 `(exec_id, seq)`로 멱등 처리 | 잡 시작, 종료 보고와 요약(peak, 로그 tail) |
-| `GET /api/v1/agent/commands?host=<id>&wait=25s` | 롱폴링. 에이전트는 **이미 받은 `exec_id`를 무시** | `run`, `kill` 명령 수신 |
+| `POST /api/v1/agent/events` | **반드시 전달** (성공할 때까지 재시도). 매니저는 `(exec_id, seq)`로 멱등 처리 | 잡 시작, 종료 보고와 요약(peak, 로그 tail). 모르는 `exec_id`의 `started`(래퍼 실행)는 실행 기록을 새로 만든다 |
+| `GET /api/v1/agent/commands?host=<id>&wait=25s` | 롱폴링. 에이전트는 **이미 받은 `exec_id`를 무시** (컷 2) | `run`, `kill` 명령 수신 |
 
 **화면용** (해커톤에서는 인증 없음, 2단계에서 로그인)
 
@@ -197,8 +201,8 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 | `GET /api/v1/series?host=&name=&exec_id=&from=&to=&step=` | 시계열 조회. `step`(초) 단위 평균으로 다운샘플 |
 | `GET /api/v1/runs?flow=&host=&limit=` | 실행 이력 |
 | `GET /api/v1/runs/{exec_id}` | 실행 상세 + 상태 전이 이력 |
-| `GET /api/v1/flows` | 플로우 목록, 스텝 구조, 최근 실행의 스텝별 상태 |
-| `POST /api/v1/flows/{id}/run` | 플로우 수동 실행 |
+| `GET /api/v1/flows` | 플로우 목록, 스텝 구조, 최근 실행의 스텝별 상태 (컷 2) |
+| `POST /api/v1/flows/{id}/run` | 플로우 수동 실행 (컷 2) |
 
 ```jsonc
 // POST /api/v1/agent/metrics
@@ -211,11 +215,46 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 {"commands":[{"type":"run","exec_id":"01JBQ3...","flow":"daily-settle","step":"settle",
               "command":["/batch/settle.sh"],"timeout_sec":1800}]}
 
-// POST /api/v1/agent/events
+// POST /api/v1/agent/events — 시작 (래퍼 실행이면 실행 메타데이터를 함께 보냄)
+{"exec_id":"01JBQ3...","seq":1,"type":"started","ts":1761534000000,"pid":4121,
+ "host":"match-01","flow":"heavy-stats","step":"heavy-stats","trigger":"wrapper"}
+
+// POST /api/v1/agent/events — 종료
 {"exec_id":"01JBQ3...","seq":2,"type":"finished","ts":1761535800000,"status":"FAILED","exit_code":1,
  "usage":{"peak_cpu_pct":187.0,"peak_rss_mb":3120},
  "log_tail":"...마지막 200줄..."}
 ```
+
+### 6.1 래퍼 모드: `contune exec` (컷 1)
+
+기존 Control-M 잡의 실행 명령 앞에 한 줄을 붙여 연결합니다. 스케줄, 선후행, 알림은 Control-M이 그대로 맡고, contune은 실행 ID를 붙여 추적만 합니다.
+
+```bash
+# 지금
+/batch/bin/settle.sh 20261027
+# 연결 후
+contune exec --job settle -- /batch/bin/settle.sh 20261027
+```
+
+| 규칙 | 내용 |
+|---|---|
+| 실행 | `exec_id`(ULID)를 만들고 자식을 `Setpgid`로 띄운다. 환경변수 `CONTUNE_EXEC_ID`, `CONTUNE_FLOW`(`--flow`, 없으면 `--job`), `CONTUNE_STEP`(`--job`)을 넘긴다 |
+| 출력 | stdout·stderr를 **그대로 부모(Control-M)로** 내보낸다. 동시에 마지막 200줄만 메모리에 보관해 `log_tail`로 쓴다 |
+| 종료 코드 | 자식의 종료 코드로 끝낸다. 신호로 끝났으면 `128 + 신호 번호` |
+| 신호 | 래퍼가 받은 SIGTERM·SIGINT를 자식 프로세스 그룹(`-pgid`)에 전달한다. Control-M이 잡을 죽이면 손자까지 끝난다 |
+| 에이전트 알림 | 시작 직후 `POST http://127.0.0.1:7071/local/v1/runs`, 종료 후 `POST /local/v1/runs/{exec_id}/finish`. 타임아웃 2초 |
+| **장애 격리** | 에이전트가 없거나 응답하지 않으면 stderr에 경고 한 줄만 남기고 **배치는 그대로 실행**한다. contune 때문에 배치가 실패하는 경우는 없어야 한다 |
+| 연결 해제 | 붙인 한 줄을 지우면 끝난다 |
+
+**에이전트 로컬 API** (`127.0.0.1`에만 바인드, 토큰 없음. 래퍼는 매니저 토큰을 갖지 않는다)
+
+| 메서드 · 경로 | 받는 값 | 에이전트가 하는 일 |
+|---|---|---|
+| `POST /local/v1/runs` | `exec_id`, `pid`, `flow`, `step`, `started_at` | `ProcessTracker.Track(exec_id, pid)`, `started`(seq 1, `trigger: wrapper`) 이벤트를 재전송 큐에 넣음 |
+| `POST /local/v1/runs/{exec_id}/finish` | `exit_code`, `ended_at`, `log_tail` | `Untrack`으로 peak를 받아 `finished`(seq 2) 이벤트를 큐에 넣음. 상태는 종료 코드 0이면 SUCCEEDED, 아니면 FAILED |
+
+- 매니저는 모르는 `exec_id`의 `started`를 받으면 실행 기록을 만듭니다(`trigger = wrapper`, `flow_run_id = exec_id`, 상태 RUNNING부터).
+- 래퍼는 에이전트 코드와 같은 바이너리라 배포 파일이 늘지 않습니다.
 
 ## 7. 확장 지점: 인터페이스 5개
 
@@ -259,7 +298,7 @@ type StateStore interface {
 type Notifier interface{ Notify(ctx context.Context, a model.Alert) error }
 ```
 
-- 계약(위 타입과 인터페이스, API DTO)은 **당일 09:30에 리드가 코드로 확정**하고 10:30에 동결합니다. 이후 변경은 리드만 합니다.
+- 계약(위 타입과 인터페이스, API DTO)은 대회 규칙상 미리 코드로 쓸 수 없습니다. **당일 09:00~09:30에 리드가 이 문서를 AI 세션으로 코드로 옮겨 확정**하고 10:30에 동결합니다. 이후 변경은 리드만 합니다.
 - `Executor`와 스케줄러는 인터페이스로 만들지 않습니다. 구현이 하나뿐이고, OS 의존 부분은 `ProcessTracker`가, 시간 의존 부분은 주입하는 시계가 흡수합니다(YAGNI).
 - **스케줄러 코어**는 순수 함수입니다: `Decide(now, flows, runs) []Action`. 부작용(DB 쓰기, 명령 큐잉)은 런너가 처리합니다.
 
@@ -326,6 +365,7 @@ CREATE TABLE run_events (                -- 상태 전이 + 운영자 조작 감
 ```
 
 - 플로우와 스텝 **정의**는 YAML 파일에만 있고 DB에 넣지 않습니다. 정의의 기준이 두 군데가 되는 문제를 피하기 위해서입니다.
+- 래퍼 실행은 YAML 정의 없이 기록됩니다: `flow_run_id = exec_id`, `flow_id = --flow`(없으면 `--job`), `step_id = --job`, `trigger = 'wrapper'`.
 
 ## 9. 잡 정의: 플로우 단위 스케줄
 
@@ -367,6 +407,7 @@ steps:
 ```mermaid
 stateDiagram-v2
   [*] --> WAITING
+  [*] --> RUNNING: 래퍼 시작 보고 (컷 1)
   WAITING --> DISPATCHED: 선행 모두 성공
   WAITING --> HELD: 게이트 불충족 (컷 3)
   HELD --> DISPATCHED: 조건 해소
@@ -382,7 +423,8 @@ stateDiagram-v2
 
 | 상태 | 해커톤 | 이유 |
 |---|---|---|
-| `WAITING`, `DISPATCHED`, `RUNNING`, `SUCCEEDED`, `FAILED`, `TIMEOUT` | 컷 1~2 | 최소 흐름. `DISPATCHED`는 명령 재전송 시 **중복 실행을 막는 기준점**입니다 |
+| `RUNNING`, `SUCCEEDED`, `FAILED` | 컷 1 | 래퍼 실행은 시작 보고로 바로 RUNNING에서 시작합니다 |
+| `WAITING`, `DISPATCHED`, `TIMEOUT` | 컷 2 | 매니저가 실행하는 흐름. `DISPATCHED`는 명령 재전송 시 **중복 실행을 막는 기준점**입니다 |
 | `HELD` | 컷 3 | 게이트에 의한 대기. `gate_max_wait`이 없으면 SLA를 조용히 넘기므로 반드시 같이 넣습니다 |
 | `LOST`, `KILLED` | 2단계 | 결과를 알 수 없는 상태와 운영자 조작 |
 
@@ -394,7 +436,7 @@ stateDiagram-v2
 
 | 시점 | 내용 |
 |---|---|
-| 해커톤 | **에이전트 토큰**(매니저는 토큰이 맞는 에이전트만 받음) · **명령의 출처는 리뷰된 YAML뿐**(UI와 API로 임의 명령을 입력하는 기능은 만들지 않음) · **에이전트는 비root로 실행** · 상태 전이에 `actor` 기록 |
+| 해커톤 | **에이전트 토큰**(매니저는 토큰이 맞는 에이전트만 받음) · **래퍼 방식만 쓰면 원격 실행 통로가 없음**(래퍼는 루프백으로 같은 서버의 에이전트에만 알리고 토큰을 갖지 않음) · 매니저 실행(컷 2)의 **명령 출처는 리뷰된 YAML뿐**(UI와 API로 임의 명령을 입력하는 기능은 만들지 않음) · **에이전트는 비root로 실행** · 상태 전이에 `actor` 기록 |
 | 2단계 | 웹 로그인, TLS, 호스트별 토큰, 조작 권한, `run_as_user`(보안 정책 협의 후) |
 
 ## 12. 원인 추적(타임머신) 설계
@@ -430,6 +472,7 @@ services:
 
 - 컨테이너 안의 `/proc/stat`은 호스트 값이라 서버별로 다르게 보이지 않습니다. 그래서 시연에서는 `host.*`도 `sim`으로 만듭니다.
 - **잡 실행과 프로세스 추적은 컨테이너 안에서도 실제로 동작합니다.** 시연용 무거운 배치는 `contune burn --cpu 2 --duration 90s`로 실제 CPU를 씁니다. `match-01`에서 돌리면 `sim/matching`의 p99 지연이 그 CPU에 비례해 오릅니다.
+- 시연의 "Control-M이 기동한 배치"는 터미널에서 래퍼로 실행합니다: `docker compose exec match-01 contune exec --job heavy-stats -- contune burn --cpu 2 --duration 90s`. 래퍼 없이 같은 명령을 실행해 출력과 종료 코드가 같음도 보여줍니다.
 - Docker를 쓸 수 없으면 `contune dev`(매니저 + 에이전트 3개를 한 프로세스로)로 같은 시연을 합니다.
 
 ## 14. 확장 로드맵 (인터페이스별)
@@ -441,7 +484,7 @@ services:
 | `MetricStore` | SQLite | 보존 기간 + 다운샘플, `labels` 차원 | VictoriaMetrics 등 TSDB |
 | `StateStore` | SQLite | MySQL/PostgreSQL (**같은 계약 테스트 재사용**) | |
 | `Notifier` | (여유 시) webhook | 사내 메신저, SMS 게이트웨이 | |
-| 스케줄러 | 플로우 cron + 선행 (+ 재시도, 게이트) | `kind: service` 상주 프로세스, 운영자 조작, LOST 복구 | 휴일 캘린더, 플로우 간 의존, 매니저 HA |
+| 배치 연결·스케줄러 | 래퍼(컷 1), 플로우 cron + 선행(컷 2), 재시도·게이트(컷 3) | 파일럿 배치에 래퍼 적용, `kind: service` 상주 프로세스, 운영자 조작, LOST 복구 | 휴일 캘린더, 플로우 간 의존, 매니저 HA |
 | 원인 추적 | 타임머신(결정론적) | 소요 시간 이상 플래그 | 근거 요약 `Analyzer`(선택) |
 | 에이전트 OS | Linux | | (필요 시) AIX/Windows용 `Probe` 구현 |
 
