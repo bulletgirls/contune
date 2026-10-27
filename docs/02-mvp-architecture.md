@@ -13,8 +13,9 @@
 | 함수 단위 추적 | 스케줄러가 띄운 프로세스(스크립트가 띄운 **C 서비스 프로세스** 포함)의 CPU를 함수별로 상시 표본 수집한다. Linux `perf`, 초당 49 표본, 10초 구간, 실행 ID로 태깅(§5.6) |
 | 데이터 주권 | 실행 이력, 지표, 함수 프로파일을 공개 스키마로 저장하고, 분석용 뷰·`contune sql`·내보내기로 연다(§6.1) |
 | AI | 제품 안의 AI·ML 기능은 범위에서 뺀다. AI는 **개발 수단**(사람 1명당 AI 세션 2개, 모두 4개)이다 |
-| 업무 지표 | 초당 주문 건수, 응답시간 같은 처리 현황을 **시스템 지표와 같은 통로**로 받는다. 시연의 체결 지표는 시연용 C 서비스가 실제로 처리하며 재서 보내고, 게이트웨이 지표는 시뮬레이터가 만든다 |
-| 시연 | 컨테이너 3개. 스케줄, 실행, 프로세스 추적, 함수 프로파일, 체결 서비스의 업무 지표는 실제이고, 서버 자원과 게이트웨이 수치만 시뮬레이터다 |
+| 운영 환경 | 업무는 **온라인(체결) 중심**이고, 배치는 개장 준비와 정산에 쓴다. 배치 작업은 셸 스크립트이고 스크립트가 띄우는 서비스는 C다(자바 일부). **운영 서버는 perf를 쓸 수 있다(확인)** |
+| 업무 지표 | 접수·처리 건수, 대기 건수, 응답시간 같은 처리 현황을 **시스템 지표와 같은 통로**로 받는다. 시연에서는 시연용 C 체결 서비스가 보낸다 |
+| 시연 | 컨테이너 3개. 장애 장면은 **주문량 폭주로 체결 처리가 밀리는 상황**이다. 스케줄, 실행, 프로세스 추적, 함수 프로파일, 수집 경로는 실제로 동작한다. 서버 자원은 시뮬레이터이고, 체결 서비스는 합성 주문으로 부하를 만드는 시연용 C 프로그램이다(함수 이름과 수치는 시연용) |
 
 ## 1. 설계 원칙: 3원칙을 구체 규칙으로 번역
 
@@ -35,7 +36,7 @@
 | cron | `robfig/cron/v3`의 **파서만** 사용 | 실행 루프는 직접 작성합니다(가짜 시계를 주입하기 위해). |
 | YAML | `gopkg.in/yaml.v3` | 플로우 정의, 에이전트 설정 |
 | 잡 정의 | YAML 파일 | 정의의 기준은 파일 하나(git으로 관리). UI는 조회와 실행만 하고 CRUD 화면은 만들지 않습니다. |
-| 함수 프로파일 | Linux **`perf`** (에이전트가 실행) | 커널 내장 표본 수집(`perf_event`). `--call-graph dwarf`로 프레임 포인터 없이 빌드한 C 프로그램도 호출 경로를 복원합니다. 대상 서버에 perf 패키지만 있으면 됩니다. |
+| 함수 프로파일 | Linux **`perf`** (에이전트가 실행) | 커널 내장 표본 수집(`perf_event`). `--call-graph dwarf`로 프레임 포인터 없이 빌드한 C 프로그램도 호출 경로를 복원합니다. 운영 서버는 perf를 쓸 수 있습니다(확인). |
 | 웹 | `net/http`(Go 1.22 라우팅) + `embed` + vanilla JS + **uPlot** | 빌드 단계가 없습니다. **플로우 그래프(DAG)** 는 스텝 깊이(level)별 열 배치 SVG, **플레임 그래프**는 접힌 스택에서 직접 그리는 SVG로 만들어 외부 라이브러리를 늘리지 않습니다. |
 | 통신 | HTTP/JSON, `Authorization: Bearer <에이전트 토큰>` | curl로 디버깅할 수 있고, 표준 TLS, 프록시, 로드밸런서를 그대로 쓸 수 있습니다. |
 | 사내망 대비 | 당일 첫 커밋에서 `go mod vendor` + uPlot 파일을 저장소에 포함 | 이후 세션들이 외부 다운로드에 막히지 않습니다. 모듈을 받을 수 있는지는 사전에 확인만 합니다. 웹 화면은 외부 CDN을 쓰지 않습니다. |
@@ -47,9 +48,9 @@
 | 영역 | contune이 하는 일 | 데이터 |
 |---|---|---|
 | **배치 스케줄·실행** | YAML 플로우를 cron으로 실행하고 선후행(병렬, 합류, 서버 넘기), 재시도, 시간 초과를 판단한다. 서버마다 에이전트가 명령을 받아 실행하고, 스크립트가 띄운 서비스 프로세스까지 실행 ID로 추적한다 | `runs`, `run_events`, `job.*` 지표 |
-| **업무 지표** | 업무 프로세스의 처리 현황(초당 주문 건수, 응답시간)을 시스템 지표와 **같은 통로**로 받고, 기동한 실행의 `exec_id`로 연결한다 | `biz.*` 지표 |
+| **업무 지표** | 업무 프로세스의 처리 현황(접수·처리 건수, 대기 건수, 응답시간)을 시스템 지표와 **같은 통로**로 받고, 기동한 실행의 `exec_id`로 연결한다 | `biz.*` 지표 |
 | **서버 관제** | 서버 자원을 1초 단위로 수집한다 | `host.*` 지표 |
-| **함수 단위 추적** | 실행과 그 실행이 띄운 프로세스가 CPU를 쓴 함수를 상시 표본 수집한다. 끝난 배치, 새벽에 기동한 서비스도 나중에 구간을 골라 본다 | `stacks`, `profile_samples`, `v_profiles` |
+| **함수 단위 추적** | 실행과 그 실행이 띄운 프로세스가 CPU를 쓴 함수를 상시 표본 수집한다. 끝난 배치와 몇 분 만에 지나간 장애 구간도 나중에 구간을 골라 본다 | `stacks`, `profile_samples`, `v_profiles` |
 | **열린 데이터** | 공개 스키마, 분석용 뷰, SQL 조회, CSV·접힌 스택 내보내기 | §6.1 |
 
 **실행(스케줄러) → 처리 현황(업무 지표) → 자원(서버·배치·서비스) → 함수** 를 `exec_id`와 시간축 하나로 잇고, 그 데이터를 우리가 직접 쓰는 것이 핵심입니다. 지금 사내에서는 앞의 세 영역을 서로 다른 세 도구가 따로 맡고 있고, 네 번째(함수)는 맡는 도구가 없습니다(기획서 1장).
@@ -109,7 +110,7 @@ flowchart TB
 flowchart LR
   subgraph SRC["수집원 (설정 파일로 선택)"]
     A1["procfs<br/>host.*"]
-    A2["sim<br/>host.* · biz.*"]
+    A2["sim<br/>host.*"]
     A3["push<br/>biz.* (업무 프로세스가 보냄)"]
     A4["ProcessTracker<br/>job.*"]
     A5["Profiler<br/>접힌 스택"]
@@ -130,7 +131,7 @@ flowchart LR
 |---|---|---|
 | `host.*` | 서버 자원 수집기(procfs, sim) | `host.cpu.pct`, `host.mem.used_pct`, `host.load1` |
 | `job.*` | 프로세스 추적기 (**`exec_id` 필수**) | `job.cpu.pct`, `job.rss.mb`, `job.procs`(그 실행에 속한 살아 있는 프로세스 수) |
-| `biz.*` | 업무 지표 수집기(push, sim) | `biz.order.tps`, `biz.order.latency_p99_ms`, `biz.order.reject_pct` |
+| `biz.*` | 업무 지표 수집기(push, 확장: sim, script) | `biz.order.in_tps`(접수), `biz.order.tps`(처리), `biz.order.queue`(처리 대기 건수), `biz.order.latency_p99_ms` |
 | `agent.*` | 에이전트 자신 | `agent.profiler.cpu_pct`(프로파일러가 쓴 CPU), `agent.profiler.errors` |
 
 - 값은 모두 **게이지(float64) 하나**입니다. 수집기는 주기마다 **집계된 값**을 냅니다: TPS는 주기 안의 건수 ÷ 초, 응답시간은 p50/p99. 히스토그램 타입은 필요해질 때 추가합니다.
@@ -141,7 +142,7 @@ flowchart LR
 | `type` | 검증판 | 내용 |
 |---|---|---|
 | `procfs` | 핵심 | `/proc/stat`, `/proc/meminfo`, `/proc/loadavg` → `host.*` (`//go:build linux`) |
-| `sim` | 핵심 | 프로필(`host`, `gateway`)별 시뮬레이션: 랜덤 워크 + 장 시간대 패턴. 시드를 받아 테스트에서 결정적으로 동작 |
+| `sim` | 핵심 | 프로필 `host`: 랜덤 워크 + 장 시간대 패턴으로 `host.*`. 시드를 받아 테스트에서 결정적으로 동작. 업무 지표 프로필은 필요할 때 추가 |
 | `push` | 핵심 | 에이전트가 `127.0.0.1` UDP 포트를 열고, 업무 프로세스가 지표를 보냅니다. 줄 형식 `name value [exec_id]`, 데이터그램 하나에 여러 줄. 수신 값은 버퍼에 두었다가 `Collect` 때 내보냅니다. 시연에서는 C 체결 서비스가 보냅니다 |
 | `script` | 제외 | 명령을 주기적으로 실행해 stdout의 `name value` 줄을 파싱(DB 미처리 건수 등) |
 | `ebpf` | 제외 | 커널이 지원할 때 |
@@ -213,7 +214,7 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 
 ### 5.6 함수 단위 추적 (`Profiler`)
 
-`perf top`은 지금 도는 것만 보여 줍니다. 새벽 배치는 아침에 보면 이미 끝나 있고, 원인 코드를 찾으려면 다시 돌려 재현해야 합니다. contune은 스케줄러가 띄운 순간부터 그 실행의 프로세스만 골라 **계속 기록**하므로, 끝난 배치와 새벽에 기동한 서비스도 나중에 구간을 골라 함수 단위로 봅니다.
+`perf top`은 지금 도는 것만 보여 줍니다. 몇 분 만에 지나간 주문 폭주는 담당자가 perf를 걸 때 이미 끝나 있고, 새벽 배치는 아침에 보면 끝나 있습니다. 원인 코드를 찾으려면 같은 부하를 다시 만들어 재현해야 합니다. contune은 스케줄러가 띄운 순간부터 그 실행의 프로세스만 골라 **계속 기록**하므로, 지나간 장애 구간과 끝난 배치도 나중에 구간을 골라 함수 단위로 봅니다.
 
 **동작**
 
@@ -248,7 +249,7 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 | 준비 작업 등 단명 프로세스 | 제외(`min_age`) | 자원 지표(`job.*`)는 그대로 수집합니다 |
 | 자바 | 제외 → 확장 | `Profiler` 구현 추가: JDK 내장 JFR 또는 async-profiler. 결과는 같은 접힌 스택이라 저장·화면·SQL은 그대로 |
 
-**권한:** 에이전트와 같은 사용자로 뜬 프로세스는 커널 기본값(`perf_event_paranoid` = 2)에서 비root로 프로파일합니다. 값이 더 높게 잠긴 서버는 sysctl 한 줄 또는 `CAP_PERFMON`이 필요합니다. 대상은 contune이 띄운 프로세스(실행 ID 표식)뿐이고 다른 프로세스는 보지 않습니다.
+**권한:** 운영 서버는 perf를 쓸 수 있음을 확인했습니다. 에이전트와 같은 사용자로 뜬 프로세스는 커널 기본값(`perf_event_paranoid` = 2)에서 비root로 프로파일합니다. 값이 더 높게 잠긴 서버는 sysctl 한 줄 또는 `CAP_PERFMON`이 필요합니다. 대상은 contune이 띄운 프로세스(실행 ID 표식)뿐이고 다른 프로세스는 보지 않습니다.
 
 **한계:** CPU를 쓴 곳(on-CPU)만 보입니다. 잠금이나 디스크를 기다려 느린 경우는 플레임 그래프에 거의 나오지 않고, 대기 시간 분석(off-CPU)은 root와 eBPF가 필요해 확장입니다. DB 안에서 도는 저장 프로시저는 배치 서버가 아니라 DB 쪽에서 봐야 합니다.
 
@@ -268,8 +269,7 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 | 메서드 · 경로 | 내용 |
 |---|---|
 | `GET /api/v1/hosts` | 호스트 목록, 마지막 수신 시각, 최신 지표 값 |
-| `GET /api/v1/series?host=&name=&exec_id=&from=&to=&step=` | 시계열 조회. `step`(초) 단위 평균으로 다운샘플 |
-| `GET /api/v1/overlaps?host=&from=&to=` | 구간 안에 `job.*` 지표가 있는 실행 목록(스텝이 끝난 서비스 포함)과 실행 정보, 구간 안 프로파일 표본 수 |
+| `GET /api/v1/series?host=&name=&exec_id=&from=&to=&step=` | 시계열 조회. `step`(초) 단위 평균으로 다운샘플. `name`은 `biz.order.*`처럼 접두사로도 받음 |
 | `GET /api/v1/profile?exec_id=&from=&to=` | 구간과 겹치는 프로파일을 합친 접힌 스택(표본 수 내림차순) |
 | `GET /api/v1/runs?flow=&host=&limit=` | 실행 이력 |
 | `GET /api/v1/runs/{exec_id}` | 실행 상세 + 상태 전이 이력 |
@@ -284,13 +284,14 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 {"host":"match-01","samples":[
   {"ts":1761534000000,"name":"host.cpu.pct","value":42.5},
   {"ts":1761534000000,"name":"biz.order.latency_p99_ms","value":3.8,"exec_id":"01JBQ7..."},
+  {"ts":1761534000000,"name":"biz.order.queue","value":0,"exec_id":"01JBQ7..."},
   {"ts":1761534000000,"name":"job.cpu.pct","value":31.2,"exec_id":"01JBQ7..."}]}
 
 // POST /api/v1/agent/profiles
 {"host":"match-01","profiles":[
   {"exec_id":"01JBQ7...","ts":1761534000000,"dur_ms":10000,"hz":49,
    "stacks":{"matching_svc;main;handle_order;check_risk":211,
-             "matching_svc;main;reload_master;parse_master":163}}]}
+             "matching_svc;main;handle_order;match_order;book_insert":163}}]}
 
 // GET /api/v1/agent/commands 응답
 {"commands":[{"type":"run","exec_id":"01JBQ7...","flow":"market-open","step":"start-matching",
@@ -306,7 +307,7 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 
 // GET /api/v1/profile?exec_id=01JBQ7...&from=&to= 응답
 {"exec_id":"01JBQ7...","samples":980,
- "stacks":[{"frames":"matching_svc;main;reload_master;parse_master","samples":312}, ...]}
+ "stacks":[{"frames":"matching_svc;main;handle_order;match_order;book_insert","samples":612}, ...]}
 ```
 
 ### 6.1 열린 데이터 (데이터 주권)
@@ -323,34 +324,45 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 | 보존 정책 | 보존 기간과 수집 주기는 설정 파일로 우리가 정합니다(검증판 기본: 지표와 프로파일 7일, 실행 이력 무기한) |
 
 ```sql
--- 배치가 도는 동안의 체결 p99 응답시간 평균, 높은 순 5개 (contune sql로 실행)
-SELECT r.flow_id, r.step_id, r.exec_id,
-       ROUND(AVG(v.value), 1) AS p99_ms_during_run
-FROM runs r
-JOIN v_samples v
-  ON v.host = 'match-01'
- AND v.name = 'biz.order.latency_p99_ms'
- AND v.ts BETWEEN r.started_at AND r.ended_at
-GROUP BY r.exec_id
-ORDER BY p99_ms_during_run DESC
-LIMIT 5;
+-- 접수량 구간별 체결 p99: 초당 몇 건부터 밀리기 시작하나 (contune sql로 실행)
+SELECT CAST(i.value / 1500 AS INT) * 1500 AS in_tps,
+       COUNT(*)               AS seconds,
+       ROUND(AVG(p.value), 1) AS avg_p99_ms,
+       MAX(p.value)           AS max_p99_ms
+FROM v_samples i
+JOIN v_samples p
+  ON p.exec_id = i.exec_id
+ AND p.ts = i.ts
+ AND p.name = 'biz.order.latency_p99_ms'
+WHERE i.host = 'match-01'
+  AND i.name = 'biz.order.in_tps'
+GROUP BY 1
+ORDER BY 1;
 ```
 
 ```sql
--- 기준정보 갱신 배치가 도는 동안, 같은 서버의 서비스가 CPU를 쓴 함수 상위 5개
-SELECT s.step_id AS service, p.leaf, SUM(p.samples) AS samples
-FROM runs r
-JOIN v_profiles p
-  ON p.host = r.host
- AND p.ts BETWEEN r.started_at AND r.ended_at
-JOIN runs s
-  ON s.exec_id = p.exec_id
- AND s.exec_id <> r.exec_id
-WHERE r.flow_id = 'refresh-master'
-GROUP BY s.step_id, p.leaf
-ORDER BY samples DESC
+-- 체결이 밀린 구간(p99 50ms 초과)과 평시에 체결 서비스가 CPU를 쓴 함수 비중(%)
+WITH w AS (
+  SELECT p.leaf, p.samples,
+         EXISTS (SELECT 1 FROM v_samples m
+                 WHERE m.exec_id = p.exec_id
+                   AND m.name = 'biz.order.latency_p99_ms'
+                   AND m.value > 50
+                   AND m.ts >= p.ts AND m.ts < p.ts + p.dur_ms) AS slow
+  FROM v_profiles p
+  JOIN runs r ON r.exec_id = p.exec_id
+  WHERE r.step_id = 'start-matching'
+)
+SELECT leaf,
+       ROUND(100.0 * SUM(samples * (1 - slow)) / (SELECT SUM(samples * (1 - slow)) FROM w), 1) AS normal_pct,
+       ROUND(100.0 * SUM(samples * slow)       / (SELECT SUM(samples * slow)       FROM w), 1) AS slow_pct
+FROM w
+GROUP BY leaf
+ORDER BY slow_pct DESC
 LIMIT 5;
 ```
+
+- 첫 질의는 용량 판단(서버를 늘릴지, 코드를 고칠지)의 근거이고, 두 번째 질의는 업무 지표와 함수 프로파일을 **같은 실행 ID**로 조인합니다. 두 질의 모두 설계 단계에서 같은 스키마의 합성 데이터로 실행해 확인했습니다.
 
 - 제품 안에 머신러닝 기능은 넣지 않습니다. 같은 데이터를 SQL이나 내보내기로 꺼내 분석 도구에서 돌립니다(예: 소요 시간 이상 탐지, 배치 소요 시간 예측, 서버 용량 예측, **실행마다 함수 비중을 비교한 성능 회귀 탐지**).
 - 저장소를 MySQL로 바꾸면 분석하는 사람은 읽기 전용 계정으로 같은 테이블과 뷰를 조회합니다.
@@ -551,21 +563,27 @@ steps:
 ```
 
 ```yaml
-# flows/refresh-master.yaml — 장중 기준정보 갱신
-id: refresh-master
-schedule: "0 10 * * 1-5"
+# flows/daily-settle.yaml — 장 마감 후 정산
+id: daily-settle
+schedule: "40 15 * * 1-5"     # 평일 15:40
 steps:
-  - id: update-master
-    host: match-01
-    command: [/batch/update_master.sh]
+  - id: settle
+    host: batch-01
+    command: [/batch/settle.sh]
+    timeout: 30m
     gate:                                      # 리소스 게이트 (넓히기): 어떤 지표든 조건으로
-      - { host: match-01, metric: biz.order.latency_p99_ms, max: 50 }
-    gate_max_wait: 20m
+      - { host: match-01, metric: biz.order.queue, max: 0 }   # 체결 대기가 모두 처리된 뒤 시작
+    gate_max_wait: 30m
+
+  - id: settle-report
+    host: batch-01
+    command: [/batch/settle_report.sh]
+    depends: [settle]
 ```
 
 - **병렬과 합류:** 선행이 모두 SUCCEEDED인 스텝은 동시에 DISPATCHED됩니다. 에이전트는 명령 여러 개를 동시에 실행합니다.
 - **깊이(level):** 로더가 YAML을 읽을 때 순환을 검사하면서 스텝마다 깊이(선행 경로의 최대 길이)를 계산하고 `GET /flows`로 내보냅니다. 플로우 그래프는 깊이별로 열을 나눠 그립니다.
-- 리소스 게이트는 **지표 통로를 그대로 재사용**합니다. 서버 지표든 업무 지표든 같은 조회로 판단하므로, "체결 지연이 높으면 갱신을 미룬다" 같은 조건을 추가 개발 없이 씁니다.
+- 리소스 게이트는 **지표 통로를 그대로 재사용**합니다. 서버 지표든 업무 지표든 같은 조회로 판단하므로, "체결 대기가 남아 있으면 정산을 미룬다" 같은 조건을 추가 개발 없이 씁니다. 로더는 `gate`를 처음부터 읽고, 판단은 넓히기에서 켭니다.
 - 플로우 사이의 의존(업무일 기준)과 휴일 캘린더는 검증판 범위 밖입니다.
 
 ## 10. 상태 머신
@@ -603,7 +621,7 @@ stateDiagram-v2
 | 구분 | 내용 |
 |---|---|
 | 검증판 | **에이전트 토큰**(매니저는 토큰이 맞는 에이전트만 받음) · **명령 출처는 리뷰된 YAML뿐**(UI와 API로 임의 명령을 입력하는 기능은 만들지 않음) · **에이전트는 비root로 실행** · 상태 전이에 `actor` 기록 · `contune sql`은 읽기 전용 연결 · **프로파일 대상은 contune이 띄운 프로세스뿐**(실행 ID 표식). 접힌 스택에는 함수 이름과 표본 수만 있고 메모리 내용이나 인자 값은 없음 |
-| 운영 조건 | 함수 추적: `perf_event_paranoid` 2 이하(일반 기본값) 또는 `CAP_PERFMON`, 컨테이너는 `cap_add: [PERFMON]`. 실행 파일 심볼 유지(또는 디버그 심볼 파일 배포) |
+| 운영 조건 | 함수 추적: 운영 서버는 perf 사용 가능(확인). 비root면 `perf_event_paranoid` 2 이하(일반 기본값) 또는 `CAP_PERFMON`, 컨테이너는 `cap_add: [PERFMON]`. 함수 이름은 실행 파일의 심볼로 표시(strip 했다면 디버그 심볼 파일) |
 | 검증판 제외 | 웹 로그인, TLS, 호스트별 토큰, 조작 권한, `run_as_user`(보안 정책 협의 후). 운영에 쓰려면 필요합니다 |
 
 ## 12. 원인 추적(타임머신) 설계
@@ -612,15 +630,17 @@ stateDiagram-v2
 
 | 표시 항목 | 출처 |
 |---|---|
+| 그 실행이 띄운 서비스가 보낸 업무 지표(접수·처리 건수, 대기 건수, p99) | `GET /series?exec_id=<exec_id>&name=biz.order.*` |
+| 그 실행의 `job.*` (**스텝이 끝난 서비스는 지금까지**) | `GET /series?exec_id=<exec_id>&name=job.*` |
 | 실행 구간(`started_at`~`ended_at`, 앞뒤 5분)의 해당 서버 `host.*` | `GET /series?host=<run.host>&name=host.cpu.pct` |
-| 그 실행의 `job.*` | `GET /series?exec_id=<exec_id>` |
-| 같은 서버에서 구간이 겹친 다른 실행(**스텝이 끝난 서비스 포함**)과 각자의 `job.cpu.pct` | `GET /overlaps?host=&from=&to=` 후 `GET /series?exec_id=` |
-| 같은 구간의 업무 지표 `biz.*` (선택한 서버) | `GET /series?host=match-01&name=biz.order.latency_p99_ms` |
-| **플레임 그래프**: 차트에서 끌어 고른 구간(기본은 화면 전체)의 함수별 CPU. 대상은 구간에서 표본이 가장 많은 실행이 기본이고 탭으로 바꿈 | `GET /profile?exec_id=&from=&to=` |
+| **플레임 그래프**: 차트에서 끌어 고른 구간(기본은 화면 전체)에 그 실행이 CPU를 쓴 함수 | `GET /profile?exec_id=&from=&to=` |
 | 종료 코드, 소요 시간, peak, 로그 tail | `GET /runs/{exec_id}` |
 | 같은 구간의 원자료 | `GET /export/samples`, `GET /export/profile`, `contune sql` |
 
-> 확장(선택): 직전 같은 길이 구간 대비 비중이 늘어난 함수를 강조하는 **함수 비교**(넓히기), 근거를 요약하는 LLM `Analyzer`, 소요 시간 이상 플래그(과거 N회 평균 대비)를 같은 근거 위에 얹을 수 있습니다.
+- 대시보드의 업무 지표 타일은 그 지표를 보낸 실행의 타임머신으로 바로 갑니다. 지표에 `exec_id`가 붙어 있어 찾을 필요가 없습니다.
+- 시연에서는 폭주 전 구간과 밀린 구간을 차례로 끌어 골라 두 플레임 그래프를 비교합니다(`book_insert` 비중이 크게 늘어남).
+
+> 확장(선택): 직전 같은 길이 구간 대비 비중이 늘어난 함수를 강조하는 **함수 비교**(넓히기), 같은 서버에서 구간이 겹친 다른 실행 표시(`GET /overlaps`), 근거를 요약하는 LLM `Analyzer`, 소요 시간 이상 플래그(과거 N회 평균 대비)를 같은 근거 위에 얹을 수 있습니다.
 
 ## 13. 시연 환경: 컨테이너 + 시연용 C 서비스
 
@@ -636,21 +656,26 @@ services:
 | 호스트 | 역할(가정) | 수집 |
 |---|---|---|
 | `match-01` | 체결 서버 | `sim/host`, `push`(체결 서비스가 보냄), 프로파일러 `perf` |
-| `gw-01` | 주문 게이트웨이 | `sim/host`, `sim/gateway` |
-| `batch-01` | 적재 배치 서버 | `sim/host`, 프로파일러 `perf` |
+| `gw-01` | 주문 게이트웨이 | `sim/host` |
+| `batch-01` | 적재·정산 배치 서버 | `sim/host`, 프로파일러 `perf` |
 
 - 컨테이너 안의 `/proc/stat`은 호스트 값이라 서버별로 다르게 보이지 않습니다. 그래서 시연에서는 `host.*`만 `sim`으로 만듭니다.
-- **실제로 동작하는 것:** 스케줄, 잡 실행, 서비스 프로세스 추적, 함수 프로파일, 체결 서비스의 업무 지표.
-- **시연용 체결 서비스 `matching_svc`** (`demo/matching_svc.c`, C 약 150줄, `gcc -O2`로 빌드, 심볼 유지):
-  - 목표 TPS로 가상 주문을 처리합니다: `handle_order` → `check_risk` → `match_order` → `book_insert`.
-  - 주문마다 지연(예정 도착 시각부터 처리 완료까지)을 재서 1초마다 `biz.order.tps`, `biz.order.latency_p99_ms`를 자기 `CONTUNE_EXEC_ID`와 함께 `push`(UDP `127.0.0.1:9101`)로 보냅니다.
-  - 1초마다 기준정보 파일의 수정 시각을 확인하고, 바뀌면 `reload_master`(`parse_master`, `build_index`)가 주문 처리 사이사이에 약 20초 동안 CPU를 써서 **p99가 실제로 오릅니다**.
+- **실제로 동작하는 것:** 스케줄, 잡 실행, 서비스 프로세스 추적, 함수 프로파일, 수집·저장·조회 경로. 체결 서비스의 함수 이름과 부하 모양은 시연용으로 만든 것입니다. 보여 주려는 것은 수치가 아니라 **실행에서 함수까지 이어지는 경로가 실제로 동작한다**는 점입니다.
+- **시연 장애: 주문량 폭주.** 운영 업무는 온라인 중심이고 장중 배치는 드물기 때문에, 장애 장면은 배치가 아니라 접수 주문이 몰려 체결 처리가 밀리는 상황으로 잡습니다.
+- **시연용 체결 서비스 `matching_svc`** (`demo/matching_svc.c`, C 약 150~200줄, 표준 라이브러리만, `gcc -O2`로 빌드, 심볼 유지):
+  - 접수율 파일(`--rate`, 1초마다 다시 읽음, 기본 1500건/초)대로 합성 주문을 접수 대기열에 넣고, 대기열 앞에서 하나씩 처리합니다: `handle_order` → `check_risk` → `match_order` → `book_insert`.
+  - `book_insert`는 가격순 호가 배열에 선형 탐색으로 끼워 넣으므로 비용이 **호가 깊이에 비례**합니다. 체결되지 않은 주문만 호가에 남고, `expire_orders`가 오래된 주문을 지웁니다.
+  - 평시(1500건/초)에는 대부분 바로 체결돼 호가가 얕고, 서비스 CPU는 코어 1개의 약 30%, p99는 수 ms입니다.
+  - 폭주(3000 → 4500 → 6000건/초)에는 체결되지 않는 지정가 주문이 늘어 호가가 깊어집니다. `book_insert`가 무거워져 처리가 접수를 따라가지 못하고, **대기 건수와 p99가 실제로 오릅니다**. 서비스 CPU는 코어 1개에 붙고, 플레임 그래프에서 `book_insert` 비중이 평시보다 크게 늘어납니다.
+  - 폭주가 끝나면 대기열과 호가가 줄어 30초 안에 평시로 돌아옵니다.
+  - 1초마다 `biz.order.in_tps`, `biz.order.tps`, `biz.order.queue`, `biz.order.latency_p99_ms`(접수부터 처리 완료까지)를 자기 `CONTUNE_EXEC_ID`와 함께 `push`(UDP `127.0.0.1:9101`)로 보냅니다.
   - `start_matching.sh`가 `setsid nohup`으로 띄우고 바로 끝나므로, 서비스는 스크립트의 프로세스 그룹을 벗어납니다(실행 ID 표식으로 추적, §5.5).
 - 이미지에는 perf 패키지와 `matching_svc`가 들어갑니다(Dockerfile 빌드 단계에서 `gcc -O2`).
 - 시연 플로우는 2개입니다.
   - `flows/market-open.yaml`: §9와 같은 모양. 배치 스텝은 `contune burn`으로 실제 CPU를 쓰고, `load-equity`는 첫 시도만 실패해 재시도를 보여 줍니다. `start-matching`이 체결 서비스를 띄웁니다.
-  - `flows/refresh-master.yaml`: `update-master`가 5초 동안 기준정보를 만들고(`contune burn`), 기준정보 파일을 바꾼 뒤 20초 동안 반영을 확인합니다(`sleep`). 배치 자신의 CPU는 낮은데 체결 p99가 오르는 장면입니다.
-- 데이터 주권 장면은 `docker compose exec manager contune sql --data /data "<질의>"`로 실행합니다(§6.1의 질의 2개).
+  - `flows/daily-settle.yaml`: §9와 같은 모양(`settle` → `settle-report`, `contune burn`). 리소스 게이트를 넓히기에서 만들면 "체결 대기가 남아 있는 동안 정산이 HELD로 대기" 장면에 씁니다.
+- 폭주는 `demo.sh surge`가 `match-01`의 접수율 파일을 20초마다 3000, 4500, 6000으로 바꾼 뒤 1500으로 되돌려 만듭니다.
+- 데이터 주권 장면은 `docker compose exec manager contune sql --data /data "<질의>"`로 실행합니다(§6.1의 질의 2개: 접수량 구간별 p99, 밀린 구간과 평시의 함수 비중).
 - **사전 점검(코드 아님):** 시연 노트북의 Docker에서 `docker run --rm --cap-add PERFMON alpine:3.20 sh -c 'apk add -q perf && su -s /bin/sh nobody -c "perf stat -e cpu-clock -- true"'`가 성공하는지 확인합니다.
 - Docker를 쓸 수 없으면 `contune dev`(매니저 + 에이전트 3개를 한 프로세스로)로 같은 시연을 합니다. 이때 함수 추적은 노트북의 perf 권한에 따릅니다.
 
