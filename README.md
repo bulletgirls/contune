@@ -27,7 +27,7 @@
 | [docs/01-design-review.md](docs/01-design-review.md) | 초기 조사 세션(Gemini) 점검: 유지할 것, 과한 것, 틀린 것, 빠진 것 |
 | [docs/02-mvp-architecture.md](docs/02-mvp-architecture.md) | 아키텍처: 기술 스택, 수집 통로, 서비스 프로세스 추적, 함수 단위 추적(실측 포함), API 계약, 열린 데이터, 인터페이스 6개, 데이터 모델, 상태 머신, 시연 환경 |
 | [docs/03-roadmap.md](docs/03-roadmap.md) | 해커톤 당일 실행 계획: 시연 시나리오, 개념 완결 기준, 2명 일정, 트랙별 작업카드와 AI 세션 지시문 |
-| [docs/submission/contune-proposal.pdf](docs/submission/contune-proposal.pdf) | 서류 심사 제출서(외부 심사위원용, 블라인드). 원본은 같은 폴더의 `contune-proposal.html` |
+| [docs/submission/eum-proposal.pdf](docs/submission/eum-proposal.pdf) | 서류 심사 기획서 "이음"(외부 심사위원용, A4 가로 15쪽). 질문 4개(뭘 만드나·뭘 보완하나·뭐가 좋아지나·어떻게 가능하나) 순서로 구성. 원본은 같은 폴더의 `eum-proposal.html` |
 
 ## 현재 상태
 
