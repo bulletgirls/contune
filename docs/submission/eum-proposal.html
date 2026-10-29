@@ -181,18 +181,33 @@ tr.us > * { background: var(--brand-wash); }
 .parts div { border-top: 2px solid var(--brand); padding-top: 1.4mm; font-size: 8.4pt; color: var(--ink-2); line-height: 1.5; }
 .parts div b { display: block; color: var(--ink); font-size: 9pt; }
 
-/* Q1: 하루 흐름 */
-.day { display: grid; grid-template-columns: 22mm repeat(4, minmax(0, 1fr)); gap: 1.6mm; font-size: 8.5pt; line-height: 1.5; }
-.day .h { font-weight: 700; font-size: 9pt; padding: 1.8mm 2.4mm; border-radius: 4px; background: var(--card); }
-.day .h small { display: block; font-family: var(--f-mono); font-size: 7.8pt; color: var(--ink-3); font-weight: 500; }
-.day .h.batch { background: var(--brand-wash); }
-.day .h.online { background: var(--tag-wash); }
-.day .rl { font-weight: 700; font-size: 8.8pt; padding: 2mm 0; color: var(--ink); }
-.day .rl small { display: block; font-weight: 400; color: var(--ink-3); font-size: 7.6pt; }
-.day .cell { border: 1px solid var(--line); border-radius: 4px; padding: 1.8mm 2.4mm; color: var(--ink-2); display: flex; flex-direction: column; gap: 0.8mm; }
-.day .cell b { color: var(--ink); }
-.day .cell.empty { border-style: dashed; color: var(--ink-3); background: transparent; }
-.day .cell.hl { border-color: var(--tag); background: var(--tag-wash); }
+/* Q1: 하루를 잇기 (지금 vs 이음) */
+.tl { display: flex; flex-direction: column; gap: 2mm; }
+.tl-row { display: grid; grid-template-columns: 24mm 2.2fr 3fr 2fr 2fr; align-items: stretch; }
+.tl-row.axis > span { font-size: 8.4pt; font-weight: 700; padding: 0 2mm; border-left: 1px dashed var(--line); }
+.tl-row.axis > span:first-child { border: 0; }
+.tl-row.axis small { display: block; font-family: var(--f-mono); font-size: 7.6pt; color: var(--ink-3); font-weight: 500; }
+.lane-l { font-weight: 700; font-size: 10pt; display: flex; flex-direction: column; justify-content: center; line-height: 1.3; }
+.lane-l small { font-weight: 500; font-size: 7.8pt; color: var(--ink-3); }
+.now .lane-l { color: var(--pain); }
+.eum-l { color: var(--brand); }
+.nc { position: relative; display: flex; flex-direction: column; gap: 1mm; padding: 0 5mm 0 0; }
+.nc:not(:last-child)::after { content: "✕"; position: absolute; right: 0.6mm; top: 50%; transform: translateY(-50%); color: var(--pain); font-weight: 700; font-size: 10pt; }
+.nb { border: 1px solid var(--line); background: var(--card); border-radius: 4px; padding: 1.2mm 2.4mm; font-size: 8.6pt; font-weight: 600; display: flex; justify-content: space-between; gap: 4px; align-items: center; flex: 1; }
+.nb small { font-weight: 400; color: var(--ink-3); font-size: 7.6pt; }
+.nb.none { border-style: dashed; background: transparent; color: var(--ink-3); font-weight: 400; justify-content: center; }
+.now-cap { grid-column: 2 / -1; font-size: 8.2pt; color: var(--pain); font-weight: 600; padding-top: 0.6mm; }
+.eband { grid-column: 2 / -1; display: grid; grid-template-columns: 2.2fr 3fr 2fr 2fr; border: 2px solid var(--brand); border-radius: 6px; background: var(--brand-wash); position: relative; padding-top: 7mm; overflow: hidden; }
+.eband .thread { position: absolute; left: 0; right: 0; top: 0; height: 5.4mm; background: var(--tag); color: var(--tag-ink); font-family: var(--f-mono); font-size: 8pt; font-weight: 600; display: flex; align-items: center; justify-content: space-between; padding: 0 3mm; }
+.eband .st { padding: 2mm 3mm 2.4mm; display: flex; align-items: center; gap: 2mm; font-size: 11pt; font-weight: 700; color: var(--ink); border-left: 1px dashed color-mix(in srgb, var(--brand) 40%, transparent); }
+.eband .st:first-of-type { border-left: 0; }
+.eband .st .n { font-family: var(--f-mono); width: 6.4mm; height: 6.4mm; border-radius: 50%; background: var(--brand); color: var(--paper); display: grid; place-items: center; font-size: 8.6pt; flex: none; }
+.steps4 { display: grid; grid-template-columns: 24mm 2.2fr 3fr 2fr 2fr; }
+.steps4 .c4 { border-top: 2px solid var(--brand); margin-right: 3mm; padding-top: 1.6mm; font-size: 8.6pt; color: var(--ink-2); line-height: 1.55; display: flex; flex-direction: column; gap: 0.8mm; }
+.steps4 .c4:last-child { margin-right: 0; }
+.steps4 .c4 b { color: var(--ink); font-size: 9.4pt; }
+.steps4 .c4 .was { font-size: 7.6pt; color: var(--ink-3); }
+.steps4 .c4 .badge { align-self: flex-start; }
 
 /* Q2: 도구 칸 */
 .silos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.2mm; }
@@ -375,9 +390,13 @@ tr.us > * { background: var(--brand-wash); }
   .merge .arrow, .arch .pipe { transform: rotate(90deg); }
   .silos, .t3, .parts, .steps-h, .scope, .tv-out, .merge-out { grid-template-columns: 1fr 1fr; }
   .t5 { grid-template-columns: 1fr 1fr; }
-  .day { grid-template-columns: 1fr; }
-  .day .h, .day .rl { display: none; }
-  .day .cell::before { content: attr(data-l); font-size: 7.6pt; color: var(--ink-3); font-weight: 600; }
+  .tl-row, .steps4, .eband { grid-template-columns: 1fr; }
+  .tl-row.axis, .steps4 > span:first-child { display: none; }
+  .nc { padding: 0 0 6mm; }
+  .nc:not(:last-child)::after { right: 50%; top: auto; bottom: 0.4mm; transform: none; }
+  .now-cap, .eband { grid-column: auto; }
+  .eband .st { border-left: 0; border-top: 1px dashed color-mix(in srgb, var(--brand) 40%, transparent); }
+  .steps4 .c4 { margin: 0 0 3mm; }
   .flames { grid-template-columns: 1fr; }
   .p-head { flex-direction: column; align-items: flex-start; }
   .qnav { justify-content: flex-start; }
@@ -470,46 +489,43 @@ tr.us > * { background: var(--brand-wash); }
   </div>
 </section>
 
-<!-- 3. Q1 하루 흐름 -->
+<!-- 3. Q1 하루를 잇기 -->
 <section class="page" data-q="1">
   <div class="p-title">
-    <div class="ask"><span class="qn">Q1</span>그래서 대체 뭘 만드는 건가요? <span class="sec">하루 운영에 얹어 보기</span></div>
-    <h1>하루 운영에 얹으면 이렇습니다.</h1>
-    <p class="sub">주식 체결 업무 기준. 새벽 배치가 체결 서비스를 띄우고, 서비스는 장중 내내 돌고, 장 마감 뒤 정산 배치가 돕니다.</p>
+    <div class="ask"><span class="qn">Q1</span>그래서 대체 뭘 만드는 건가요? <span class="sec">하루 운영으로 보기</span></div>
+    <h1>끊겨 있던 하루를 번호 하나로 잇습니다.</h1>
+    <p class="sub">주식 체결 업무의 하루. 지금은 시간대마다 도구가 바뀌고, 도구끼리 기록이 이어지지 않습니다.</p>
   </div>
-  <div class="content" style="display: flex; flex-direction: column; gap: 4mm">
-    <div class="day">
-      <div></div>
-      <div class="h batch"><small>05:30</small>개장 준비</div>
-      <div class="h online"><small>09:00~15:30</small>장중</div>
-      <div class="h batch"><small>15:40</small>정산</div>
-      <div class="h"><small>언제든</small>돌아보기</div>
-
-      <div class="rl">실행<small>스케줄러</small></div>
-      <div class="cell" data-l="개장 준비 · 실행"><b>개장 준비 플로우</b>원장 적재 2개 동시 실행 → 체결 서비스 기동. 실패 시 자동 재시도</div>
-      <div class="cell" data-l="장중 · 실행"><b>서비스 실행 중</b>띄운 스크립트가 끝나도 서비스는 같은 번호로 추적</div>
-      <div class="cell" data-l="정산 · 실행"><b>정산 플로우</b>체결 대기 0건 확인 후 시작 <span class="badge ext">확장 목표</span></div>
-      <div class="cell empty" data-l="돌아보기 · 실행">실행·재시도 이력 보관</div>
-
-      <div class="rl">관제<small>서버·업무</small></div>
-      <div class="cell" data-l="개장 준비 · 관제">적재 배치의 CPU·메모리</div>
-      <div class="cell hl" data-l="장중 · 관제"><b>서버 자원 + 업무 지표, 1초</b>접수·처리·대기·응답시간을 서버 자원과 한 화면에</div>
-      <div class="cell" data-l="정산 · 관제">정산 배치 자원, 체결 대기 건수</div>
-      <div class="cell empty" data-l="돌아보기 · 관제">지난 구간 다시 보기</div>
-
-      <div class="rl">기록<small>같은 번호</small></div>
-      <div class="cell" data-l="개장 준비 · 기록"><b>번호 발급</b> <span class="tag">01JBQ7…</span><br>체결 서비스로 전달</div>
-      <div class="cell hl" data-l="장중 · 기록"><b>모든 기록에 같은 번호</b>자원·업무 지표·함수(10초 단위)</div>
-      <div class="cell" data-l="정산 · 기록">정산 실행은 별도 번호</div>
-      <div class="cell empty" data-l="돌아보기 · 기록">보존 기간은 우리가 결정</div>
-
-      <div class="rl">활용<small>판단·분석</small></div>
-      <div class="cell empty" data-l="개장 준비 · 활용">늦어진 단계를 그래프로 확인</div>
-      <div class="cell" data-l="장중 · 활용"><b>체결이 밀리면</b>응답시간 타일 → 해당 서비스 기록으로 이동</div>
-      <div class="cell empty" data-l="정산 · 활용">정산 종료 시각 추이</div>
-      <div class="cell" data-l="돌아보기 · 활용"><b>SQL·CSV 분석</b>용량 판단, 종료 시각 예측, 배포 전후 비교</div>
+  <div class="content" style="display: flex; flex-direction: column; gap: 5mm; justify-content: center">
+    <div class="tl">
+      <div class="tl-row axis"><span></span><span><small>05:30</small>개장 준비</span><span><small>09:00~15:30</small>장중</span><span><small>15:40</small>정산</span><span><small>언제든</small>돌아보기</span></div>
+      <div class="tl-row now">
+        <span class="lane-l">지금<small>도구 3개</small></span>
+        <div class="nc"><div class="nb">Control-M<small>배치 실행</small></div></div>
+        <div class="nc"><div class="nb">onTune<small>서버 자원</small></div><div class="nb">사내 APM<small>업무 지표</small></div><div class="nb none">함수 기록 없음</div></div>
+        <div class="nc"><div class="nb">Control-M<small>정산 실행</small></div></div>
+        <div class="nc"><div class="nb">제품별 화면<small>따로 조회</small></div></div>
+      </div>
+      <div class="tl-row"><span></span><span class="now-cap">✕ 도구가 바뀔 때마다 기록이 끊김 → 사람이 시각·서버 이름으로 맞춤</span></div>
+      <div class="tl-row">
+        <span class="lane-l eum-l">이음<small>도구 1개</small></span>
+        <div class="eband">
+          <div class="thread"><span>실행 번호 01JBQ7…</span><span>하루 끝까지 같은 번호 →</span></div>
+          <div class="st"><span class="n">1</span>띄운다</div>
+          <div class="st"><span class="n">2</span>지켜본다</div>
+          <div class="st"><span class="n">3</span>업무 보고 실행</div>
+          <div class="st"><span class="n">4</span>돌아본다</div>
+        </div>
+      </div>
     </div>
-    <div class="callout tagged">새벽 배치에서 장중 서비스, 장 마감 뒤 분석까지 <span class="tag">실행 번호</span> 하나가 이어집니다. 스케줄러와 관제가 한 도구여야 하는 이유입니다.</div>
+    <div class="steps4">
+      <span></span>
+      <div class="c4"><b>① 띄운다</b>개장 준비 플로우가 원장 2개를 동시에 적재하고 체결 서비스를 기동. 실패하면 자동 재시도. 서비스에 번호를 넘김<span class="was">지금은 Control-M</span></div>
+      <div class="c4"><b>② 지켜본다</b>서버 자원·주문 접수·처리·대기·응답시간은 1초, CPU를 쓴 함수는 10초 단위로 같은 번호에 기록. 스크립트가 끝나도 서비스는 계속 추적<span class="was">지금은 onTune + 사내 APM, 함수 기록은 없음</span></div>
+      <div class="c4"><b>③ 업무 보고 실행</b>체결 대기 0건을 확인한 뒤 정산 시작 <span class="badge ext">확장 목표</span><span class="was">지금은 시각이 되면 실행</span></div>
+      <div class="c4"><b>④ 돌아본다</b>지난 구간을 다시 펼쳐 함수까지 확인. SQL·CSV로 용량·종료 시각·배포 전후 분석<span class="was">지금은 제품 화면 안에서만</span></div>
+    </div>
+    <div class="callout tagged">띄우는 도구가 지켜보는 일까지 맡아야 <span class="tag">실행 번호</span>가 끊기지 않습니다. 세 도구를 하나로 합치는 이유입니다.</div>
   </div>
 </section>
 
