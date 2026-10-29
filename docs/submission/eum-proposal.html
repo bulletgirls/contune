@@ -140,13 +140,16 @@ tr.us > * { background: var(--brand-wash); }
 /* 표지 */
 .cover { grid-template-rows: auto minmax(0, 1fr) auto; }
 .cover .content { grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); gap: 11mm; align-items: center; }
-.cover-left { display: flex; flex-direction: column; gap: 4.5mm; }
-.big-mark { font-family: var(--f-brand); font-weight: 800; color: var(--brand); font-size: 58pt; line-height: 1; letter-spacing: -0.03em; display: flex; align-items: baseline; gap: 12px; }
-.big-mark small { font-family: var(--f-mono); font-size: 15pt; letter-spacing: 0.1em; font-weight: 600; }
-.cover h1 { font-size: 21pt; line-height: 1.35; letter-spacing: -0.02em; }
-.cover .lead { font-size: 10.5pt; color: var(--ink-2); line-height: 1.7; }
-.name-note { font-size: 9pt; color: var(--ink-2); border-top: 1px solid var(--line); padding-top: 2.4mm; }
-.name-note b { color: var(--brand); }
+.cover-left { display: flex; flex-direction: column; gap: 4mm; }
+.big-mark { font-family: var(--f-brand); font-weight: 800; color: var(--brand); font-size: 34pt; line-height: 1; letter-spacing: -0.03em; display: flex; align-items: baseline; gap: 10px; }
+.big-mark small { font-family: var(--f-mono); font-size: 11pt; letter-spacing: 0.1em; font-weight: 600; }
+.tagline { font-size: 10pt; font-weight: 600; color: var(--ink-2); margin-top: -2mm; }
+.hook { font-size: 27pt; line-height: 1.3; letter-spacing: -0.03em; font-weight: 700; padding-top: 2mm; border-top: 1px solid var(--line); }
+.hook em { font-style: normal; color: var(--pain); }
+.hook-list { display: flex; flex-direction: column; gap: 1.6mm; }
+.hook-list div { display: grid; grid-template-columns: 19mm 1fr; gap: 3mm; align-items: baseline; font-size: 9.6pt; color: var(--ink-2); line-height: 1.5; }
+.hook-list .hn { font-family: var(--f-mono); font-weight: 600; color: var(--pain); font-size: 10.5pt; white-space: nowrap; }
+.answer { font-size: 10.5pt; font-weight: 600; background: var(--brand-wash); border-left: 3px solid var(--brand); padding: 2.4mm 3.6mm; border-radius: 0 4px 4px 0; line-height: 1.6; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { font-size: 8.2pt; padding: 1px 10px; border-radius: 99px; background: var(--card); color: var(--ink-2); }
 .qa { display: flex; flex-direction: column; gap: 2.6mm; }
@@ -378,7 +381,8 @@ tr.us > * { background: var(--brand-wash); }
   .flames { grid-template-columns: 1fr; }
   .p-head { flex-direction: column; align-items: flex-start; }
   .qnav { justify-content: flex-start; }
-  .big-mark { font-size: 44pt; }
+  .big-mark { font-size: 30pt; }
+  .hook { font-size: 22pt; }
   .sched .row { grid-template-columns: 1fr; }
 }
 @media print {
@@ -395,17 +399,22 @@ tr.us > * { background: var(--brand-wash); }
 <section class="page cover" data-q="0">
   <div class="content">
     <div class="cover-left">
-      <div class="big-mark">이음<small>E:UM</small></div>
-      <h1>배치 실행, 서버 관제,<br>업무 관제를 하나로 잇는<br>사내 운영 도구</h1>
-      <p class="lead">지금은 배치를 돌리는 스케줄러, 서버를 보는 관제, 업무 처리를 보는 관제가 따로 있습니다. 이음은 이 셋을 실행 파일 하나로 다시 만들고, 실행마다 <span class="tag">실행 번호</span>를 붙여 모든 기록을 한 줄로 잇습니다.</p>
-      <p class="name-note"><b>이음</b>이라는 이름은 흩어진 도구를 하나로 잇고, 배치 실행과 그 뒤의 기록을 잇는다는 뜻입니다.</p>
-      <div class="chips"><span class="chip">사용자: 배치·서비스 운영 담당자, 개발자</span><span class="chip">대상: 폐쇄망 리눅스 서버</span><span class="chip">결과물: 하루 만에 만드는 개념 검증판</span></div>
+      <div class="mark-row"><div class="big-mark">이음<small>E:UM</small></div></div>
+      <p class="tagline">배치 실행·서버 관제·업무 관제를 하나로 잇는 사내 운영 도구</p>
+      <h1 class="hook">사건은 하나인데,<br>도구는 <em>셋</em>입니다.</h1>
+      <div class="hook-list">
+        <div><span class="hn">화면 3개</span><span>장애 하나에 도구 3개를 오갑니다. 시각 맞추기는 사람 몫입니다.</span></div>
+        <div><span class="hn">3벌</span><span>계약도, 서버도, 데이터 저장소도 따로입니다. 데이터는 서로 엮이지 않습니다.</span></div>
+        <div><span class="hn">0</span><span>어느 코드가 느렸는지는 어느 도구에도 남지 않습니다.</span></div>
+      </div>
+      <div class="answer">이음은 셋을 하나로 합치고, 실행마다 <span class="tag">실행 번호</span>를 붙여 모든 기록을 잇습니다.</div>
+      <div class="chips"><span class="chip">사용자: 운영 담당자·개발자</span><span class="chip">대상: 폐쇄망 리눅스 서버</span><span class="chip">결과물: 하루 만에 만드는 검증판</span></div>
     </div>
     <div class="qa">
-      <div class="qa-item"><span class="qn">Q1</span><div><div class="q">그래서 대체 뭘 만드는 건가요?</div><div class="a">배치 스케줄러, 서버 관제, 업무 관제에 함수 단위 추적을 더한 운영 도구입니다. 실행 파일 하나로 설치합니다.</div><div class="ref">2~3쪽</div></div></div>
-      <div class="qa-item"><span class="qn">Q2</span><div><div class="q">기존의 뭘 보완하는 건가요?</div><div class="a">따로 쓰는 도구 3개 사이의 빈틈입니다. 서로 이어지지 않아 확인이 번거롭고, 데이터는 제품 안에 갇혀 있으며, 비용은 세 갈래로 나갑니다.</div><div class="ref">4~6쪽</div></div></div>
-      <div class="qa-item"><span class="qn">Q3</span><div><div class="q">뭐가 좋아지는 건가요?</div><div class="a">운영 도구가 하나로 줄고, 배치 흐름을 업무 상황과 함께 보며, 지나간 장애도 원인 함수까지 확인하고, 쌓인 데이터를 분석에 씁니다.</div><div class="ref">7~13쪽</div></div></div>
-      <div class="qa-item"><span class="qn">Q4</span><div><div class="q">어떻게 가능한 건가요?</div><div class="a">스케줄러가 실행마다 번호를 붙여 프로세스에 넘기면 모든 기록이 그 번호로 이어집니다. 어려운 부분은 리눅스 perf, SQLite 같은 검증된 부품에 맡기고, 2명이 AI 세션 4개로 하루에 검증판을 만듭니다.</div><div class="ref">14~15쪽</div></div></div>
+      <div class="qa-item"><span class="qn">Q1</span><div><div class="q">그래서 대체 뭘 만드는 건가요?</div><div class="a">스케줄러·서버 관제·업무 관제에 함수 추적을 더한 운영 도구. 실행 파일 하나로 설치합니다.</div><div class="ref">2~3쪽</div></div></div>
+      <div class="qa-item"><span class="qn">Q2</span><div><div class="q">기존의 뭘 보완하는 건가요?</div><div class="a">도구 사이의 빈틈. 서로 이어지지 않고, 데이터는 갇혀 있고, 비용은 세 갈래로 나갑니다.</div><div class="ref">4~6쪽</div></div></div>
+      <div class="qa-item"><span class="qn">Q3</span><div><div class="q">뭐가 좋아지는 건가요?</div><div class="a">도구가 하나로 줄고, 배치를 업무에 맞춰 돌리고, 지난 장애도 원인 함수까지 보고, 데이터를 분석에 씁니다.</div><div class="ref">7~13쪽</div></div></div>
+      <div class="qa-item"><span class="qn">Q4</span><div><div class="q">어떻게 가능한 건가요?</div><div class="a">번호 하나로 기록을 잇습니다. 어려운 부분은 perf·SQLite 같은 검증된 부품이 맡고, 2명이 AI 세션 4개로 하루에 만듭니다.</div><div class="ref">14~15쪽</div></div></div>
     </div>
   </div>
 </section>
@@ -414,8 +423,8 @@ tr.us > * { background: var(--brand-wash); }
 <section class="page" data-q="1">
   <div class="p-title">
     <div class="ask"><span class="qn">Q1</span>그래서 대체 뭘 만드는 건가요?</div>
-    <h1>도구 3개가 나눠 하던 일을 실행 파일 하나로 다시 만듭니다.</h1>
-    <p class="sub">배치 스케줄러, 서버 관제, 업무 관제를 합치고, 지금은 맡는 도구가 없는 함수 단위 추적을 더합니다. 해커톤 결과물은 이 넷이 실제로 이어져 도는 개념 검증판입니다.</p>
+    <h1>도구 3개가 하던 일을 실행 파일 하나로.</h1>
+    <p class="sub">스케줄러·서버 관제·업무 관제를 합치고, 없던 함수 추적을 더합니다. 해커톤에서는 넷이 이어져 도는 검증판을 만듭니다.</p>
   </div>
   <div class="content cols-64">
     <div class="col center">
@@ -430,33 +439,33 @@ tr.us > * { background: var(--brand-wash); }
         <div class="eum">
           <div class="t">이음</div>
           <div class="r"><span>실행: 플로우·선후행·재시도·원격 실행</span><span class="tag">번호</span></div>
-          <div class="r"><span>자원: 서버와 실행별 CPU·메모리, 1초</span><span class="tag">번호</span></div>
+          <div class="r"><span>자원: 서버·실행별 CPU·메모리, 1초</span><span class="tag">번호</span></div>
           <div class="r"><span>업무: 접수·처리·대기·응답시간, 1초</span><span class="tag">번호</span></div>
-          <div class="r"><span>함수: CPU를 쓴 함수, 10초 구간</span><span class="tag">번호</span></div>
+          <div class="r"><span>함수: CPU를 쓴 함수, 10초 단위</span><span class="tag">번호</span></div>
         </div>
       </div>
-      <div class="merge-db"><b>한 DB, 공개 스키마</b> <span>· 실행 이력 · 서버 자원 · 실행별 자원 · 업무 지표 · 함수 기록</span></div>
+      <div class="merge-db"><b>DB 하나, 공개 스키마</b> <span>· 실행 이력 · 서버 자원 · 실행별 자원 · 업무 지표 · 함수 기록</span></div>
       <div class="merge-out"><div><b>웹 화면</b>대시보드·플로우·타임머신</div><div><b>SQL 조회</b>읽기 전용</div><div><b>내보내기</b>CSV·함수 기록</div></div>
     </div>
     <div class="col center">
-      <h2>설치 모양</h2>
+      <h2>설치 구성</h2>
       <div class="parts">
-        <div><b>매니저 1대</b>스케줄러, 저장, 웹 화면</div>
-        <div><b>서버마다 에이전트</b>실행, 자원·업무 지표 수집, 함수 기록</div>
-        <div><b>같은 실행 파일</b>역할만 다르게 실행</div>
+        <div><b>매니저 1대</b>스케줄러·저장·화면</div>
+        <div><b>서버마다 에이전트</b>실행·수집·함수 기록</div>
+        <div><b>실행 파일 1개</b>역할만 바꿔 실행</div>
       </div>
       <div class="tbl-wrap">
       <table>
         <thead><tr><th>운영 요구</th><th>이음의 방식</th></tr></thead>
         <tbody>
-          <tr><th>폐쇄망</th><td>외부 서비스와 CDN 없이 동작. 화면 자원까지 실행 파일에 포함</td></tr>
-          <tr><th>방화벽</th><td>에이전트가 매니저로만 연결. 매니저 포트 1개만 열면 됨</td></tr>
-          <tr><th>실행 통제</th><td>검토된 작업 정의(YAML)에 있는 명령만 실행. 에이전트는 토큰으로 인증</td></tr>
-          <tr><th>서버 부담</th><td>함수 추적은 지정한 작업에만 켬. 추적 자체의 CPU도 화면에 표시</td></tr>
+          <tr><th>폐쇄망</th><td>외부 서비스·CDN 없이 동작</td></tr>
+          <tr><th>방화벽</th><td>에이전트 → 매니저 한 방향. 포트 1개</td></tr>
+          <tr><th>실행 통제</th><td>검토된 작업 정의(YAML)의 명령만 실행. 토큰 인증</td></tr>
+          <tr><th>서버 부담</th><td>함수 추적은 지정한 작업만. 추적 부하도 화면에 표시</td></tr>
         </tbody>
       </table>
       </div>
-      <div class="takeaway"><small>한 줄 정의</small><b>작업을 띄우는 일과 그 작업을 지켜보는 일을 한 도구가 맡습니다.</b></div>
+      <div class="takeaway"><small>한 줄 정의</small><b>작업을 띄우는 도구가 지켜보는 일까지 맡습니다.</b></div>
     </div>
   </div>
 </section>
@@ -465,8 +474,8 @@ tr.us > * { background: var(--brand-wash); }
 <section class="page" data-q="1">
   <div class="p-title">
     <div class="ask"><span class="qn">Q1</span>그래서 대체 뭘 만드는 건가요? <span class="sec">하루 운영에 얹어 보기</span></div>
-    <h1>하루 운영 흐름에 얹어 보면 이렇게 씁니다.</h1>
-    <p class="sub">증권 주문 체결 업무 기준입니다. 새벽 배치가 체결 서비스를 띄우고, 그 서비스가 장중 내내 주문을 처리하며, 장 마감 후 정산 배치가 돕니다.</p>
+    <h1>하루 운영에 얹으면 이렇습니다.</h1>
+    <p class="sub">주식 체결 업무 기준. 새벽 배치가 체결 서비스를 띄우고, 서비스는 장중 내내 돌고, 장 마감 뒤 정산 배치가 돕니다.</p>
   </div>
   <div class="content" style="display: flex; flex-direction: column; gap: 4mm">
     <div class="day">
@@ -477,30 +486,30 @@ tr.us > * { background: var(--brand-wash); }
       <div class="h"><small>언제든</small>돌아보기</div>
 
       <div class="rl">실행<small>스케줄러</small></div>
-      <div class="cell" data-l="개장 준비 · 실행"><b>개장 준비 플로우 실행</b>기준정보 적재 2개를 동시에 돌리고, 둘 다 끝나면 체결 서버에서 체결 서비스를 띄움. 실패하면 자동 재시도</div>
-      <div class="cell" data-l="장중 · 실행"><b>서비스는 계속 실행 중</b>띄운 스크립트는 끝났지만 서비스는 같은 번호로 계속 추적</div>
-      <div class="cell" data-l="정산 · 실행"><b>정산 플로우 실행</b>체결 대기가 0건이 된 것을 확인한 뒤 시작 <span class="badge ext">확장 목표</span></div>
-      <div class="cell empty" data-l="돌아보기 · 실행">실행 이력과 재시도 기록이 남음</div>
+      <div class="cell" data-l="개장 준비 · 실행"><b>개장 준비 플로우</b>원장 적재 2개 동시 실행 → 체결 서비스 기동. 실패 시 자동 재시도</div>
+      <div class="cell" data-l="장중 · 실행"><b>서비스 실행 중</b>띄운 스크립트가 끝나도 서비스는 같은 번호로 추적</div>
+      <div class="cell" data-l="정산 · 실행"><b>정산 플로우</b>체결 대기 0건 확인 후 시작 <span class="badge ext">확장 목표</span></div>
+      <div class="cell empty" data-l="돌아보기 · 실행">실행·재시도 이력 보관</div>
 
       <div class="rl">관제<small>서버·업무</small></div>
-      <div class="cell" data-l="개장 준비 · 관제">적재 배치의 CPU·메모리, 서버 자원</div>
-      <div class="cell hl" data-l="장중 · 관제"><b>서버 자원 + 업무 지표 1초</b>주문 접수·처리 건수, 처리 대기, 응답시간을 서버 자원과 한 화면에</div>
-      <div class="cell" data-l="정산 · 관제">정산 배치의 자원, 체결 대기 건수</div>
-      <div class="cell empty" data-l="돌아보기 · 관제">지난 구간의 지표를 다시 펼쳐 봄</div>
+      <div class="cell" data-l="개장 준비 · 관제">적재 배치의 CPU·메모리</div>
+      <div class="cell hl" data-l="장중 · 관제"><b>서버 자원 + 업무 지표, 1초</b>접수·처리·대기·응답시간을 서버 자원과 한 화면에</div>
+      <div class="cell" data-l="정산 · 관제">정산 배치 자원, 체결 대기 건수</div>
+      <div class="cell empty" data-l="돌아보기 · 관제">지난 구간 다시 보기</div>
 
       <div class="rl">기록<small>같은 번호</small></div>
-      <div class="cell" data-l="개장 준비 · 기록"><b>번호 발급</b> <span class="tag">01JBQ7…</span><br>체결 서비스에 번호가 넘어감</div>
-      <div class="cell hl" data-l="장중 · 기록"><b>서비스의 모든 기록에 같은 번호</b>자원, 업무 지표, CPU를 쓴 함수(10초 구간)</div>
-      <div class="cell" data-l="정산 · 기록">정산 실행도 각자의 번호로 기록</div>
-      <div class="cell empty" data-l="돌아보기 · 기록">보존 기간은 우리가 정함</div>
+      <div class="cell" data-l="개장 준비 · 기록"><b>번호 발급</b> <span class="tag">01JBQ7…</span><br>체결 서비스로 전달</div>
+      <div class="cell hl" data-l="장중 · 기록"><b>모든 기록에 같은 번호</b>자원·업무 지표·함수(10초 단위)</div>
+      <div class="cell" data-l="정산 · 기록">정산 실행은 별도 번호</div>
+      <div class="cell empty" data-l="돌아보기 · 기록">보존 기간은 우리가 결정</div>
 
       <div class="rl">활용<small>판단·분석</small></div>
-      <div class="cell empty" data-l="개장 준비 · 활용">어느 단계가 늦었는지 플로우 그래프로 확인</div>
-      <div class="cell" data-l="장중 · 활용"><b>체결이 밀리면</b>응답시간 타일에서 그 서비스의 기록으로 바로 이동</div>
-      <div class="cell empty" data-l="정산 · 활용">정산 종료 시각 추이 확인</div>
-      <div class="cell" data-l="돌아보기 · 활용"><b>SQL·CSV로 분석</b>용량 판단, 배치 종료 시각 예측, 배포 전후 비교</div>
+      <div class="cell empty" data-l="개장 준비 · 활용">늦어진 단계를 그래프로 확인</div>
+      <div class="cell" data-l="장중 · 활용"><b>체결이 밀리면</b>응답시간 타일 → 해당 서비스 기록으로 이동</div>
+      <div class="cell empty" data-l="정산 · 활용">정산 종료 시각 추이</div>
+      <div class="cell" data-l="돌아보기 · 활용"><b>SQL·CSV 분석</b>용량 판단, 종료 시각 예측, 배포 전후 비교</div>
     </div>
-    <div class="callout tagged">같은 <span class="tag">실행 번호</span>가 새벽 배치에서 장중 서비스로, 장 마감 후 분석까지 이어집니다. 그래서 스케줄러와 관제가 한 도구여야 합니다.</div>
+    <div class="callout tagged">새벽 배치에서 장중 서비스, 장 마감 뒤 분석까지 <span class="tag">실행 번호</span> 하나가 이어집니다. 스케줄러와 관제가 한 도구여야 하는 이유입니다.</div>
   </div>
 </section>
 
@@ -508,34 +517,34 @@ tr.us > * { background: var(--brand-wash); }
 <section class="page" data-q="2">
   <div class="p-title">
     <div class="ask"><span class="qn">Q2</span>기존의 뭘 보완하는 건가요?</div>
-    <h1>도구마다 제 몫은 하지만, 도구 사이가 비어 있습니다.</h1>
-    <p class="sub">배치 실행, 서버 자원, 업무 처리 현황을 각각 다른 도구가 봅니다. 셋을 잇는 공통 키가 없고, 어느 코드가 CPU를 썼는지는 맡는 도구가 없습니다.</p>
+    <h1>도구는 제 몫을 합니다. 비어 있는 건 도구 사이입니다.</h1>
+    <p class="sub">세 도구를 잇는 공통 키가 없습니다. 어느 코드가 CPU를 썼는지는 맡는 도구가 없습니다.</p>
   </div>
   <div class="content cols-46">
     <div class="col center">
       <div class="silos">
-        <div class="silo"><div class="hd"><b>배치 스케줄러</b><small>상용 · Control-M</small></div><div class="bd"><span>무엇을, 언제 실행했고 성공했는가</span><span class="unit">단위: 작업</span></div><div class="db">자체 화면 · 자체 저장소</div></div>
-        <div class="silo"><div class="hd"><b>서버 관제</b><small>상용 · onTune</small></div><div class="bd"><span>어느 서버, 어느 프로세스가 CPU·메모리를 썼는가</span><span class="unit">단위: 서버·프로세스</span></div><div class="db">자체 화면 · 자체 저장소</div></div>
-        <div class="silo"><div class="hd"><b>업무 관제</b><small>사내 개발 APM</small></div><div class="bd"><span>주문이 몇 건 들어와 처리됐고, 응답이 얼마나 걸렸는가</span><span class="unit">단위: 업무 프로세스</span></div><div class="db">자체 화면 · 자체 저장소</div></div>
+        <div class="silo"><div class="hd"><b>배치 스케줄러</b><small>상용 · Control-M</small></div><div class="bd"><span>무엇을 언제 실행했고, 성공했나</span><span class="unit">단위: 작업</span></div><div class="db">자체 화면 · 자체 저장소</div></div>
+        <div class="silo"><div class="hd"><b>서버 관제</b><small>상용 · onTune</small></div><div class="bd"><span>어느 서버·프로세스가 CPU·메모리를 썼나</span><span class="unit">단위: 서버·프로세스</span></div><div class="db">자체 화면 · 자체 저장소</div></div>
+        <div class="silo"><div class="hd"><b>업무 관제</b><small>사내 개발 APM</small></div><div class="bd"><span>주문이 몇 건 들어와 처리됐고, 응답은 얼마나 걸렸나</span><span class="unit">단위: 업무 프로세스</span></div><div class="db">자체 화면 · 자체 저장소</div></div>
       </div>
-      <div class="gapband">공통 키 없음 → 사람이 시각과 서버 이름으로 맞춤</div>
-      <div class="missing">어느 <b>함수(코드)</b>가 CPU를 썼는가 → 맡는 도구 없음. 필요할 때 개발자가 서버에 접속해 직접 측정</div>
-      <div class="missing">데이터는 <b>제품마다 따로</b> 쌓이고, 형식·보존 기간·꺼낼 수 있는 범위를 제품이 정함</div>
+      <div class="gapband">공통 키 없음 → 사람이 시각·서버 이름으로 맞춤</div>
+      <div class="missing"><b>함수(코드) 단위 기록 없음</b> → 필요하면 개발자가 서버에서 직접 측정</div>
+      <div class="missing">데이터는 <b>제품마다 따로</b>. 형식·보존 기간·추출 범위는 제품이 정함</div>
     </div>
     <div class="col center">
-      <h2>도구별로 비어 있는 곳과 이음이 채우는 것</h2>
+      <h2>비어 있는 곳과 이음이 채우는 것</h2>
       <div class="tbl-wrap">
       <table>
         <thead><tr><th>도구</th><th>비어 있는 곳</th><th>이음이 채우는 것</th></tr></thead>
         <tbody>
-          <tr><th>배치 스케줄러</th><td>띄운 서비스가 그 뒤 어떻게 도는지 모름. 업무가 바쁜지와 상관없이 시각이 되면 실행</td><td>실행 번호를 서비스까지 이어 추적. 업무 지표를 실행 조건으로 <span class="badge ext">확장</span></td></tr>
-          <tr><th>서버 관제</th><td>그 프로세스를 어느 실행이 띄웠는지, CPU를 어느 함수가 썼는지 모름</td><td>실행 번호로 자원을 실행에 연결. 함수 단위 상시 기록</td></tr>
-          <tr><th>업무 관제</th><td>처리가 밀린 원인이 업무량인지, 자원인지, 코드인지 모름</td><td>업무 지표, 자원, 함수 기록을 같은 시간축에</td></tr>
-          <tr><th>세 도구 공통</th><td>데이터가 제품 안에 있고, 계약·서버·화면이 세 벌</td><td>한 DB와 공개 스키마, 실행 파일 1개</td></tr>
+          <tr><th>배치 스케줄러</th><td>띄운 서비스의 이후 상태를 모름. 업무가 바빠도 시각이 되면 실행</td><td>번호를 서비스까지 이어 추적. 업무 지표로 실행 조건 <span class="badge ext">확장</span></td></tr>
+          <tr><th>서버 관제</th><td>프로세스를 띄운 실행, CPU를 쓴 함수를 모름</td><td>번호로 실행과 연결. 함수 단위 상시 기록</td></tr>
+          <tr><th>업무 관제</th><td>지연 원인이 업무량·자원·코드 중 무엇인지 모름</td><td>업무 지표·자원·함수를 한 시간축에</td></tr>
+          <tr><th>세 도구 공통</th><td>데이터는 제품 안에. 계약·서버·화면 3벌</td><td>DB 하나, 공개 스키마, 실행 파일 1개</td></tr>
         </tbody>
       </table>
       </div>
-      <div class="takeaway"><small>보완하는 것</small><b>도구 하나하나가 아니라, 도구 사이의 연결과 데이터입니다.</b></div>
+      <div class="takeaway"><small>보완할 곳</small><b>도구 사이의 연결과 데이터입니다.</b></div>
     </div>
   </div>
 </section>
@@ -544,32 +553,32 @@ tr.us > * { background: var(--brand-wash); }
 <section class="page" data-q="2">
   <div class="p-title">
     <div class="ask"><span class="qn">Q2</span>기존의 뭘 보완하는 건가요? <span class="sec">빈틈이 만드는 불편</span></div>
-    <h1>그 빈틈 때문에 운영에서 세 가지가 불편합니다.</h1>
+    <h1>빈틈이 만드는 불편은 세 가지입니다.</h1>
   </div>
   <div class="content pains">
     <div class="pain-col">
-      <div class="pain-h"><span class="i">불편 1</span><span class="t">특이상황을 확인하기 번거롭다</span><p>장중 주문이 몰려 체결이 밀린 경우, 지금은 이렇게 따라갑니다.</p></div>
+      <div class="pain-h"><span class="i">불편 1</span><span class="t">특이상황 확인이 번거롭다</span><p>장중 체결 지연을 지금 따라가는 순서</p></div>
       <div class="mini-steps">
         <div class="ms"><span class="n">1</span><span class="w">업무 관제</span><span>응답시간 상승, 처리 대기 증가 확인</span></div>
-        <div class="ms"><span class="n">2</span><span class="w">운영 담당</span><span>그 서비스가 어느 서버, 어느 프로세스인지 확인</span></div>
-        <div class="ms"><span class="n">3</span><span class="w">서버 관제</span><span>그 시각 CPU 확인. "프로세스가 CPU를 다 썼다"에서 멈춤</span></div>
-        <div class="ms"><span class="n">4</span><span class="w">스케줄러</span><span>그 서비스를 띄운 실행, 같은 시각의 다른 작업 확인</span></div>
-        <div class="ms bad"><span class="n">5</span><span class="w">개발자</span><span>몇 분 만에 지나간 폭주라 <b>같은 부하를 다시 만들어 재현</b>한 뒤 측정</span></div>
+        <div class="ms"><span class="n">2</span><span class="w">운영 담당</span><span>해당 서비스의 서버·프로세스 확인</span></div>
+        <div class="ms"><span class="n">3</span><span class="w">서버 관제</span><span>해당 시각 CPU 확인. "CPU를 다 씀"에서 멈춤</span></div>
+        <div class="ms"><span class="n">4</span><span class="w">스케줄러</span><span>서비스를 띄운 실행, 같은 시각 다른 작업 확인</span></div>
+        <div class="ms bad"><span class="n">5</span><span class="w">개발자</span><span>폭주는 이미 끝남. <b>부하를 다시 만들어 재현</b> 후 측정</span></div>
       </div>
-      <div class="pain-foot">도구 3개를 오가는 5단계, 원인 코드는 재현부터</div>
+      <div class="pain-foot">도구 3개, 5단계. 원인 코드는 재현부터</div>
     </div>
     <div class="pain-col">
-      <div class="pain-h"><span class="i">불편 2</span><span class="t">쌓인 데이터를 활용하기 어렵다</span><p>운영에서 정말 궁금한 질문은 두 도구 이상의 데이터를 엮어야 답할 수 있습니다.</p></div>
+      <div class="pain-h"><span class="i">불편 2</span><span class="t">쌓인 데이터를 쓰기 어렵다</span><p>운영 질문 대부분은 두 도구 이상의 데이터를 엮어야 답이 나옵니다.</p></div>
       <div class="qs">
-        <div class="qq">초당 몇 건부터 체결이 밀리나? 서버를 늘릴 때인가?<small>업무 지표 + 자원</small></div>
-        <div class="qq">밀린 구간에 CPU를 쓴 함수는 평소와 무엇이 달랐나?<small>업무 지표 + 함수 기록(지금은 없음)</small></div>
-        <div class="qq">정산 배치가 끝나는 시각이 매달 늦어지고 있나?<small>실행 이력 + 자원</small></div>
-        <div class="qq">배포 뒤 같은 작업의 함수별 CPU 비중이 달라졌나?<small>실행 이력 + 함수 기록</small></div>
+        <div class="qq">초당 몇 건부터 체결이 밀리나? 증설할 때인가?<small>업무 지표 + 자원</small></div>
+        <div class="qq">밀린 구간에 CPU를 쓴 함수는 평소와 뭐가 다른가?<small>업무 지표 + 함수 기록(지금은 없음)</small></div>
+        <div class="qq">정산 배치가 끝나는 시각이 매달 늦어지나?<small>실행 이력 + 자원</small></div>
+        <div class="qq">배포 뒤 같은 작업의 함수별 CPU 비중이 바뀌었나?<small>실행 이력 + 함수 기록</small></div>
       </div>
-      <div class="pain-foot">통계·머신러닝은 엮인 원자료가 있어야 시작</div>
+      <div class="pain-foot">통계·머신러닝도 엮인 원자료가 있어야 시작</div>
     </div>
     <div class="pain-col">
-      <div class="pain-h"><span class="i">불편 3</span><span class="t">비용이 많이 든다</span><p>매일 쓰는 기능은 정해진 시각 실행, 선후행, 재시도, 원격 실행, 로그, 서버·업무 지표 정도입니다. 비용은 제품 단위로 나갑니다.</p></div>
+      <div class="pain-h"><span class="i">불편 3</span><span class="t">비용이 많이 든다</span><p>매일 쓰는 기능은 일부입니다. 비용은 제품 단위로 나갑니다.</p></div>
       <div class="costs">
         <div class="cb lic"><span>스케줄러 라이선스·유지보수</span><span>상용 · 매년</span></div>
         <div class="cb lic"><span>서버 관제 라이선스·유지보수</span><span>상용 · 매년</span></div>
@@ -577,8 +586,8 @@ tr.us > * { background: var(--brand-wash); }
         <div class="cb own"><span>제품별 관리 서버·저장소</span><span>3벌</span></div>
         <div class="cb own"><span>계약 갱신·교육·문의 창구</span><span>제품마다</span></div>
       </div>
-      <p class="note">제품 밖의 기능이 필요하면 벤더 개발이나 별도 연동을 기다려야 합니다.</p>
-      <div class="pain-foot">쓰는 기능은 일부, 비용은 세 갈래</div>
+      <p class="note">제품에 없는 기능은 벤더 개발이나 별도 연동을 기다려야 합니다.</p>
+      <div class="pain-foot">쓰는 건 일부, 비용은 세 갈래</div>
     </div>
   </div>
 </section>
@@ -587,8 +596,8 @@ tr.us > * { background: var(--brand-wash); }
 <section class="page" data-q="2">
   <div class="p-title">
     <div class="ask"><span class="qn">Q2</span>기존의 뭘 보완하는 건가요? <span class="sec">보완 방법</span></div>
-    <h1>연동으로는 빈틈이 메워지지 않아, 하나로 새로 만듭니다.</h1>
-    <p class="sub">보완하는 방법을 네 가지로 놓고 비교했습니다. 기준은 기록을 실행 번호로 이을 수 있는지, 데이터를 우리가 쥘 수 있는지입니다.</p>
+    <h1>연동으로는 못 메웁니다. 하나로 새로 만듭니다.</h1>
+    <p class="sub">보완 방법 네 가지를 비교했습니다. 기준은 두 가지. 실행 번호로 기록을 이을 수 있는가, 데이터를 우리가 쥐는가.</p>
   </div>
   <div class="content cols-73">
     <div class="col center">
@@ -596,19 +605,19 @@ tr.us > * { background: var(--brand-wash); }
       <table>
         <thead><tr><th>방법</th><th>실행 번호로 잇기</th><th>함수 단위 기록</th><th>데이터를 SQL로 직접</th><th>비용</th><th>폐쇄망·기능 추가</th></tr></thead>
         <tbody>
-          <tr><th>A. 지금 도구 + 연동 개발</th><td><span class="p">△</span> 제품끼리 번호를 주고받지 못해 시각으로 맞춤</td><td><span class="n">×</span></td><td><span class="p">△</span> 제품별 형식</td><td><span class="n">높음</span> 기존 + 연동비</td><td><span class="p">△</span> 벤더 일정</td></tr>
-          <tr><th>B. 오픈소스 조합<br><small class="muted">스케줄러+관제+프로파일러</small></th><td><span class="p">△</span> 셋을 잇는 코드를 결국 직접 작성</td><td><span class="p">△</span> 별도 도구</td><td><span class="y">○</span> 저장소 3개</td><td><span class="y">낮음</span></td><td><span class="p">△</span> 제품 3개 운영</td></tr>
-          <tr><th>C. 대형 통합 관측 제품<br><small class="muted">상용 APM·관측 플랫폼</small></th><td><span class="p">△</span> 서비스·서버는 잇지만 배치 스케줄러가 없음</td><td><span class="p">△</span> 제품에 따라</td><td><span class="p">△</span> 벤더 저장소</td><td><span class="n">매우 높음</span></td><td><span class="p">△</span> 폐쇄망 제약</td></tr>
-          <tr class="us"><th>D. 하나로 새로 (이음)</th><td><span class="y">○</span> 띄우는 쪽이 번호를 심음</td><td><span class="y">○</span> 같은 번호·같은 DB</td><td><span class="y">○</span> 공개 스키마 1개</td><td><span class="y">낮음</span> 서버+담당자 시간</td><td><span class="y">○</span> 코드가 사내에</td></tr>
+          <tr><th>A. 지금 도구 + 연동</th><td><span class="p">△</span> 번호를 주고받지 못해 시각으로 맞춤</td><td><span class="n">×</span></td><td><span class="p">△</span> 제품별 형식</td><td><span class="n">높음</span> 기존 + 연동비</td><td><span class="p">△</span> 벤더 일정</td></tr>
+          <tr><th>B. 오픈소스 조합<br><small class="muted">스케줄러+관제+프로파일러</small></th><td><span class="p">△</span> 잇는 코드를 결국 직접 작성</td><td><span class="p">△</span> 별도 도구</td><td><span class="y">○</span> 저장소 3개</td><td><span class="y">낮음</span></td><td><span class="p">△</span> 제품 3개 운영</td></tr>
+          <tr><th>C. 통합 관측 제품<br><small class="muted">상용 APM·관측 플랫폼</small></th><td><span class="p">△</span> 배치 스케줄러 없음</td><td><span class="p">△</span> 제품마다 다름</td><td><span class="p">△</span> 벤더 저장소</td><td><span class="n">매우 높음</span></td><td><span class="p">△</span> 폐쇄망 제약</td></tr>
+          <tr class="us"><th>D. 이음</th><td><span class="y">○</span> 띄울 때 번호 부여</td><td><span class="y">○</span> 같은 번호·같은 DB</td><td><span class="y">○</span> 공개 스키마</td><td><span class="y">낮음</span> 서버 + 인건비</td><td><span class="y">○</span> 코드 사내 보유</td></tr>
         </tbody>
       </table>
       </div>
-      <p class="note">B를 택해도 세 제품을 잇는 데이터 모델과 연동 코드는 직접 만들어야 합니다. 이 과제의 핵심이 그 부분이므로 처음부터 하나로 만드는 편이 단순합니다.</p>
+      <p class="note">B도 결국 세 제품을 잇는 데이터 모델과 연동 코드를 직접 만들어야 합니다. 그 부분이 이 과제의 핵심이라 처음부터 하나로 만듭니다.</p>
     </div>
     <div class="col center">
-      <div class="card"><h3>번호는 띄우는 순간에만 붙일 수 있습니다</h3><p>택배 송장번호처럼, 물건을 보낼 때 붙여야 이후 기록이 그 번호로 조회됩니다. 배치가 서비스를 띄울 때 번호를 넘겨야 그 서비스의 자원, 업무 지표, 함수 기록이 같은 번호를 답니다.</p></div>
-      <div class="card"><h3>자체 구현의 부담도 계산에 넣습니다</h3><p>유지보수는 우리 몫입니다. 그래서 비용 비교에 담당자 인건비를 넣고, 검증된 범위부터 병행 운영으로 적용합니다(13쪽).</p></div>
-      <div class="takeaway"><small>그래서</small><b>띄우는 쪽(스케줄러)과 재는 쪽(관제)이 한 제품이어야 번호가 끊기지 않습니다.</b></div>
+      <div class="card"><h3>번호는 띄울 때만 붙일 수 있습니다</h3><p>택배 송장번호와 같습니다. 보낼 때 붙여야 이후 기록이 조회됩니다. 배치가 서비스를 띄울 때 번호를 넘겨야 자원·업무 지표·함수 기록이 같은 번호를 답니다.</p></div>
+      <div class="card"><h3>자체 구현 부담도 셉니다</h3><p>유지보수는 우리 몫입니다. 비용 비교에 인건비를 넣고, 검증된 범위부터 병행 운영합니다(13쪽).</p></div>
+      <div class="takeaway"><small>결론</small><b>띄우는 쪽(스케줄러)과 재는 쪽(관제)이 한 제품이어야 번호가 끊기지 않습니다.</b></div>
     </div>
   </div>
 </section>
@@ -617,32 +626,32 @@ tr.us > * { background: var(--brand-wash); }
 <section class="page" data-q="3">
   <div class="p-title">
     <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요?</div>
-    <h1>좋아지는 것은 네 가지입니다.</h1>
-    <p class="sub">장애 대응만 달라지지 않습니다. 평소 운영, 배치 관리, 데이터 활용까지 함께 달라집니다. 각 항목은 다음 쪽의 예상 화면으로 보여 드립니다.</p>
+    <h1>좋아지는 건 네 가지입니다.</h1>
+    <p class="sub">장애 대응만 달라지지 않습니다. 평소 운영, 배치 관리, 데이터 활용이 함께 달라집니다.</p>
   </div>
   <div class="content gains">
     <div class="gain">
       <span class="no">①</span>
       <div class="t">운영이 단순해집니다</div>
-      <div class="ba"><span class="l">지금</span><span>도구 3개, 상용 계약 2건, 관리 서버 3벌, 화면 3개</span><span class="l">이음</span><span class="after">실행 파일 1개, 화면 1개, 방화벽 포트 1개</span></div>
+      <div class="ba"><span class="l">지금</span><span>도구 3개, 상용 계약 2건, 관리 서버 3벌</span><span class="l">이음</span><span class="after">실행 파일 1개, 화면 1개, 방화벽 포트 1개</span></div>
       <div class="ref">화면 ① 대시보드 · 8쪽</div>
     </div>
     <div class="gain">
       <span class="no">②</span>
-      <div class="t">배치를 한눈에 보고, 업무에 맞춰 돌립니다</div>
-      <div class="ba"><span class="l">지금</span><span>작업 목록과 로그 위주. 업무가 바쁜지와 상관없이 시각이 되면 실행</span><span class="l">이음</span><span class="after">갈래·합류·서버 넘기·재시도를 그래프로. "체결 대기 0건 뒤 정산" 같은 조건 실행 <span class="badge ext">확장</span></span></div>
+      <div class="t">배치를 업무에 맞춰 돌립니다</div>
+      <div class="ba"><span class="l">지금</span><span>작업 목록·로그 위주. 업무가 바빠도 시각이 되면 실행</span><span class="l">이음</span><span class="after">병렬·합류·서버 넘기·재시도를 그래프로. "체결 대기 0건 뒤 정산" 같은 조건 실행 <span class="badge ext">확장</span></span></div>
       <div class="ref">화면 ② 플로우 그래프 · 9쪽</div>
     </div>
     <div class="gain">
       <span class="no">③</span>
-      <div class="t">지나간 장애도 원인 함수까지 봅니다</div>
-      <div class="ba"><span class="l">지금</span><span>도구 3개를 오가는 5단계. 원인 코드는 재현한 뒤에야 확인</span><span class="l">이음</span><span class="after">화면 1개에서 2단계. 이미 지나간 구간도 재현 없이 함수까지</span></div>
+      <div class="t">지난 장애도 원인 함수까지 봅니다</div>
+      <div class="ba"><span class="l">지금</span><span>도구 3개, 5단계. 원인 코드는 재현 후에</span><span class="l">이음</span><span class="after">화면 1개, 2단계. 재현 없이 함수까지</span></div>
       <div class="ref">화면 ③ 타임머신 · ④ 플레임 그래프 · 10~11쪽</div>
     </div>
     <div class="gain">
       <span class="no">④</span>
       <div class="t">쌓인 데이터가 자산이 됩니다</div>
-      <div class="ba"><span class="l">지금</span><span>제품이 보여 주는 화면과 보고서 범위 안에서만 확인</span><span class="l">이음</span><span class="after">운영 데이터 5종을 SQL 한 번으로 조인. CSV로 꺼내 통계·머신러닝에</span></div>
+      <div class="ba"><span class="l">지금</span><span>제품 화면·보고서 안에서만 확인</span><span class="l">이음</span><span class="after">운영 데이터 5종을 SQL로 조인. CSV로 통계·머신러닝에</span></div>
       <div class="ref">화면 ⑤ 데이터 꺼내기 · 12쪽</div>
     </div>
   </div>
@@ -652,8 +661,8 @@ tr.us > * { background: var(--brand-wash); }
 <section class="page" data-q="3">
   <div class="p-title">
     <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">① 운영이 단순해집니다</span></div>
-    <h1>한 화면에서 서버, 업무, 배치를 함께 봅니다.</h1>
-    <p class="sub">지금은 세 도구의 화면을 따로 열어야 볼 수 있는 내용입니다.</p>
+    <h1>서버·업무·배치를 한 화면에.</h1>
+    <p class="sub">지금은 도구 3개를 따로 열어야 보이는 내용입니다.</p>
   </div>
   <div class="content cols-73">
     <div class="col center">
@@ -682,12 +691,12 @@ tr.us > * { background: var(--brand-wash); }
           </div>
         </div>
       </div>
-      <div class="cap">설계 시안 · 수치는 합성 부하 기준 예시</div>
+      <div class="cap">설계 시안 · 수치는 합성 부하 예시</div>
     </div>
     <div class="side">
-      <div class="card"><h3>무엇을 보나</h3><p>서버 자원, 주문 접수·처리·대기·응답시간, 오늘의 배치 흐름을 한 화면에서 봅니다.</p></div>
-      <div class="card"><h3>어떻게 쓰나</h3><p>업무 지표에는 그 서비스를 띄운 실행 번호가 붙어 있습니다. 응답시간 타일을 누르면 그 실행의 기록으로 바로 갑니다.</p></div>
-      <div class="takeaway"><small>좋아지는 점</small><b>화면 3개를 오가던 일상 점검이 화면 하나로 줄어듭니다.</b></div>
+      <div class="card"><h3>무엇을 보나</h3><p>서버 자원, 주문 접수·처리·대기·응답시간, 오늘의 배치.</p></div>
+      <div class="card"><h3>어떻게 쓰나</h3><p>업무 지표에 실행 번호가 붙어 있습니다. 응답시간 타일을 누르면 해당 실행 기록으로 바로 갑니다.</p></div>
+      <div class="takeaway"><small>좋아지는 점</small><b>화면 3개 점검이 화면 1개로.</b></div>
     </div>
   </div>
 </section>
@@ -695,9 +704,9 @@ tr.us > * { background: var(--brand-wash); }
 <!-- 9. Q3 ② 플로우 그래프 -->
 <section class="page" data-q="3">
   <div class="p-title">
-    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">② 배치를 한눈에, 업무에 맞춰</span></div>
-    <h1>배치 흐름을 그래프로 보고, 업무 상황에 맞춰 실행합니다.</h1>
-    <p class="sub">작업이 갈라지고(병렬), 합쳐지고(합류), 서버를 넘는 흐름과 재시도를 한눈에 봅니다.</p>
+    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">② 배치를 업무에 맞춰</span></div>
+    <h1>배치 흐름은 그래프로, 실행은 업무에 맞춰.</h1>
+    <p class="sub">병렬·합류·서버 넘기·재시도를 한눈에 봅니다.</p>
   </div>
   <div class="content cols-73">
     <div class="col center">
@@ -705,7 +714,7 @@ tr.us > * { background: var(--brand-wash); }
         <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">eum · #flow/market-open</span></div>
         <div class="nav"><span class="brand">이음</span><span>대시보드</span><span class="on">플로우</span><span>실행 이력</span><span class="r">평일 05:30 · 다음 실행 10/30 05:30</span></div>
         <div class="body">
-          <div class="tm-head"><span class="ttl">market-open</span><span>개장 준비: 기준정보 적재 후 체결 서비스 기동</span><span class="pill ok">완료 05:30:41</span></div>
+          <div class="tm-head"><span class="ttl">market-open</span><span>개장 준비: 원장 적재 후 체결 서비스 기동</span><span class="pill ok">완료 05:30:41</span></div>
           <svg viewBox="0 0 900 262" role="img" aria-label="market-open 플로우 그래프">
             <text x="106" y="14" text-anchor="middle" class="sv-txt3" font-size="11">단계 0</text>
             <text x="336" y="14" text-anchor="middle" class="sv-txt3" font-size="11">단계 1 · 병렬</text>
@@ -728,25 +737,25 @@ tr.us > * { background: var(--brand-wash); }
             <g><rect class="sv-node" x="246" y="172" width="180" height="66" rx="6"/><rect x="246" y="172" width="5" height="66" rx="2" class="sv-ok"/><text x="262" y="196" class="sv-mono" font-size="13" font-weight="600">load-deriv</text><text x="262" y="216" class="sv-txt2" font-size="11.5">파생 원장 적재 · 12초</text><circle cx="410" cy="190" r="6" class="sv-ok"/></g>
             <g><rect class="sv-node" x="476" y="112" width="180" height="66" rx="6" style="stroke:var(--brand);stroke-width:1.6"/><rect x="476" y="112" width="5" height="66" rx="2" class="sv-ok"/><text x="492" y="136" class="sv-mono" font-size="13" font-weight="600">start-matching</text><text x="492" y="156" class="sv-txt2" font-size="11.5">체결 서비스 기동 · 1초</text><circle cx="640" cy="130" r="6" class="sv-ok"/><rect x="476" y="186" width="180" height="22" rx="4" class="sv-tagbg"/><text x="566" y="201" text-anchor="middle" class="sv-tagtx" font-size="11" font-weight="600">서비스 실행 중 · 01JBQ7…</text></g>
             <g><rect class="sv-node" x="706" y="112" width="180" height="66" rx="6"/><rect x="706" y="112" width="5" height="66" rx="2" class="sv-ok"/><text x="722" y="136" class="sv-mono" font-size="13" font-weight="600">check-ready</text><text x="722" y="156" class="sv-txt2" font-size="11.5">기동 확인 · 3초</text><circle cx="870" cy="130" r="6" class="sv-ok"/></g>
-            <text x="336" y="150" text-anchor="middle" class="sv-txt3" font-size="10.5">동시에 실행</text>
-            <text x="566" y="236" text-anchor="middle" class="sv-brand" font-size="11" font-family="var(--f-body)">둘 다 성공해야 시작 · 서버를 넘어 실행</text>
+            <text x="336" y="150" text-anchor="middle" class="sv-txt3" font-size="10.5">동시 실행</text>
+            <text x="566" y="236" text-anchor="middle" class="sv-brand" font-size="11" font-family="var(--f-body)">둘 다 성공하면 시작 · 서버를 넘어 실행</text>
           </svg>
           <div class="sec-l"><span>daily-settle · 15:40 정산 <span class="badge ext">확장 목표</span></span><span>업무 지표를 실행 조건으로</span></div>
           <svg viewBox="0 0 900 70" role="img" aria-label="정산 플로우가 체결 대기 0건을 기다리는 모습">
             <g><rect class="sv-node" x="16" y="6" width="300" height="58" rx="6" style="stroke:var(--warn);stroke-width:1.6"/><rect x="16" y="6" width="5" height="58" rx="2" class="sv-warn"/><text x="32" y="29" class="sv-mono" font-size="13" font-weight="600">settle</text><text x="32" y="50" class="sv-txt2" font-size="11.5">대기 중 · 조건: match-01 체결 대기 0건</text><circle cx="300" cy="24" r="6" class="sv-warn blink"/></g>
             <path class="sv-edge" d="M316 35 L 376 35"/><polygon points="376,35 368,31 368,39" fill="var(--ink-3)"/>
             <g><rect class="sv-node" x="376" y="6" width="200" height="58" rx="6"/><rect x="376" y="6" width="5" height="58" rx="2" class="sv-wait"/><text x="392" y="29" class="sv-mono" font-size="13" font-weight="600">settle-report</text><text x="392" y="50" class="sv-txt2" font-size="11.5">정산 보고 · 선행 대기</text></g>
-            <text x="600" y="28" class="sv-txt" font-size="12" font-weight="600">지금 체결 대기 2,240건</text>
-            <text x="600" y="48" class="sv-txt2" font-size="11">0건이 되면 자동 시작 · 30분 넘게 못 풀리면 실패로 알림</text>
+            <text x="600" y="28" class="sv-txt" font-size="12" font-weight="600">현재 체결 대기 2,240건</text>
+            <text x="600" y="48" class="sv-txt2" font-size="11">0건이 되면 자동 시작 · 30분 넘게 대기하면 실패 알림</text>
           </svg>
         </div>
       </div>
-      <div class="cap">설계 시안 · 노드를 누르면 그 실행의 기록(타임머신)으로 이동</div>
+      <div class="cap">설계 시안 · 노드를 누르면 해당 실행 기록(타임머신)으로 이동</div>
     </div>
     <div class="side">
-      <div class="card"><h3>무엇을 보나</h3><p>선후행, 병렬과 합류, 서버를 넘는 실행, 재시도 이력. 서비스를 띄운 스텝은 끝나도 서비스가 살아 있는 동안 같은 번호로 계속 기록합니다.</p></div>
-      <div class="card"><h3>업무를 아는 스케줄러</h3><p>업무 지표가 같은 DB에 있으므로 "체결 대기가 0건이 된 뒤 정산 시작" 같은 조건을 추가 개발 없이 겁니다. 지표를 모르면 실행하지 않는 쪽으로 판단합니다.</p></div>
-      <div class="takeaway"><small>좋아지는 점</small><b>배치가 시각만 보지 않고 업무 상황을 보고 돕니다.</b></div>
+      <div class="card"><h3>무엇을 보나</h3><p>선후행, 병렬과 합류, 서버 간 실행, 재시도. 서비스를 띄운 스텝이 끝나도 서비스는 같은 번호로 계속 기록합니다.</p></div>
+      <div class="card"><h3>업무를 아는 스케줄러</h3><p>업무 지표가 같은 DB에 있어 "체결 대기 0건 뒤 정산" 같은 조건을 바로 겁니다. 지표가 끊기면 실행하지 않습니다.</p></div>
+      <div class="takeaway"><small>좋아지는 점</small><b>시각만 보던 배치가 업무 상황까지 봅니다.</b></div>
     </div>
   </div>
 </section>
@@ -754,9 +763,9 @@ tr.us > * { background: var(--brand-wash); }
 <!-- 10. Q3 ③ 타임머신 -->
 <section class="page" data-q="3">
   <div class="p-title">
-    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">③ 지나간 장애도 원인 함수까지</span></div>
-    <h1>느려졌던 그 순간을, 지나간 뒤에도 다시 펼쳐 봅니다.</h1>
-    <p class="sub">장중 주문이 1,500건/초에서 6,000건/초로 몰린 3분을 그 서비스의 실행 번호로 모아 한 시간축에 놓았습니다.</p>
+    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">③ 지난 장애도 원인 함수까지</span></div>
+    <h1>지나간 장애도 다시 펼쳐 봅니다.</h1>
+    <p class="sub">주문이 초당 1,500건에서 6,000건으로 몰린 3분. 서비스의 실행 번호로 모아 한 시간축에 놓았습니다.</p>
   </div>
   <div class="content cols-73">
     <div class="col center">
@@ -765,17 +774,17 @@ tr.us > * { background: var(--brand-wash); }
         <div class="nav"><span class="brand">이음</span><span>대시보드</span><span>플로우</span><span class="on">실행 01JBQ7…</span><span class="r">CSV · 함수 기록 내려받기</span></div>
         <div class="body">
           <div class="tm-head"><span class="ttl">market-open / start-matching</span><span>match-01</span><span>기동 05:30:37</span><span class="pill run">서비스 실행 중</span><span class="tag">01JBQ7…</span></div>
-          <div class="legend"><span><i style="border-color:var(--s-in);border-top-style:dashed"></i>주문 접수</span><span><i style="border-color:var(--s-out)"></i>체결 처리</span><span><i style="border-color:var(--s-hot)"></i>처리 대기 · p99</span><span><i style="border-color:var(--ink-2)"></i>서비스 CPU</span><span><i class="band" style="background:color-mix(in srgb,var(--ink-3) 25%,transparent)"></i>A 평시</span><span><i class="band" style="background:color-mix(in srgb,var(--tag) 55%,transparent)"></i>B 밀린 구간</span></div>
+          <div class="legend"><span><i style="border-color:var(--s-in);border-top-style:dashed"></i>주문 접수</span><span><i style="border-color:var(--s-out)"></i>체결 처리</span><span><i style="border-color:var(--s-hot)"></i>처리 대기 · p99</span><span><i style="border-color:var(--ink-2)"></i>서비스 CPU</span><span><i class="band" style="background:color-mix(in srgb,var(--ink-3) 25%,transparent)"></i>A 평시</span><span><i class="band" style="background:color-mix(in srgb,var(--tag) 55%,transparent)"></i>B 지연 구간</span></div>
           <svg id="tm" viewBox="0 0 900 400" role="img" aria-label="타임머신 차트: 주문 폭주 구간의 접수, 처리, 대기, p99, 서비스 CPU"></svg>
         </div>
       </div>
-      <div class="cap">설계 시안 · 시연용 C 체결 서비스에 합성 주문으로 만든 부하 기준 예시</div>
+      <div class="cap">설계 시안 · 시연용 C 체결 서비스에 합성 주문으로 만든 부하 예시</div>
     </div>
     <div class="side">
-      <div class="card"><h3>무엇을 보나</h3><p>그 실행이 띄운 서비스의 업무 지표, 서비스 CPU, 서버 자원을 같은 시간축에 겹칩니다. 도구마다 시각을 맞출 필요가 없습니다.</p></div>
-      <div class="card"><h3>어떻게 쓰나</h3><p>차트에서 평시 구간과 밀린 구간을 끌어 고르면, 그 구간에 CPU를 쓴 함수가 다음 쪽 플레임 그래프로 나옵니다.</p></div>
-      <div class="takeaway"><small>좋아지는 점</small><b>5단계 → 2단계. 타일 클릭, 구간 선택이면 함수까지 갑니다.</b></div>
-      <p class="note">단계 수는 절차 설계 기준입니다. 걸리는 시간은 같은 시나리오로 실측해 비교합니다(13쪽).</p>
+      <div class="card"><h3>무엇을 보나</h3><p>서비스의 업무 지표, 서비스 CPU, 서버 자원을 한 시간축에. 도구별로 시각을 맞출 필요가 없습니다.</p></div>
+      <div class="card"><h3>어떻게 쓰나</h3><p>평시 구간과 지연 구간을 끌어서 고르면 다음 쪽 플레임 그래프가 열립니다.</p></div>
+      <div class="takeaway"><small>좋아지는 점</small><b>5단계 → 2단계. 타일 클릭, 구간 선택이면 함수까지.</b></div>
+      <p class="note">단계 수는 절차 설계 기준. 소요 시간은 같은 시나리오로 실측해 비교합니다(13쪽).</p>
     </div>
   </div>
 </section>
@@ -783,9 +792,9 @@ tr.us > * { background: var(--brand-wash); }
 <!-- 11. Q3 ③ 플레임 그래프 -->
 <section class="page" data-q="3">
   <div class="p-title">
-    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">③ 지나간 장애도 원인 함수까지</span></div>
-    <h1>그 구간에 CPU를 쓴 함수까지 내려가, 재현 없이 근거를 얻습니다.</h1>
-    <p class="sub">위가 바깥 함수, 아래로 갈수록 안쪽 함수입니다. 막대 폭이 CPU를 쓴 비율입니다.</p>
+    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">③ 지난 장애도 원인 함수까지</span></div>
+    <h1>CPU를 쓴 함수까지 내려갑니다. 재현은 필요 없습니다.</h1>
+    <p class="sub">위가 바깥 함수, 아래가 안쪽 함수. 막대 폭은 CPU 사용 비율입니다.</p>
   </div>
   <div class="content" style="display: flex; flex-direction: column; gap: 4.5mm">
     <div class="screen">
@@ -793,28 +802,28 @@ tr.us > * { background: var(--brand-wash); }
       <div class="body">
         <div class="flames">
           <div><div class="flame-h"><span><b>A 평시</b> 10:41:10–10:41:40</span><span>표본 441</span></div><svg id="flA" viewBox="0 0 420 132" role="img" aria-label="평시 구간 플레임 그래프"></svg></div>
-          <div><div class="flame-h"><span><b>B 밀린 구간</b> 10:42:20–10:42:40</span><span>표본 980</span></div><svg id="flB" viewBox="0 0 420 132" role="img" aria-label="밀린 구간 플레임 그래프"></svg></div>
+          <div><div class="flame-h"><span><b>B 지연 구간</b> 10:42:20–10:42:40</span><span>표본 980</span></div><svg id="flB" viewBox="0 0 420 132" role="img" aria-label="지연 구간 플레임 그래프"></svg></div>
         </div>
-        <div class="verdict">호가 등록 함수 <code>book_insert</code>의 CPU 비중이 <b>15% → 63%</b>로 커졌습니다. 서버 증설보다 <b>호가 등록 코드를 먼저 살펴볼 근거</b>가 됩니다.</div>
+        <div class="verdict">호가 등록 함수 <code>book_insert</code> 비중 <b>15% → 63%</b>. 증설보다 <b>이 코드를 먼저 볼 근거</b>입니다.</div>
       </div>
     </div>
     <div class="cols-64" style="display:grid; gap:6mm; min-height:0">
       <div class="col">
-        <h2>장애가 다르면, 함께 보는 기록도 다릅니다</h2>
+        <h2>장애마다 보는 기록이 다릅니다</h2>
         <div class="tbl-wrap">
         <table>
-          <thead><tr><th>상황</th><th>이음에서 함께 보는 기록</th><th>먼저 답할 질문</th></tr></thead>
+          <thead><tr><th>상황</th><th>함께 보는 기록</th><th>먼저 확인할 것</th></tr></thead>
           <tbody>
-            <tr><th>배치가 실패함</th><td>종료 코드, 로그 끝부분, 선행 작업 결과, 재시도 이력</td><td>어느 단계에서 실패했고, 앞 작업과 관련이 있나?</td></tr>
-            <tr><th>서비스가 내려감</th><td>실행 번호로 추적하던 프로세스 수, 직전 자원 변화</td><td>언제 사라졌고, 직전에 무슨 일이 있었나?</td></tr>
-            <tr><th>응답이 느려짐</th><td>처리량·대기·응답시간, 서버·서비스 자원, 함수별 CPU</td><td>업무량, 자원, 코드 중 어디부터 볼까?</td></tr>
+            <tr><th>배치 실패</th><td>종료 코드, 로그 끝부분, 선행 작업 결과, 재시도 이력</td><td>어느 단계에서 왜 실패했나</td></tr>
+            <tr><th>서비스 중단</th><td>번호로 추적하던 프로세스 수, 직전 자원 변화</td><td>언제 사라졌고, 직전에 뭐가 있었나</td></tr>
+            <tr><th>응답 지연</th><td>처리량·대기·응답시간, 자원, 함수별 CPU</td><td>업무량·자원·코드 중 어디부터 볼까</td></tr>
           </tbody>
         </table>
         </div>
       </div>
       <div class="col">
-        <div class="card"><h3>범위를 분명히 합니다</h3><p>함수 기록은 CPU를 쓴 곳만 보여 줍니다. 잠금이나 디스크를 기다려 느린 경우는 이번 범위 밖이고, CPU 비중만으로 원인을 확정하지 않습니다.</p></div>
-        <div class="takeaway"><small>좋아지는 점</small><b>개발자가 재현 환경을 만들기 전에 살펴볼 함수를 좁힙니다.</b></div>
+        <div class="card"><h3>범위</h3><p>함수 기록은 CPU를 쓴 곳만 보여 줍니다. 잠금·디스크 대기는 이번 범위 밖입니다. CPU 비중만으로 원인을 단정하지 않습니다.</p></div>
+        <div class="takeaway"><small>좋아지는 점</small><b>재현 환경을 만들기 전에 볼 함수가 좁혀집니다.</b></div>
       </div>
     </div>
   </div>
@@ -823,13 +832,13 @@ tr.us > * { background: var(--brand-wash); }
 <!-- 12. Q3 ④ 데이터 -->
 <section class="page" data-q="3">
   <div class="p-title">
-    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">④ 쌓인 데이터가 자산이 됩니다</span></div>
-    <h1>쌓인 기록을 SQL로 꺼내 다음 판단과 분석에 씁니다.</h1>
-    <p class="sub">화면은 DB 위의 보기 중 하나입니다. 같은 데이터를 읽기 전용 SQL과 CSV로 꺼내는 길을 처음부터 제품 기능으로 둡니다.</p>
+    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">④ 쌓인 데이터가 자산으로</span></div>
+    <h1>쌓인 기록을 SQL로 꺼내 씁니다.</h1>
+    <p class="sub">화면은 DB를 보는 방법 중 하나일 뿐입니다. 읽기 전용 SQL과 CSV 내보내기를 처음부터 기능으로 둡니다.</p>
   </div>
   <div class="content cols-2">
     <div class="col center">
-<pre class="term"><span class="cm">-- 최근 5영업일, 접수량 구간별 체결 p99: 초당 몇 건부터 밀리나</span>
+<pre class="term"><span class="cm">-- 최근 5영업일: 초당 몇 건부터 체결이 밀리나</span>
 <span class="pr">$</span> eum sql "SELECT in_tps, seconds, avg_p99_ms FROM ..."
  in_tps │ seconds │ avg_p99_ms
 ────────┼─────────┼───────────
@@ -838,7 +847,7 @@ tr.us > * { background: var(--brand-wash); }
    4500 │   1,140 │        9.8
    6000 │     180 │ <span class="hl">     254.1</span>
 
-<span class="cm">-- 평시와 밀린 구간의 함수별 CPU 비중(%)</span>
+<span class="cm">-- 평시 vs 지연 구간, 함수별 CPU 비중(%)</span>
 <span class="cm">-- 업무 지표와 함수 기록을 실행 번호로 조인</span>
 <span class="pr">$</span> eum sql --csv "WITH w AS (...) SELECT ..." > slow.csv
  leaf          │ normal_pct │ slow_pct
@@ -847,7 +856,7 @@ tr.us > * { background: var(--brand-wash); }
  check_risk    │       34.0 │     14.0
  price_cross   │       21.8 │      9.6
  expire_orders │       11.1 │      8.2</pre>
-      <div class="cap">설계 시안 · 두 질의는 같은 스키마의 합성 데이터로 실행해 확인 · 수치는 예시</div>
+      <div class="cap">설계 시안 · 두 질의는 같은 스키마의 합성 데이터로 실행 확인 · 수치는 예시</div>
     </div>
     <div class="col center">
       <h2>이렇게 씁니다</h2>
@@ -855,16 +864,16 @@ tr.us > * { background: var(--brand-wash); }
       <table>
         <thead><tr><th>활용</th><th>엮는 데이터</th><th>얻는 것</th></tr></thead>
         <tbody>
-          <tr><th>용량 판단</th><td>업무 지표 + 자원</td><td>몇 건부터 밀리는지 보고 증설 시점 판단</td></tr>
-          <tr><th>코드 개선</th><td>업무 지표 + 함수 기록</td><td>밀릴 때 비중이 커지는 함수 목록</td></tr>
-          <tr><th>배치 종료 예측</th><td>실행 이력 + 자원</td><td>정산이 끝나는 시각의 추세와 예측</td></tr>
-          <tr><th>이상 탐지</th><td>실행 이력</td><td>평소보다 오래 걸린 실행 자동 표시</td></tr>
-          <tr><th>배포 전후 비교</th><td>실행 이력 + 함수 기록</td><td>같은 작업의 함수 비중 변화로 성능 저하 발견</td></tr>
+          <tr><th>용량 판단</th><td>업무 지표 + 자원</td><td>밀리기 시작하는 처리량 → 증설 시점</td></tr>
+          <tr><th>코드 개선</th><td>업무 지표 + 함수</td><td>지연 때 비중이 커지는 함수</td></tr>
+          <tr><th>배치 종료 예측</th><td>실행 이력 + 자원</td><td>정산 종료 시각 추세</td></tr>
+          <tr><th>이상 탐지</th><td>실행 이력</td><td>평소보다 오래 걸린 실행 표시</td></tr>
+          <tr><th>배포 전후 비교</th><td>실행 이력 + 함수</td><td>함수 비중 변화로 성능 저하 발견</td></tr>
         </tbody>
       </table>
       </div>
-      <div class="card"><h3>데이터의 주인은 우리입니다</h3><p>스키마를 공개하고, 컬럼은 추가만 해서 기존 질의가 깨지지 않게 합니다. 보존 기간과 수집 주기도 설정으로 우리가 정합니다.</p></div>
-      <div class="takeaway"><small>좋아지는 점</small><b>한 번 보고 끝나던 기록이 반복 비교와 분석의 재료가 됩니다.</b></div>
+      <div class="card"><h3>데이터 주인은 우리</h3><p>스키마 공개. 컬럼은 추가만 해서 기존 질의가 깨지지 않습니다. 보존 기간·수집 주기도 우리가 정합니다.</p></div>
+      <div class="takeaway"><small>좋아지는 점</small><b>한 번 보고 끝나던 기록이 분석 재료가 됩니다.</b></div>
     </div>
   </div>
 </section>
@@ -873,36 +882,36 @@ tr.us > * { background: var(--brand-wash); }
 <section class="page" data-q="3">
   <div class="p-title">
     <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">확인 방법</span></div>
-    <h1>효과는 숫자로 확인하고, 검증된 범위부터 넓힙니다.</h1>
-    <p class="sub">확인하지 않은 절감 수치는 만들지 않습니다. 해커톤 검증판이 상용 제품 전체를 바로 대체한다고 가정하지도 않습니다.</p>
+    <h1>효과는 숫자로 확인합니다.</h1>
+    <p class="sub">확인 안 된 절감 수치는 쓰지 않습니다. 검증판이 상용 제품을 바로 대체한다고 가정하지도 않습니다.</p>
   </div>
   <div class="content cols-2">
     <div class="col center">
-      <h2>좋아지는 것을 이렇게 확인합니다</h2>
+      <h2>확인 방법</h2>
       <div class="tbl-wrap">
       <table>
         <thead><tr><th>좋아지는 것</th><th>확인 방법</th></tr></thead>
         <tbody>
-          <tr><th>① 운영 단순화</th><td>도구 3개에서 보던 항목이 한 화면에 모두 나오는지 점검표로 확인</td></tr>
-          <tr><th>② 배치 운영</th><td>병렬·합류·서버 넘기·재시도가 정의대로 돌고 그래프에 그대로 보이는지</td></tr>
-          <tr><th>③ 장애 조사</th><td>지금 절차와 이음 절차로 같은 시나리오를 처리해 걸린 시간 비교. 지나간 구간의 함수 비중을 재현 없이 조회하는지</td></tr>
+          <tr><th>① 운영 단순화</th><td>도구 3개의 점검 항목이 한 화면에 모두 나오는지 점검표로 확인</td></tr>
+          <tr><th>② 배치 운영</th><td>병렬·합류·서버 넘기·재시도가 정의대로 돌고 그래프에 보이는지</td></tr>
+          <tr><th>③ 장애 조사</th><td>같은 시나리오를 지금 절차와 이음으로 처리해 소요 시간 비교. 지난 구간의 함수 비중을 재현 없이 조회하는지</td></tr>
           <tr><th>④ 데이터 활용</th><td>운영 데이터 5종을 SQL로 조인하고 CSV로 내보내는지</td></tr>
-          <tr><th>수집 부담</th><td>함수 추적 자체의 CPU와 대상 서비스의 처리량·응답시간 변화 측정</td></tr>
+          <tr><th>수집 부담</th><td>추적 자체의 CPU, 서비스 처리량·응답시간 변화 측정</td></tr>
         </tbody>
       </table>
       </div>
-      <div class="formula"><b>연간 절감 시간</b> = 월 조사 대상 건수 <span class="fill-in">기입</span> × 건당 조사 시간 차이 × 12<br><b>연간 순절감액</b> = 실제 대체한 라이선스·유지보수 <span class="fill-in">기입</span> − 추가 운영·유지보수 비용 <span class="fill-in">기입</span></div>
-      <p class="note">초기 개발과 전환 비용은 따로 반영해 총비용과 회수 기간을 봅니다. 건수, 시간, 계약 금액은 제출 전 사내 확인이 필요한 값입니다.</p>
+      <div class="formula"><b>연간 절감 시간</b> = 월 조사 건수 <span class="fill-in">기입</span> × 건당 조사 시간 차이 × 12<br><b>연간 순절감액</b> = 실제 대체한 라이선스·유지보수 <span class="fill-in">기입</span> − 추가 운영·유지보수 비용 <span class="fill-in">기입</span></div>
+      <p class="note">초기 개발·전환 비용은 따로 넣어 총비용과 회수 기간을 봅니다. 건수·시간·계약 금액은 제출 전 사내 확인이 필요합니다.</p>
     </div>
     <div class="col center">
-      <h2>사내 적용 순서</h2>
+      <h2>적용 순서</h2>
       <div class="steps-h">
-        <div><small>1단계</small><b>가상 환경 검증</b>해커톤 검증판으로 연결·과거 조회·함수 비교 확인</div>
-        <div><small>2단계</small><b>비운영 서버 시험</b>권한, 빌드 조건, 수집 부담, 장시간 안정성 점검</div>
-        <div><small>3단계</small><b>제한적 병행 운영</b>일부 작업에 기존 도구와 함께 써 보고 대체 범위 판단</div>
+        <div><small>1단계</small><b>가상 환경 검증</b>연결·과거 조회·함수 비교 확인</div>
+        <div><small>2단계</small><b>비운영 서버 시험</b>권한·빌드 조건·부하·장시간 안정성</div>
+        <div><small>3단계</small><b>제한적 병행 운영</b>일부 작업에 기존 도구와 함께 사용, 대체 범위 판단</div>
       </div>
-      <div class="card"><h3>운영 전에 갖출 것</h3><p>로그인과 권한, 암호화 통신(TLS), 장애 복구와 이중화, 수집 누락과 보존 정책. 설계에 자리는 정해 두었고, 운영 투입 전에 구현하고 검증합니다.</p></div>
-      <div class="card"><h3>비용 비교는 대체 범위만큼</h3><p>병행 운영에서 실제로 대체한 기능에 한해 라이선스 절감액을 셉니다. 대신 담당자 유지보수 시간, 저장 공간, 보안 점검 비용을 함께 넣습니다.</p></div>
+      <div class="card"><h3>운영 전 필수</h3><p>로그인·권한, 암호화 통신(TLS), 복구·이중화, 수집 누락·보존 정책. 설계상 자리는 있고, 투입 전에 구현·검증합니다.</p></div>
+      <div class="card"><h3>비용은 대체한 만큼만</h3><p>병행 운영에서 실제로 대체한 기능만 절감액으로 셉니다. 유지보수 인건비, 저장 공간, 보안 점검 비용도 함께 넣습니다.</p></div>
       <div class="takeaway"><small>원칙</small><b>작게 검증하고, 확인된 만큼 넓힙니다.</b></div>
     </div>
   </div>
@@ -912,36 +921,36 @@ tr.us > * { background: var(--brand-wash); }
 <section class="page" data-q="4">
   <div class="p-title">
     <div class="ask"><span class="qn">Q4</span>어떻게 가능한 건가요?</div>
-    <h1>실행마다 번호를 붙이면, 모든 기록이 그 번호로 이어집니다.</h1>
-    <p class="sub">새로 발명하는 기술은 없습니다. 검증된 부품을 쓰고, 우리가 만드는 것은 그 사이를 잇는 부분입니다.</p>
+    <h1>실행마다 번호를 붙이면 기록이 이어집니다.</h1>
+    <p class="sub">새로 발명하는 기술은 없습니다. 검증된 부품을 쓰고, 부품 사이를 잇는 코드만 만듭니다.</p>
   </div>
   <div class="content cols-2">
     <div class="col center">
       <h2>번호가 이어지는 과정</h2>
       <div class="thread-v">
-        <div class="tv"><span class="n">1</span><div><b>번호 발급</b><span>스케줄러가 실행 1회마다 고유 번호를 만듭니다. 재시도는 새 번호로 구분합니다.</span></div></div>
-        <div class="tv"><span class="n">2</span><div><b>실행 명령에 담아 전달</b><span>서버의 에이전트가 명령과 번호를 받아 스크립트를 실행합니다.</span></div></div>
-        <div class="tv"><span class="n">3</span><div><b>프로세스에 상속</b><span>번호를 환경변수로 넘기면 스크립트가 띄운 C 서비스까지 이어집니다. 스크립트가 끝나고 서비스가 그룹을 벗어나도 번호는 남습니다.</span></div></div>
-        <div class="tv"><span class="n">4</span><div><b>번호로 찾아 기록</b><span>에이전트가 그 번호를 가진 프로세스를 찾아 자원과 함수를 기록하고, 서비스는 업무 지표에 번호를 붙여 보냅니다.</span></div></div>
+        <div class="tv"><span class="n">1</span><div><b>번호 발급</b><span>스케줄러가 실행마다 고유 번호를 발급. 재시도는 새 번호.</span></div></div>
+        <div class="tv"><span class="n">2</span><div><b>명령과 함께 전달</b><span>에이전트가 명령과 번호를 받아 스크립트 실행.</span></div></div>
+        <div class="tv"><span class="n">3</span><div><b>프로세스에 상속</b><span>환경변수로 넘긴 번호가 스크립트가 띄운 C 서비스까지 따라감. 스크립트가 끝나도 남음.</span></div></div>
+        <div class="tv"><span class="n">4</span><div><b>번호로 찾아 기록</b><span>에이전트가 번호를 가진 프로세스의 자원·함수를 기록. 서비스는 업무 지표에 번호를 붙여 보냄.</span></div></div>
       </div>
       <div class="tv-out">
         <div>실행 결과<small>시작·종료·재시도</small><span class="tag">01JBQ7…</span></div>
         <div>서비스 자원<small>CPU·메모리, 1초</small><span class="tag">01JBQ7…</span></div>
         <div>업무 지표<small>접수·처리·대기·p99</small><span class="tag">01JBQ7…</span></div>
-        <div>함수 기록<small>10초 구간</small><span class="tag">01JBQ7…</span></div>
+        <div>함수 기록<small>10초 단위</small><span class="tag">01JBQ7…</span></div>
       </div>
     </div>
     <div class="col center">
-      <h2>어려운 일은 검증된 부품이 합니다</h2>
+      <h2>어려운 일은 검증된 부품이</h2>
       <div class="tbl-wrap">
       <table>
         <thead><tr><th>할 일</th><th>쓰는 부품</th><th>우리가 만드는 부분</th></tr></thead>
         <tbody>
-          <tr><th>함수 기록</th><td>리눅스 커널 내장 perf (초당 49회 표본)</td><td>대상 프로세스 선택, 결과를 접어 저장</td></tr>
-          <tr><th>저장·조회</th><td>SQLite (파일 하나짜리 DB)</td><td>공개 스키마, 분석용 뷰, 조회 API</td></tr>
+          <tr><th>함수 기록</th><td>리눅스 커널 내장 perf</td><td>대상 프로세스 선택, 결과 압축 저장</td></tr>
+          <tr><th>저장·조회</th><td>SQLite(파일 하나짜리 DB)</td><td>공개 스키마, 분석용 뷰, 조회 API</td></tr>
           <tr><th>실행 시각</th><td>검증된 cron 해석 라이브러리</td><td>선후행·재시도 판단, 실행 루프</td></tr>
-          <tr><th>차트</th><td>uPlot (경량 차트)</td><td>플로우 그래프, 플레임 그래프</td></tr>
-          <tr><th>배포</th><td>Go 단일 실행 파일</td><td>매니저·에이전트 역할 나누기</td></tr>
+          <tr><th>차트</th><td>uPlot(경량 차트)</td><td>플로우 그래프, 플레임 그래프</td></tr>
+          <tr><th>배포</th><td>Go 단일 실행 파일</td><td>매니저·에이전트 역할 분리</td></tr>
         </tbody>
       </table>
       </div>
@@ -949,7 +958,7 @@ tr.us > * { background: var(--brand-wash); }
       <div class="arch">
         <div class="ag"><div><b>batch-01</b> 배치 서버 에이전트</div><div><b>match-01</b> 체결 서버 에이전트</div><div><b>gw-01</b> 게이트웨이 에이전트</div></div>
         <div class="pipe">→</div>
-        <div class="mg"><div><b>매니저</b> 스케줄러 · 수집 · 저장 · 화면</div><div>실행 상태 DB + 지표·함수 DB</div><div>연결은 에이전트 → 매니저 한 방향</div></div>
+        <div class="mg"><div><b>매니저</b> 스케줄러·수집·저장·화면</div><div>실행 상태 DB + 지표·함수 DB</div><div>연결은 에이전트 → 매니저 한 방향</div></div>
       </div>
     </div>
   </div>
@@ -959,8 +968,8 @@ tr.us > * { background: var(--brand-wash); }
 <section class="page" data-q="4">
   <div class="p-title">
     <div class="ask"><span class="qn">Q4</span>어떻게 가능한 건가요? <span class="sec">하루, 2명</span></div>
-    <h1>2명이 AI 세션 4개로, 하루에 검증판을 만듭니다.</h1>
-    <p class="sub">대회 규칙상 코드는 당일 처음부터 씁니다. 사전에는 설계 문서, 작업카드, AI 지시문만 준비했습니다. 사람은 데이터 형식·API 합의와 검수를, AI 세션은 구현을 맡습니다.</p>
+    <h1>2명이 AI 세션 4개로 하루에 만듭니다.</h1>
+    <p class="sub">대회 규칙상 코드는 당일 처음부터 씁니다. 사전 준비는 설계 문서·작업카드·AI 지시문뿐. 사람은 설계 합의와 검수, AI는 구현을 맡습니다.</p>
   </div>
   <div class="content cols-2">
     <div class="col center">
@@ -968,7 +977,7 @@ tr.us > * { background: var(--brand-wash); }
       <div class="sched" id="sched"></div>
       <h2>범위</h2>
       <div class="scope">
-        <div><span class="badge must">15:00까지 필수</span>정해진 시각 실행, 선후행·병렬·합류·재시도, 원격 실행, 서비스 추적, 자원·업무 지표 수집, 함수 기록, 타임머신·플레임 그래프, SQL·CSV, 에이전트 토큰</div>
+        <div><span class="badge must">15:00까지 필수</span>시각 실행, 선후행·병렬·합류·재시도, 원격 실행, 서비스 추적, 자원·업무 지표 수집, 함수 기록, 타임머신·플레임 그래프, SQL·CSV, 에이전트 토큰</div>
         <div><span class="badge ext">시간이 남으면</span>업무 지표 조건 실행(정산 대기), 함수 비교 표, 임계치 알림, 실행 강제 종료</div>
         <div><span class="badge out">이번에 안 함</span>로그인·권한, TLS, 이중화, 휴일 캘린더, 자바 함수 추적, 잠금·디스크 대기 분석</div>
       </div>
@@ -978,17 +987,17 @@ tr.us > * { background: var(--brand-wash); }
       <div class="tbl-wrap">
       <table>
         <tbody>
-          <tr><th>함수 이름 복원</th><td>운영과 같은 조건(<code>-O2</code>, 프레임 포인터 없음)으로 빌드한 C 시험 프로그램에서 호출 경로를 정확히 복원</td></tr>
-          <tr><th>추적 부담</th><td>10초 구간당 CPU 약 0.06초, 코어 1개의 <b>약 0.6%</b>. 대상 프로그램 소요 시간은 측정 오차 안(13.3~13.4초 → 13.4초)</td></tr>
-          <tr><th>서비스 추적</th><td>스크립트 밖으로 빠져나간 프로세스를 환경변수 표식으로 찾음(일반 사용자 권한)</td></tr>
-          <tr><th>분석 질의</th><td>12쪽 SQL 2개를 같은 스키마의 합성 데이터로 실행</td></tr>
-          <tr><th>운영 서버</th><td>perf 사용 가능 확인</td></tr>
+          <tr><th>함수 이름 복원</th><td>운영과 같은 빌드 조건(<code>-O2</code>, 프레임 포인터 없음)의 C 시험 프로그램에서 호출 경로 정확히 복원</td></tr>
+          <tr><th>추적 부담</th><td>10초당 CPU 약 0.06초 = 코어 1개의 <b>약 0.6%</b>. 대상 프로그램 소요 시간 변화는 오차 범위(13.3~13.4초 → 13.4초)</td></tr>
+          <tr><th>서비스 추적</th><td>스크립트 밖으로 나간 프로세스를 환경변수 표식으로 찾음(일반 사용자 권한)</td></tr>
+          <tr><th>분석 질의</th><td>12쪽 SQL 2개를 합성 데이터로 실행</td></tr>
+          <tr><th>운영 서버</th><td>perf 사용 가능</td></tr>
         </tbody>
       </table>
       </div>
-      <p class="note">시험 프로그램 기준 값이며 실서비스 성능을 보장하지 않습니다. 본선에서 다시 측정하고 화면에 그대로 띄웁니다.</p>
-      <div class="card"><h3>늦어지면 줄이는 순서</h3><p>대시보드 장식 → 내보내기 → 구간 끌어 고르기(고정 구간으로) → 플레임 그래프(상위 함수 표로). 실행 번호 연결과 함수 기록 수집은 줄이지 않습니다.</p></div>
-      <p class="note">본선은 외부망과 상용 AI 도구로 개발하며, 사내 데이터와 운영 소스는 쓰지 않습니다. 시연은 컨테이너 3대와 합성 주문을 처리하는 시연용 C 서비스로 합니다. 서버 자원 값만 모의 값이고 실행·추적·함수 기록은 실제로 동작합니다.</p>
+      <p class="note">시험 프로그램 기준이라 실서비스 성능을 보장하지 않습니다. 본선에서 다시 재고 화면에 띄웁니다.</p>
+      <div class="card"><h3>늦어지면 줄이는 순서</h3><p>대시보드 장식 → 내보내기 → 구간 끌어 고르기(고정 구간으로) → 플레임 그래프(상위 함수 표로). 번호 연결과 함수 수집은 유지합니다.</p></div>
+      <p class="note">본선은 외부망·상용 AI로 개발하고 사내 데이터·소스는 쓰지 않습니다. 시연은 컨테이너 3대와 시연용 C 체결 서비스로 합니다. 서버 자원만 모의 값이고 실행·추적·함수 기록은 실제로 동작합니다.</p>
     </div>
   </div>
 </section>
@@ -1008,7 +1017,7 @@ tr.us > * { background: var(--brand-wash); }
     pg.insertBefore(head, pg.firstChild);
     var foot = document.createElement("div");
     foot.className = "p-foot";
-    foot.innerHTML = "<span>이음 · 화면은 설계 시안이며 수치는 합성 부하 기준 예시입니다</span><b>" + String(i + 1).padStart(2, "0") + " / " + String(pages.length).padStart(2, "0") + "</b>";
+    foot.innerHTML = "<span>이음 · 화면은 설계 시안, 수치는 합성 부하 예시</span><b>" + String(i + 1).padStart(2, "0") + " / " + String(pages.length).padStart(2, "0") + "</b>";
     pg.appendChild(foot);
   });
 
@@ -1056,7 +1065,7 @@ tr.us > * { background: var(--brand-wash); }
     el("rect", { x: x(10), y: top, width: x(40) - x(10), height: bottom - top, class: "sv-bandA" }, svg);
     el("rect", { x: x(80), y: top, width: x(100) - x(80), height: bottom - top, class: "sv-bandB" }, svg);
     el("text", { x: x(25), y: bottom + 30, "text-anchor": "middle", class: "sv-txt2", "font-size": 12 }, svg, "A 평시");
-    el("text", { x: x(90), y: bottom + 30, "text-anchor": "middle", class: "sv-txt", "font-size": 12, "font-weight": 600 }, svg, "B 밀린 구간");
+    el("text", { x: x(90), y: bottom + 30, "text-anchor": "middle", class: "sv-txt", "font-size": 12, "font-weight": 600 }, svg, "B 지연 구간");
     panels.forEach(function (p) {
       function y(v) { return p.y0 + p.h - Math.min(v, p.max) / p.max * p.h; }
       p.ticks.forEach(function (tv) {
@@ -1076,14 +1085,14 @@ tr.us > * { background: var(--brand-wash); }
         el("path", { d: s, class: ln[1], "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
       });
     });
-    el("text", { x: x(101), y: 28, class: "sv-txt2", "font-size": 11.5 }, svg, "← 접수 6,000건 · 처리 5,860건: 처리가 접수를 못 따라감");
+    el("text", { x: x(101), y: 28, class: "sv-txt2", "font-size": 11.5 }, svg, "← 접수 6,000 · 처리 5,860: 처리가 접수를 못 따라감");
     el("text", { x: x(104), y: 196, class: "sv-txt", "font-size": 11.5, "font-weight": 600 }, svg, "최고 481ms");
     for (var t = 0; t <= 180; t += 30) {
       var mm = 41 + Math.floor(t / 60), ss = t % 60;
       el("text", { x: x(t), y: bottom + 13, "text-anchor": t === 180 ? "end" : "middle", class: "sv-txt3", "font-size": 11 }, svg, "10:" + mm + ":" + (ss < 10 ? "0" : "") + ss);
     }
     [x(80), x(100)].forEach(function (xx) { el("line", { x1: xx, x2: xx, y1: top, y2: bottom, stroke: "var(--tag)", "stroke-width": 2 }, svg); });
-    el("text", { x: R, y: bottom + 52, "text-anchor": "end", class: "sv-txt3", "font-size": 11 }, svg, "구간을 끌어 고르면 그 구간의 함수 기록이 열립니다");
+    el("text", { x: R, y: bottom + 52, "text-anchor": "end", class: "sv-txt3", "font-size": 11 }, svg, "구간을 끌어 고르면 함수 기록이 열림");
   }
 
   /* 플레임 그래프(위가 바깥 함수) */
