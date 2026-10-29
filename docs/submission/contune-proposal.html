@@ -1,0 +1,1127 @@
+<title>contune 서류 심사 제출서</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hahmlet:wght@500;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&display=swap">
+<style>
+/* 레이아웃: A4 한 단 원고. 본문은 좁은 단, 그림과 예상 화면은 단 전체 폭. 노란 '실행 번호표'가 문서 전체를 꿰는 단 하나의 강조색 */
+:root {
+  --bg: #f4f6f8;
+  --paper: #ffffff;
+  --ink: #17212b;
+  --ink-2: #485462;
+  --ink-3: #7a8593;
+  --line: #d8dee5;
+  --line-2: #e9edf1;
+  --wash: #eef2f5;
+  --accent: #0d5f78;
+  --accent-wash: #e3f0f4;
+  --tag: #f3c63f;
+  --tag-ink: #2a2306;
+  --tag-wash: #fdf4d4;
+  --ok: #2c8a4b;
+  --fail: #c63f2e;
+  --run: #2a6fd0;
+  --wait: #8b95a3;
+  --warn: #c97d00;
+  --s-in: #8b95a3;
+  --s-out: #2a78d6;
+  --s-hot: #eb6834;
+  --screen: #fbfcfd;
+  --screen-bar: #e8ecf0;
+  --f-display: "Hahmlet", "Noto Serif KR", "Apple SD Gothic Neo", serif;
+  --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  --f-mono: "IBM Plex Mono", "D2Coding", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161c; --paper: #182029; --ink: #e7ecf1; --ink-2: #b4bec9; --ink-3: #8592a0;
+    --line: #2f3a46; --line-2: #25303b; --wash: #1e2731; --accent: #5fb4cf; --accent-wash: #173540;
+    --tag: #f0c53f; --tag-ink: #241d03; --tag-wash: #3a3214;
+    --ok: #4fb072; --fail: #e2685a; --run: #5b97ea; --wait: #8592a0; --warn: #e0a030;
+    --s-in: #8592a0; --s-out: #3987e5; --s-hot: #e0703f;
+    --screen: #141b22; --screen-bar: #222c36;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161c; --paper: #182029; --ink: #e7ecf1; --ink-2: #b4bec9; --ink-3: #8592a0;
+  --line: #2f3a46; --line-2: #25303b; --wash: #1e2731; --accent: #5fb4cf; --accent-wash: #173540;
+  --tag: #f0c53f; --tag-ink: #241d03; --tag-wash: #3a3214;
+  --ok: #4fb072; --fail: #e2685a; --run: #5b97ea; --wait: #8592a0; --warn: #e0a030;
+  --s-in: #8592a0; --s-out: #3987e5; --s-hot: #e0703f;
+  --screen: #141b22; --screen-bar: #222c36;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--f-body); font-size: 15px; line-height: 1.72;
+  word-break: keep-all; overflow-wrap: break-word;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 64px;
+}
+.doc { max-width: 880px; margin: 0 auto; background: var(--paper); border: 1px solid var(--line); border-radius: 4px; padding: 56px clamp(20px, 6vw, 64px) 64px; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; color: var(--ink); margin: 0; }
+h1 { font-size: clamp(30px, 5vw, 42px); line-height: 1.25; font-weight: 800; letter-spacing: -0.01em; }
+h2 { font-size: 26px; line-height: 1.35; font-weight: 700; display: flex; gap: 14px; align-items: baseline; }
+h2 .no { font-family: var(--f-mono); font-size: 15px; font-weight: 600; color: var(--accent); letter-spacing: 0.02em; }
+h3 { font-size: 18.5px; line-height: 1.45; font-weight: 700; margin-top: 8px; }
+p { margin: 0; }
+section { display: flex; flex-direction: column; gap: 18px; padding-top: 56px; }
+section + section { border-top: 1px solid var(--line); margin-top: 56px; }
+.sub { display: flex; flex-direction: column; gap: 14px; padding-top: 18px; }
+.lead { font-size: 17px; color: var(--ink); line-height: 1.75; }
+.muted { color: var(--ink-2); }
+.small { font-size: 13px; color: var(--ink-2); line-height: 1.6; }
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+b, strong { font-weight: 600; }
+code, .mono { font-family: var(--f-mono); font-size: 0.9em; }
+ul.plain { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; }
+.tag { display: inline-block; font-family: var(--f-mono); font-size: 0.82em; font-weight: 600; background: var(--tag); color: var(--tag-ink); padding: 1px 7px; border-radius: 3px; white-space: nowrap; }
+.mark { background: linear-gradient(transparent 58%, var(--tag-wash) 58%); }
+.fill-in { display: inline-block; border: 1px dashed var(--warn); color: var(--warn); font-size: 12.5px; padding: 0 6px; border-radius: 3px; white-space: nowrap; }
+
+/* 표 */
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.55; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line-2); }
+thead th { font-size: 12.5px; font-weight: 600; color: var(--ink-2); border-bottom: 1.5px solid var(--ink-3); background: transparent; }
+tbody th { font-weight: 600; color: var(--ink); white-space: nowrap; }
+tr.us td, tr.us th { background: var(--accent-wash); }
+td.c, th.c { text-align: center; }
+.y { color: var(--ok); font-weight: 600; }
+.n { color: var(--fail); font-weight: 600; }
+.p { color: var(--warn); font-weight: 600; }
+
+/* 그림 공통 */
+figure { margin: 6px 0 0; display: flex; flex-direction: column; gap: 10px; break-inside: avoid; }
+figcaption { font-size: 13px; color: var(--ink-2); display: flex; gap: 8px; }
+figcaption .fno { font-family: var(--f-mono); font-weight: 600; color: var(--ink); white-space: nowrap; }
+.box { border: 1px solid var(--line); border-radius: 6px; background: var(--paper); padding: 14px 16px; min-width: 0; }
+.box h4 { margin: 0 0 4px; font-size: 14.5px; font-weight: 600; }
+.box p { font-size: 13.5px; color: var(--ink-2); line-height: 1.6; }
+.callout { border-left: 3px solid var(--accent); background: var(--accent-wash); padding: 14px 18px; border-radius: 0 6px 6px 0; font-size: 15px; }
+.callout.tagged { border-left-color: var(--tag); background: var(--tag-wash); }
+
+/* 표지 */
+.cover { display: flex; flex-direction: column; gap: 22px; }
+.cover .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; color: var(--ink-2); }
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.kpi { border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+.kpi .v { font-family: var(--f-display); font-size: 30px; font-weight: 800; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.kpi .v .arr { color: var(--ink-3); font-weight: 500; padding: 0 4px; }
+.kpi .k { font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+.kpi .src { font-size: 11.5px; color: var(--ink-3); }
+
+/* 하루 운영 띠 */
+.day { display: grid; grid-template-columns: 5fr 13fr 34fr 5fr 11fr; gap: 3px; font-size: 12.5px; }
+.day > div { padding: 10px 10px; border-radius: 4px; min-width: 0; line-height: 1.45; }
+.day .off { background: var(--wash); color: var(--ink-3); }
+.day .batch { background: var(--accent-wash); border: 1px solid var(--accent); color: var(--ink); }
+.day .online { background: var(--tag-wash); border: 1px solid var(--tag); color: var(--ink); }
+.day b { display: block; font-size: 13px; }
+.day-axis { display: grid; grid-template-columns: 5fr 13fr 34fr 5fr 11fr; gap: 3px; font-family: var(--f-mono); font-size: 11px; color: var(--ink-3); }
+
+/* 지금의 도구 3개 */
+.silos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.silo { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.silo .hd { padding: 10px 14px; background: var(--wash); border-bottom: 1px solid var(--line); }
+.silo .hd .t { font-weight: 600; font-size: 15px; }
+.silo .hd .s { font-size: 12px; color: var(--ink-3); }
+.silo .bd { padding: 12px 14px; font-size: 13.5px; display: flex; flex-direction: column; gap: 8px; color: var(--ink-2); }
+.silo .unit { font-family: var(--f-mono); font-size: 12px; color: var(--ink); background: var(--wash); border-radius: 3px; padding: 2px 6px; align-self: flex-start; }
+.silo .db { margin-top: auto; border-top: 1px dashed var(--line); padding: 8px 14px; font-size: 12px; color: var(--ink-3); }
+.nokey { display: flex; align-items: center; gap: 12px; font-size: 13.5px; color: var(--fail); font-weight: 600; justify-content: center; }
+.nokey::before, .nokey::after { content: ""; flex: 1; border-top: 2px dashed var(--fail); opacity: .55; }
+.missing { border: 1.5px dashed var(--ink-3); border-radius: 6px; padding: 10px 14px; font-size: 13.5px; color: var(--ink-2); text-align: center; }
+
+/* 문제 카드 */
+.probs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.prob { border-top: 3px solid var(--fail); background: var(--wash); border-radius: 0 0 6px 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.prob .i { font-family: var(--f-mono); font-size: 12px; color: var(--fail); font-weight: 600; letter-spacing: 0.06em; }
+.prob .t { font-family: var(--f-display); font-size: 19px; font-weight: 700; line-height: 1.35; }
+.prob p { font-size: 13.5px; color: var(--ink-2); line-height: 1.6; }
+
+/* 단계 비교 */
+.steps { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.step { display: grid; grid-template-columns: 34px 132px 1fr; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 9px 12px; background: var(--paper); }
+.step .n { font-family: var(--f-mono); font-size: 13px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--wash); color: var(--ink); font-weight: 600; }
+.step .who { font-size: 12.5px; font-weight: 600; color: var(--ink-2); line-height: 1.35; }
+.step .what { font-size: 13.5px; line-height: 1.5; min-width: 0; }
+.step.pain { border-color: var(--fail); background: color-mix(in srgb, var(--fail) 7%, var(--paper)); }
+.step.pain .n { background: var(--fail); color: var(--paper); }
+.step.good { border-color: var(--accent); background: var(--accent-wash); }
+.step.good .n { background: var(--accent); color: var(--paper); }
+.compare { display: grid; grid-template-columns: 1.35fr 1fr; gap: 18px; align-items: start; }
+.compare .col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.compare .col-h { font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; gap: 8px; color: var(--ink-2); }
+.compare .col-h .cnt { font-family: var(--f-mono); }
+.compare .good-col .step { grid-template-columns: 34px 1fr; }
+
+/* 데이터 섬 */
+.isl { display: grid; grid-template-columns: 1fr 44px 1.25fr; gap: 10px; align-items: center; }
+.isl .left { display: flex; flex-direction: column; gap: 8px; }
+.isl .store { border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; font-size: 13px; display: flex; justify-content: space-between; gap: 10px; }
+.isl .store span:last-child { color: var(--ink-3); font-size: 12px; text-align: right; }
+.isl .mid { font-size: 22px; color: var(--fail); text-align: center; font-weight: 700; }
+.isl .qs { display: flex; flex-direction: column; gap: 8px; }
+.isl .q { border: 1px dashed var(--fail); border-radius: 6px; padding: 8px 12px; font-size: 13.5px; line-height: 1.5; }
+.isl .q .need { display: block; font-size: 12px; color: var(--ink-3); }
+
+/* 비용 구조 */
+.cost { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.cost .side { border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.cost .side h4 { margin: 0; font-size: 14.5px; }
+.cost .stack { display: flex; flex-direction: column; gap: 4px; }
+.cost .blk { border-radius: 4px; padding: 7px 10px; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; }
+.cost .blk span:last-child { font-size: 12px; opacity: .85; text-align: right; }
+.cost .lic { background: color-mix(in srgb, var(--fail) 14%, var(--paper)); border: 1px solid color-mix(in srgb, var(--fail) 40%, var(--paper)); }
+.cost .own { background: var(--wash); border: 1px solid var(--line); }
+.cost .new { background: var(--accent-wash); border: 1px solid var(--accent); }
+
+/* 실행 번호 흐름 */
+.thread { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; position: relative; }
+.thread .node { position: relative; padding: 12px 12px 12px 12px; border: 1px solid var(--line); background: var(--paper); border-radius: 6px; margin-right: 22px; display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 13px; line-height: 1.5; }
+.thread .node:last-child { margin-right: 0; }
+.thread .node:not(:last-child)::after { content: "→"; position: absolute; right: -19px; top: 50%; transform: translateY(-50%); color: var(--ink-3); font-size: 16px; }
+.thread .node .h { font-weight: 600; font-size: 13.5px; color: var(--ink); }
+.thread .node .c { color: var(--ink-2); }
+.outs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.out { border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.out .nm { font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-3); }
+.out .tg { align-self: flex-start; }
+.join { text-align: center; font-size: 13px; color: var(--ink-2); }
+.join b { color: var(--ink); }
+
+/* 아키텍처 */
+.arch { display: grid; grid-template-columns: 1fr 60px 1.15fr 60px 0.8fr; align-items: stretch; gap: 0; }
+.arch .col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.arch .lbl { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.arch .agent { border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; font-size: 12.5px; line-height: 1.5; }
+.arch .agent b { font-family: var(--f-mono); font-size: 12.5px; }
+.arch .mgr { border: 1.5px solid var(--accent); border-radius: 6px; padding: 12px 14px; background: var(--accent-wash); display: flex; flex-direction: column; gap: 6px; font-size: 13px; height: 100%; }
+.arch .mgr .row { background: var(--paper); border: 1px solid var(--line); border-radius: 4px; padding: 6px 9px; }
+.arch .pipe { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: var(--ink-3); text-align: center; line-height: 1.35; }
+.arch .pipe .ar { font-size: 20px; color: var(--ink-2); }
+.arch .use { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-size: 12.5px; }
+
+/* 예상 화면 */
+.screen { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--screen); box-shadow: 0 1px 0 var(--line-2), 0 8px 24px -16px rgba(20, 30, 40, .35); }
+.screen .bar { display: flex; align-items: center; gap: 10px; padding: 7px 12px; background: var(--screen-bar); border-bottom: 1px solid var(--line); font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-2); }
+.screen .dots { display: flex; gap: 5px; }
+.screen .dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); display: block; }
+.screen .url { background: var(--screen); border-radius: 4px; padding: 2px 10px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.screen .nav { display: flex; gap: 16px; padding: 9px 16px; border-bottom: 1px solid var(--line-2); font-size: 12.5px; color: var(--ink-3); align-items: center; flex-wrap: wrap; }
+.screen .nav .brand { font-family: var(--f-mono); font-weight: 600; color: var(--ink); }
+.screen .nav .on { color: var(--ink); font-weight: 600; border-bottom: 2px solid var(--accent); padding-bottom: 2px; }
+.screen .body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.screen .scroll { overflow-x: auto; }
+.screen svg { display: block; width: 100%; height: auto; }
+.mock-note { font-size: 12px; color: var(--ink-3); }
+
+.dash { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tile { border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; background: var(--paper); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tile .k { font-size: 11.5px; color: var(--ink-3); display: flex; justify-content: space-between; gap: 6px; }
+.tile .v { font-family: var(--f-mono); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.3; }
+.tile .v small { font-size: 12px; color: var(--ink-3); font-weight: 400; }
+.tile.alert { border-color: var(--fail); }
+.tile.alert .v { color: var(--fail); }
+.tile .go { font-size: 11px; color: var(--accent); }
+.biz { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.run { color: var(--run); } .pill.fail { color: var(--fail); }
+
+.tm-head { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 12.5px; color: var(--ink-2); }
+.tm-head .ttl { font-weight: 600; color: var(--ink); font-size: 13.5px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--ink-2); }
+.legend i { display: inline-block; width: 16px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 6px; }
+.legend i.band { height: 10px; border: 0; width: 14px; border-radius: 2px; }
+.flames { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.flame-h { font-size: 12.5px; display: flex; justify-content: space-between; gap: 8px; color: var(--ink-2); }
+.flame-h b { color: var(--ink); }
+.verdict { font-size: 13.5px; border-radius: 6px; padding: 10px 14px; background: var(--tag-wash); border: 1px solid var(--tag); }
+
+.term { background: #0f1720; color: #d6e2ec; border-radius: 6px; padding: 14px 16px; font-family: var(--f-mono); font-size: 12.5px; line-height: 1.6; overflow-x: auto; white-space: pre; }
+.term .pr { color: #7fd1e6; }
+.term .cm { color: #8a9aa8; }
+.term .hl { color: #f3c63f; }
+
+/* SVG 공통 클래스 */
+.sv-txt { fill: var(--ink); font-family: var(--f-body); }
+.sv-txt2 { fill: var(--ink-2); font-family: var(--f-body); }
+.sv-txt3 { fill: var(--ink-3); font-family: var(--f-mono); }
+.sv-mono { fill: var(--ink); font-family: var(--f-mono); }
+.sv-grid { stroke: var(--line-2); stroke-width: 1; }
+.sv-axis { stroke: var(--line); stroke-width: 1; }
+.sv-node { fill: var(--paper); stroke: var(--line); stroke-width: 1.2; }
+.sv-edge { fill: none; stroke: var(--ink-3); stroke-width: 1.6; }
+.sv-edge-x { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-dasharray: 5 4; }
+.sv-ok { fill: var(--ok); } .sv-fail { fill: var(--fail); } .sv-run { fill: var(--run); } .sv-wait { fill: var(--wait); }
+.sv-okS { stroke: var(--ok); } .sv-runS { stroke: var(--run); }
+.sv-tagbg { fill: var(--tag); } .sv-tagtx { fill: var(--tag-ink); font-family: var(--f-mono); }
+.sv-acc { fill: var(--accent); }
+.sv-bandA { fill: var(--ink-3); opacity: .13; }
+.sv-bandB { fill: var(--tag); opacity: .32; }
+.sv-in { fill: none; stroke: var(--s-in); stroke-width: 2; stroke-dasharray: 4 3; }
+.sv-out { fill: none; stroke: var(--s-out); stroke-width: 2; }
+.sv-hot { fill: none; stroke: var(--s-hot); stroke-width: 2; }
+.sv-area { fill: var(--s-hot); opacity: .12; }
+.sv-cpu { fill: none; stroke: var(--ink-2); stroke-width: 2; }
+.sv-fr { stroke: var(--screen); stroke-width: 1.5; }
+.fr0 { fill: #c9d3dc; } .fr1 { fill: #a9bccb; } .fr2 { fill: #8fb0c6; } .fr-hot { fill: #ef8a5c; } .fr-risk { fill: #e7c46a; }
+.sv-frtx { fill: #17212b; font-family: var(--f-mono); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .fr0 { fill: #3a4a58; } :root:not([data-theme="light"]) .fr1 { fill: #44607a; } :root:not([data-theme="light"]) .fr2 { fill: #4a7392; } :root:not([data-theme="light"]) .fr-hot { fill: #d8693a; } :root:not([data-theme="light"]) .fr-risk { fill: #b8963a; } :root:not([data-theme="light"]) .sv-frtx { fill: #f1f4f7; } }
+:root[data-theme="dark"] .fr0 { fill: #3a4a58; } :root[data-theme="dark"] .fr1 { fill: #44607a; } :root[data-theme="dark"] .fr2 { fill: #4a7392; } :root[data-theme="dark"] .fr-hot { fill: #d8693a; } :root[data-theme="dark"] .fr-risk { fill: #b8963a; } :root[data-theme="dark"] .sv-frtx { fill: #f1f4f7; }
+
+@keyframes blink { 50% { opacity: .35; } }
+.blink { animation: blink 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .blink { animation: none; } }
+
+/* 일정 */
+.sched { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+.sched .row { display: grid; grid-template-columns: 118px 1fr; gap: 10px; align-items: center; }
+.sched .lane { position: relative; height: 26px; background: var(--wash); border-radius: 4px; }
+.sched .seg { position: absolute; top: 3px; bottom: 3px; border-radius: 3px; font-size: 11.5px; padding: 0 6px; display: flex; align-items: center; white-space: nowrap; overflow: hidden; color: var(--ink); }
+.sched .seg.h { background: var(--accent); color: var(--paper); font-weight: 600; }
+.sched .seg.a { background: color-mix(in srgb, var(--accent) 35%, var(--paper)); }
+.sched .seg.b { background: var(--tag); color: var(--tag-ink); font-weight: 600; }
+.sched .who { font-weight: 600; color: var(--ink-2); line-height: 1.3; }
+.sched .who small { display: block; font-weight: 400; color: var(--ink-3); font-size: 11px; }
+.sched .ticks { position: relative; height: 18px; font-family: var(--f-mono); font-size: 10.5px; color: var(--ink-3); }
+.sched .ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.sched .ms { position: relative; height: 44px; }
+.sched .ms div { position: absolute; transform: translateX(-50%); text-align: center; font-size: 11px; line-height: 1.3; color: var(--ink-2); width: 76px; }
+.sched .ms div::before { content: "◆"; display: block; color: var(--accent); font-size: 11px; }
+.sched .ms div.key::before { color: var(--warn); }
+.sched .ms div.key { color: var(--ink); font-weight: 600; }
+
+.effects { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.eff { border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.eff .t { font-family: var(--f-display); font-size: 18px; font-weight: 700; }
+.eff .ba { display: grid; grid-template-columns: 38px 1fr; gap: 4px 8px; font-size: 13px; line-height: 1.5; }
+.eff .ba .l { font-size: 11.5px; color: var(--ink-3); padding-top: 1px; }
+.eff .ba .after { font-weight: 600; color: var(--accent); }
+
+.foot { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+
+@media screen and (max-width: 720px) {
+  .doc { padding: 32px 18px 40px; }
+  .kpis, .silos, .probs, .effects, .cost, .flames, .compare { grid-template-columns: 1fr; }
+  .dash { grid-template-columns: 1fr 1fr; }
+  .biz { grid-template-columns: 1fr 1fr; }
+  .thread, .outs { grid-template-columns: 1fr 1fr; row-gap: 10px; }
+  .thread .node { margin-right: 0; }
+  .thread .node::after { display: none; }
+  .arch { grid-template-columns: 1fr; gap: 8px; }
+  .arch .pipe { flex-direction: row; }
+  .arch .pipe .ar { transform: rotate(90deg); }
+  .isl { grid-template-columns: 1fr; }
+  .isl .mid { transform: rotate(90deg); }
+  .step { grid-template-columns: 30px 1fr; }
+  .step .who { grid-column: 2; }
+  .step .what { grid-column: 2; }
+  .day, .day-axis { grid-template-columns: 1fr; }
+  .day-axis { display: none; }
+  .sched .row { grid-template-columns: 1fr; gap: 4px; }
+}
+
+@media print {
+  @page { size: A4; margin: 14mm 13mm 16mm; }
+  body { background: #fff; padding: 0; font-size: 10.6pt; line-height: 1.66; }
+  .doc { border: 0; padding: 0; max-width: none; }
+  section { padding-top: 0; }
+  section + section { border-top: 0; margin-top: 0; }
+  section.brk { break-before: page; }
+  p, li { break-inside: avoid; }
+  header.cover { display: block; }
+  header.cover > * + * { margin-top: 18px; }
+  section, .sub { display: block; }
+  section > * + *, .sub > * + * { margin-top: 14px; }
+  .sub { padding-top: 16px; }
+  section + section:not(.brk) { padding-top: 26px; }
+  figure { display: block; }
+  figure > * + * { margin-top: 10px; }
+  .screen, .callout, table, .step, .box, .kpi, .silo, .prob, .eff, .cost .side { break-inside: avoid; }
+  h2, h3, h2 + p, h3 + p, h2 + p + p { break-after: avoid; }
+  .screen { box-shadow: none; }
+  .blink { animation: none; }
+}
+</style>
+
+<div class="doc">
+
+<!-- 표지 · 한 장 요약 -->
+<header class="cover">
+  <div class="eyebrow">사내 AI 해커톤 · 서류 심사 제출서</div>
+  <h1>contune<br>배치 실행부터 원인 함수까지,<br>번호 하나로 잇는 운영 도구</h1>
+  <p class="lead">지금은 <b>배치 실행</b>, <b>서버 자원</b>, <b>업무 처리 현황</b>을 서로 다른 도구 3개가 따로 봅니다. 장애가 나면 담당자가 세 화면의 시각을 맞춰 가며 원인을 찾고, 원인 코드는 같은 부하를 다시 만들어야 겨우 찾습니다.<br>contune은 세 도구가 하던 일을 실행 파일 하나로 새로 만들고, 실행마다 <span class="tag">실행 번호</span>를 붙여 자원·업무 지표·함수 기록까지 같은 번호로 우리 DB에 쌓습니다.</p>
+
+  <div class="kpis">
+    <div class="kpi"><div class="v">3<span class="arr">→</span>1</div><div class="k">운영 도구 수<br>스케줄러·서버 관제·업무 관제를 하나로</div></div>
+    <div class="kpi"><div class="v">5<span class="arr">→</span>2</div><div class="k">장애 원인 추적 단계<br>지나간 장애도 재현 없이 함수까지</div><div class="src">시연 시나리오 기준</div></div>
+    <div class="kpi"><div class="v">0.6%</div><div class="k">함수 추적 부하<br>코어 1개 기준 프로파일러 CPU</div><div class="src">사전 실측(C 시험 프로그램)</div></div>
+  </div>
+
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>심사 기준</th><th>이 제안의 답</th><th>근거</th></tr></thead>
+    <tbody>
+      <tr><th>창의성 30</th><td>스케줄러가 발급한 실행 번호를 프로세스에 심어, 실행·업무 지표·자원·<b>CPU를 쓴 함수</b>를 한 키로 잇습니다. 모든 데이터는 공개 스키마로 우리가 소유합니다.</td><td>3장, 6장</td></tr>
+      <tr><th>업무 도구 실용성 30</th><td>운영에서 매일 쓰는 기능(정해진 시각 실행, 선후행, 재시도, 원격 실행, 서버·업무 관제)만 실행 파일 하나에 담았습니다. 방화벽은 매니저 포트 1개입니다.</td><td>5장, 6장</td></tr>
+      <tr><th>구현 가능성 20</th><td>범위를 개념 7개로 못 박고, 2명이 AI 세션 4개로 하루에 만듭니다. 함수 추적의 핵심 경로와 부하는 미리 실측했습니다.</td><td>7장</td></tr>
+      <tr><th>기대 효과 20</th><td>원인 추적 시간 단축, 운영 데이터 5종의 분석 활용, 상용 라이선스 비용 절감.</td><td>8장</td></tr>
+    </tbody>
+  </table>
+  </div>
+</header>
+
+<!-- 1. 배경 -->
+<section class="brk">
+  <h2><span class="no">01</span>우리 운영 환경 한눈에 보기</h2>
+  <p>외부 위원께서 이후 내용을 읽으실 수 있도록 운영 환경부터 짧게 설명합니다. 우리 업무의 중심은 <b>주식·파생상품 주문을 받아 체결하는 온라인 업무</b>입니다. 배치는 장 시작 전 준비와 장 마감 후 정산에 씁니다.</p>
+
+  <figure>
+    <div class="day-axis"><span>05:00</span><span>05:30</span><span>09:00 개장</span><span>15:30</span><span>15:40</span></div>
+    <div class="day">
+      <div class="off">야간</div>
+      <div class="batch"><b>개장 준비 배치</b>기준정보 적재<br>→ 체결 서비스 기동</div>
+      <div class="online"><b>장중: 체결 서비스 상시 운영</b>주문 접수·체결. 새벽 배치가 띄운 서비스가 장 마감까지 계속 돕니다. 장애는 대부분 여기서 납니다.</div>
+      <div class="off">마감</div>
+      <div class="batch"><b>정산 배치</b>체결 결과 정산·보고</div>
+    </div>
+    <figcaption><span class="fno">그림 1</span>하루 운영 흐름. 배치와 온라인은 따로 떨어져 있지 않습니다. 장중 서비스를 띄우는 것도 새벽 배치입니다.</figcaption>
+  </figure>
+
+  <div class="sub">
+    <h3>같은 사건을 도구 3개가 나눠 봅니다</h3>
+    <p>배치 실행, 서버 자원, 업무 처리 현황을 각각 다른 도구가 맡고 있습니다. 도구마다 화면과 저장소가 따로 있고, <b>세 도구가 함께 쓰는 공통 키가 없습니다.</b> 어느 코드가 CPU를 썼는지(함수 단위)는 맡는 도구가 아예 없습니다.</p>
+    <figure>
+      <div class="silos">
+        <div class="silo">
+          <div class="hd"><div class="t">배치 스케줄러</div><div class="s">상용 제품 (Control-M)</div></div>
+          <div class="bd"><span>무엇을, 언제 실행했고 성공했는가</span><span class="unit">단위: 잡</span></div>
+          <div class="db">자체 화면 · 자체 저장소</div>
+        </div>
+        <div class="silo">
+          <div class="hd"><div class="t">서버 관제</div><div class="s">상용 제품 (onTune)</div></div>
+          <div class="bd"><span>어느 서버, 어느 프로세스가 CPU·메모리를 썼는가</span><span class="unit">단위: 서버 · 프로세스 번호</span></div>
+          <div class="db">자체 화면 · 자체 저장소</div>
+        </div>
+        <div class="silo">
+          <div class="hd"><div class="t">업무 관제</div><div class="s">사내 개발 APM (CS 프로그램)</div></div>
+          <div class="bd"><span>주문이 초당 몇 건 들어오고 처리됐으며, 응답이 얼마나 걸렸는가</span><span class="unit">단위: 업무 프로세스</span></div>
+          <div class="db">자체 화면 · 자체 저장소</div>
+        </div>
+      </div>
+      <div class="nokey">공통 키 없음 → 사람이 시각과 서버 이름으로 맞춤</div>
+      <div class="missing">어느 <b>함수(코드)</b>가 CPU를 썼는가 → 맡는 도구 없음. 필요할 때 개발자가 서버에 접속해 직접 측정</div>
+      <figcaption><span class="fno">그림 2</span>지금의 운영 도구 구성</figcaption>
+    </figure>
+  </div>
+
+  <div class="sub">
+    <h3>이 문서에 나오는 용어</h3>
+    <div class="tbl-wrap">
+    <table>
+      <tbody>
+        <tr><th>배치 · 잡</th><td>정해진 시각에 자동으로 실행하는 작업. 운영에서는 셸 스크립트이고, 스크립트가 C로 만든 서비스 프로그램을 띄웁니다.</td></tr>
+        <tr><th>플로우(DAG)</th><td>순서가 있는 잡 묶음. "A가 끝나면 B와 C를 동시에, 둘 다 끝나면 D" 같은 선후행을 화살표 그래프로 나타냅니다.</td></tr>
+        <tr><th>실행 번호</th><td>스케줄러가 실행 1회마다 발급하는 고유 번호(<code>exec_id</code>). 택배 송장번호처럼 그 실행에서 나온 모든 기록에 붙습니다.</td></tr>
+        <tr><th>p99 응답시간</th><td>주문 100건 중 가장 느린 1건 수준의 처리 시간. 체결이 밀리는지 보는 대표 지표입니다.</td></tr>
+        <tr><th>플레임 그래프</th><td>프로그램이 CPU를 어느 함수에 썼는지를 막대 폭으로 보여 주는 그림. 폭이 넓을수록 CPU를 많이 쓴 함수입니다.</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
+
+<!-- 2. 문제 -->
+<section>
+  <h2><span class="no">02</span>무엇이 문제인가</h2>
+  <div class="probs">
+    <div class="prob"><div class="i">문제 1</div><div class="t">특이상황을 확인하기 번거롭다</div><p>도구 3개를 오가며 시각을 맞춥니다. 몇 분 만에 지나간 장애는 원인 코드를 다시 볼 수 없습니다.</p></div>
+    <div class="prob"><div class="i">문제 2</div><div class="t">쌓인 데이터를 활용하기 어렵다</div><p>데이터가 제품마다 따로 쌓여 서로 엮을 수 없습니다. 통계나 머신러닝에 쓸 원자료를 우리가 쥐고 있지 않습니다.</p></div>
+    <div class="prob"><div class="i">문제 3</div><div class="t">비용이 많이 든다</div><p>상용 제품 2개의 라이선스·유지보수와 사내 APM 유지보수를 따로 냅니다. 쓰지 않는 기능 값도 함께 냅니다.</p></div>
+  </div>
+
+  <div class="sub">
+    <h3>문제 1. 장중 주문 폭주 한 건을 추적하는 지금의 순서</h3>
+    <p>예를 들어 장중에 주문이 몰려 체결 처리가 밀렸다고 하겠습니다. 이런 폭주는 보통 몇 분 만에 지나갑니다.</p>
+    <figure>
+      <div class="compare">
+        <div class="col">
+          <div class="col-h"><span>지금</span><span class="cnt">도구 3개 + 사람 · 5단계</span></div>
+          <div class="steps">
+            <div class="step"><span class="n">1</span><span class="who">업무 관제</span><span class="what">응답시간이 오르고 처리 대기 건수가 쌓인 것을 확인</span></div>
+            <div class="step"><span class="n">2</span><span class="who">운영 담당자</span><span class="what">그 체결 서비스가 어느 서버의 어느 프로세스인지 운영 문서와 담당자에게 확인</span></div>
+            <div class="step"><span class="n">3</span><span class="who">서버 관제</span><span class="what">그 서버, 그 시각을 찾아 CPU 확인. <b>"체결 프로세스가 CPU를 다 썼다"에서 멈춤</b></span></div>
+            <div class="step"><span class="n">4</span><span class="who">배치 스케줄러</span><span class="what">그 서비스를 띄운 실행과 같은 시각에 돈 다른 작업을 확인</span></div>
+            <div class="step pain"><span class="n">5</span><span class="who">개발자</span><span class="what">원인 코드를 찾으려 하지만 폭주는 이미 끝남. <b>같은 부하를 다시 만들어 재현</b>한 뒤 측정</span></div>
+          </div>
+        </div>
+        <div class="col good-col">
+          <div class="col-h"><span>contune</span><span class="cnt">화면 1개 · 2단계</span></div>
+          <div class="steps">
+            <div class="step good"><span class="n">1</span><span class="what">대시보드의 응답시간 타일을 누르면, 그 서비스를 띄운 실행의 <b>타임머신</b>이 열립니다. 업무 지표·서비스 자원·서버 자원이 한 시간축에 겹쳐 있습니다.</span></div>
+            <div class="step good"><span class="n">2</span><span class="what">차트에서 밀린 구간을 끌어 고르면 그 구간에 <b>CPU를 쓴 함수</b>가 플레임 그래프로 나옵니다. 지나간 구간이어도 됩니다.</span></div>
+          </div>
+          <div class="callout tagged" style="font-size:13.5px">찾을 필요가 없는 이유: 업무 지표에 이미 그 서비스를 띄운 <span class="tag">실행 번호</span>가 붙어 있습니다.</div>
+        </div>
+      </div>
+      <figcaption><span class="fno">그림 3</span>같은 장애의 원인을 찾는 순서 비교. 가장 큰 손실은 5단계입니다. 지나간 장애는 다시 볼 수 없어 재현부터 해야 합니다.</figcaption>
+    </figure>
+  </div>
+
+  <div class="sub">
+    <h3>문제 2. 데이터는 쌓이는데 질문에 답하지 못합니다</h3>
+    <p>운영에서 정말 궁금한 질문은 거의 다 <b>두 도구 이상의 데이터를 엮어야</b> 답할 수 있습니다. 지금은 데이터가 제품마다 따로 쌓이고, 저장 형식과 보존 기간, 꺼낼 수 있는 범위를 제품이 정합니다. 결국 제품이 보여 주는 화면과 보고서 안에서만 보게 됩니다.</p>
+    <figure>
+      <div class="isl">
+        <div class="left">
+          <div class="store"><span>실행 이력</span><span>스케줄러 저장소</span></div>
+          <div class="store"><span>서버·프로세스 자원</span><span>서버 관제 저장소</span></div>
+          <div class="store"><span>업무 처리 현황</span><span>업무 관제 저장소</span></div>
+          <div class="store" style="border-style:dashed"><span>함수별 CPU 사용</span><span>기록 없음</span></div>
+        </div>
+        <div class="mid">✕</div>
+        <div class="qs">
+          <div class="q">초당 몇 건부터 체결이 밀리기 시작하나? 서버를 늘릴 때인가?<span class="need">업무 처리 현황 + 자원</span></div>
+          <div class="q">밀린 구간에 CPU를 쓴 함수는 평소와 무엇이 달랐나?<span class="need">업무 처리 현황 + 함수 기록</span></div>
+          <div class="q">정산 배치가 끝나는 시각이 매달 늦어지고 있나?<span class="need">실행 이력 + 자원</span></div>
+          <div class="q">이번 배포 뒤 같은 작업의 함수별 CPU 비중이 달라졌나?<span class="need">실행 이력 + 함수 기록</span></div>
+        </div>
+      </div>
+      <figcaption><span class="fno">그림 4</span>따로 쌓인 데이터로는 답할 수 없는 질문들. 통계나 머신러닝(이상 탐지, 소요 시간 예측, 용량 예측)도 결국 이렇게 엮인 원자료가 있어야 시작할 수 있습니다.</figcaption>
+    </figure>
+  </div>
+
+  <div class="sub">
+    <h3>문제 3. 쓰는 기능은 일부인데 비용은 세 갈래로 나갑니다</h3>
+    <p>스케줄러에서 매일 쓰는 기능은 정해진 시각 실행, 선후행, 재시도, 시간 초과, 원격 실행, 실행 로그 정도입니다. 그런데 비용은 제품 단위로 나갑니다. 제품 밖의 기능이 필요하면 벤더 개발이나 별도 연동을 기다려야 합니다.</p>
+    <figure>
+      <div class="cost">
+        <div class="side">
+          <h4>지금</h4>
+          <div class="stack">
+            <div class="blk lic"><span>스케줄러 라이선스·유지보수</span><span>상용 · 매년</span></div>
+            <div class="blk lic"><span>서버 관제 라이선스·유지보수</span><span>상용 · 매년</span></div>
+            <div class="blk own"><span>업무 관제(사내 APM) 유지보수</span><span>사내 인력</span></div>
+            <div class="blk own"><span>제품별 관리 서버·저장소</span><span>3벌</span></div>
+          </div>
+          <p class="small">계약 갱신, 담당자 교육, 장애 문의 창구도 제품마다 따로입니다.</p>
+        </div>
+        <div class="side">
+          <h4>contune</h4>
+          <div class="stack">
+            <div class="blk new"><span>매니저 서버 1대 + 서버마다 에이전트</span><span>실행 파일 1개</span></div>
+            <div class="blk own"><span>담당자 유지보수 시간</span><span>투입 비율 × 인건비</span></div>
+          </div>
+          <p class="small">라이선스 비용이 없습니다. 대신 유지보수를 우리가 맡으므로 그 인건비를 비용에 넣어 비교합니다(8장).</p>
+        </div>
+      </div>
+      <figcaption><span class="fno">그림 5</span>비용 구조 비교</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- 3. 왜 합치나 -->
+<section class="brk">
+  <h2><span class="no">03</span>왜 세 도구를 하나로 합쳐야 하나</h2>
+  <p class="lead">합치는 목적은 화면을 모으는 데 있지 않습니다. <span class="mark">모든 기록을 <b>번호 하나</b>로 잇는 데 있습니다.</span> 그리고 그 번호는 <b>프로세스를 띄우는 순간에만</b> 붙일 수 있습니다.</p>
+  <p>택배 송장번호와 같습니다. 물건을 보내는 순간 붙여야 이후의 이동 기록이 모두 그 번호로 조회되고, 배송이 끝난 뒤에는 붙일 수 없습니다. 스케줄러가 배치를 띄울 때 번호를 넘겨야 그 배치가 띄운 서비스의 자원·업무 지표·함수 기록이 같은 번호를 달고 쌓입니다. 그래서 <b>띄우는 쪽(스케줄러)과 재는 쪽(관제)이 한 제품이어야 합니다.</b></p>
+
+  <figure>
+    <div class="thread">
+      <div class="node"><span class="h">① 번호 발급</span><span class="c">스케줄러가 실행마다 번호를 만듭니다</span><span class="tag">01JBQ7…</span></div>
+      <div class="node"><span class="h">② 실행 명령에 담기</span><span class="c">서버의 에이전트가 명령과 번호를 받아 스크립트를 실행합니다</span></div>
+      <div class="node"><span class="h">③ 프로세스에 상속</span><span class="c">번호는 환경변수로 스크립트가 띄운 C 서비스까지 넘어갑니다. 스크립트가 끝나도 서비스에 남습니다</span></div>
+      <div class="node"><span class="h">④ 모든 기록에 부착</span><span class="c">에이전트가 그 번호를 가진 프로세스를 찾아 기록합니다</span></div>
+    </div>
+    <div class="outs">
+      <div class="out"><span>실행 결과</span><span class="nm">시작·종료·재시도</span><span class="tag tg">01JBQ7…</span></div>
+      <div class="out"><span>서비스 자원</span><span class="nm">CPU · 메모리, 1초</span><span class="tag tg">01JBQ7…</span></div>
+      <div class="out"><span>업무 지표</span><span class="nm">접수·처리·대기·p99, 1초</span><span class="tag tg">01JBQ7…</span></div>
+      <div class="out"><span>함수 기록</span><span class="nm">CPU를 쓴 함수, 10초 구간</span><span class="tag tg">01JBQ7…</span></div>
+    </div>
+    <div class="join">→ 모두 <b>같은 번호, 같은 시간축, 같은 DB</b>. 화면에서는 클릭 한 번, SQL에서는 조인 한 줄로 이어집니다.</div>
+    <figcaption><span class="fno">그림 6</span>실행 번호가 기록을 잇는 과정</figcaption>
+  </figure>
+
+  <div class="sub">
+    <h3>도구별로 아는 것과 모르는 것</h3>
+    <div class="tbl-wrap">
+    <table>
+      <thead><tr><th></th><th class="c">무엇을 실행했나</th><th class="c">어느 프로세스가 자원을 썼나</th><th class="c">처리가 밀렸나</th><th class="c">어느 함수가 CPU를 썼나</th><th class="c">서로 이어지나</th></tr></thead>
+      <tbody>
+        <tr><th>배치 스케줄러</th><td class="c y">○</td><td class="c n">×</td><td class="c n">×</td><td class="c n">×</td><td class="c n" rowspan="3" style="vertical-align:middle">×<br><span class="small">시각으로 추정</span></td></tr>
+        <tr><th>서버 관제</th><td class="c n">×</td><td class="c y">○</td><td class="c n">×</td><td class="c n">×</td></tr>
+        <tr><th>업무 관제</th><td class="c n">×</td><td class="c n">×</td><td class="c y">○</td><td class="c n">×</td></tr>
+        <tr class="us"><th>contune</th><td class="c y">○</td><td class="c y">○</td><td class="c y">○</td><td class="c y">○</td><td class="c y">○ <span class="small">실행 번호</span></td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>"장애는 온라인에서 나는데 왜 스케줄러까지 합치나요?"</h3>
+    <p>장중 체결 서비스를 띄우는 것이 새벽 개장 준비 플로우이고, 그 실행이 번호의 출발점입니다. 반대 방향으로도 씁니다. 업무 지표가 같은 DB에 있으므로 "체결 대기가 0건이 된 뒤에 정산 시작" 같은 조건을 스케줄에 바로 겁니다(당일 여유가 있으면 추가하는 확장 기능).</p>
+  </div>
+</section>
+
+<!-- 4. 왜 자체 구현 -->
+<section class="brk">
+  <h2><span class="no">04</span>왜 자체 구현인가</h2>
+  <p>같은 목표를 이루는 길을 네 가지로 놓고 비교했습니다. 판단 기준은 3장의 <b>실행 번호로 잇기</b>가 되는지, 그리고 데이터를 우리가 쥐는지입니다.</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>선택지</th><th>실행 번호로 잇기</th><th>함수 단위 상시 기록</th><th>데이터를 SQL로 직접</th><th>비용</th><th>폐쇄망·기능 추가</th></tr></thead>
+    <tbody>
+      <tr><th>A. 지금 도구 유지 + 연동 개발</th><td><span class="p">△</span> 제품끼리 번호를 주고받지 못해 시각·서버 이름으로 맞춤</td><td><span class="n">×</span></td><td><span class="p">△</span> 제품별 형식, 꺼내는 범위 제한</td><td><span class="n">높음</span> 기존 비용 + 연동비</td><td><span class="p">△</span> 벤더 일정에 묶임</td></tr>
+      <tr><th>B. 오픈소스 조합<br><span class="small">스케줄러 + 관제 + 프로파일러</span></th><td><span class="p">△</span> 셋을 잇는 코드를 결국 직접 짜야 함</td><td><span class="p">△</span> 별도 도구, 따로 저장</td><td><span class="y">○</span> 단, 저장소 3개</td><td><span class="y">낮음</span></td><td><span class="p">△</span> 제품 3개를 익히고 운영</td></tr>
+      <tr><th>C. 대형 통합 관측 제품<br><span class="small">상용 APM·관측 플랫폼</span></th><td><span class="p">△</span> 서비스·서버는 잇지만 배치 스케줄러가 없음</td><td><span class="p">△</span> 제품에 따라 가능</td><td><span class="p">△</span> 벤더 저장소, 외부 반출 우려</td><td><span class="n">매우 높음</span></td><td><span class="p">△</span> 폐쇄망 도입 제약</td></tr>
+      <tr class="us"><th>D. 자체 구현 (contune)</th><td><span class="y">○</span> 띄우는 쪽이 번호를 심음</td><td><span class="y">○</span> 같은 번호, 같은 DB</td><td><span class="y">○</span> 공개 스키마 DB 1개</td><td><span class="y">낮음</span> 서버 + 담당자 시간</td><td><span class="y">○</span> 코드가 사내에 있음</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="small">B를 택해도 세 제품을 잇는 데이터 모델과 연동 코드를 직접 만들어야 합니다. 이 과제의 핵심이 바로 그 부분이므로, 처음부터 하나로 만드는 편이 단순합니다.</p>
+
+  <div class="sub">
+    <h3>자체 구현을 감당할 수 있는 이유</h3>
+    <div class="probs" style="grid-template-columns:repeat(3,1fr)">
+      <div class="box"><h4>어려운 부분은 검증된 부품에 맡깁니다</h4><p>함수 추적은 리눅스 커널에 들어 있는 <code>perf</code>, 저장은 SQLite, 실행 시각 해석은 검증된 cron 라이브러리를 씁니다. 우리가 짜는 코드는 이것들을 잇는 부분입니다.</p></div>
+      <div class="box"><h4>구조가 작습니다</h4><p>Go로 만든 실행 파일 1개, 외부 라이브러리 4개. 연결은 에이전트에서 매니저 쪽 한 방향뿐이라 방화벽은 매니저 포트 1개만 엽니다.</p></div>
+      <div class="box"><h4>바꿀 자리를 미리 나눠 둡니다</h4><p>수집, 프로세스 추적, 함수 추적, 지표 저장, 상태 저장, 알림을 인터페이스 6개로 나눴습니다. 저장소를 대용량 DB로 바꾸거나 자바 추적을 붙일 때 그 부분만 바꿉니다.</p></div>
+    </div>
+    <p class="small">자체 구현은 유지보수를 우리가 맡는다는 뜻입니다. 그래서 비용 비교에 담당자 인건비를 넣었고, 하루 동안의 코드 규모와 개발 기록을 발표 때 공개합니다.</p>
+  </div>
+</section>
+
+<!-- 5. 해결 -->
+<section class="brk">
+  <h2><span class="no">05</span>contune의 구성</h2>
+  <p>서버마다 에이전트 1개를 두고, 매니저 1대가 실행을 지시하고 기록을 모읍니다. 둘 다 같은 실행 파일입니다.</p>
+  <figure>
+    <div class="arch">
+      <div class="col">
+        <span class="lbl">대상 서버마다 에이전트</span>
+        <div class="agent"><b>batch-01</b> 적재·정산 배치<br>실행 · 자원 · 함수 추적</div>
+        <div class="agent"><b>match-01</b> 체결 서버<br>실행 · 자원 · 업무 지표 · 함수 추적</div>
+        <div class="agent"><b>gw-01</b> 주문 게이트웨이<br>서버 자원</div>
+      </div>
+      <div class="pipe"><span class="ar">→</span>HTTP<br>에이전트가<br>매니저로만 연결</div>
+      <div class="col">
+        <span class="lbl">매니저 1대</span>
+        <div class="mgr">
+          <div class="row"><b>스케줄러</b> 플로우 실행·선후행·재시도</div>
+          <div class="row"><b>수집</b> 지표 1초 · 함수 기록 10초</div>
+          <div class="row"><b>저장</b> 실행 상태 DB + 지표·함수 DB (SQLite)</div>
+          <div class="row"><b>웹 화면</b> 대시보드·플로우 그래프·타임머신</div>
+        </div>
+      </div>
+      <div class="pipe"><span class="ar">→</span>공개 스키마</div>
+      <div class="col">
+        <span class="lbl">데이터 꺼내기</span>
+        <div class="use">웹 화면</div>
+        <div class="use"><code>contune sql</code><br>읽기 전용 SQL</div>
+        <div class="use">CSV · 접힌 스택 내려받기</div>
+        <div class="use">통계 · 머신러닝 도구</div>
+      </div>
+    </div>
+    <figcaption><span class="fno">그림 7</span>구성도. 실행 명령도 에이전트가 매니저에게 가져가므로 대상 서버에 들어오는 포트를 열 필요가 없습니다.</figcaption>
+  </figure>
+
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>영역</th><th>하는 일</th><th>지금 맡는 도구</th></tr></thead>
+    <tbody>
+      <tr><th>배치 스케줄·실행</th><td>정해진 시각에 플로우 실행, 선후행(병렬·합류·서버 넘기), 재시도, 시간 초과. 스크립트가 띄운 서비스 프로세스까지 실행 번호로 추적</td><td>배치 스케줄러</td></tr>
+      <tr><th>서버 관제</th><td>서버 CPU·메모리를 1초 단위로 수집</td><td>서버 관제</td></tr>
+      <tr><th>업무 지표</th><td>접수·처리 건수, 대기 건수, 응답시간을 서버 지표와 같은 통로로 수집</td><td>업무 관제</td></tr>
+      <tr><th>함수 단위 추적</th><td>실행이 띄운 프로세스가 CPU를 쓴 함수를 상시 표본 수집(초당 49회). 끝난 배치와 지나간 장애 구간도 나중에 고름</td><td class="n">없음</td></tr>
+      <tr><th>열린 데이터</th><td>공개 스키마, 분석용 뷰, 읽기 전용 SQL, CSV 내보내기</td><td class="n">없음</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="callout">함수 추적은 배치를 감싸지 않고 옆에서 붙습니다. 추적이 실패해도 배치와 서비스는 영향을 받지 않고, 추적 대상은 contune이 띄운 프로세스뿐입니다. 기록에는 함수 이름과 표본 수만 남고 메모리 내용이나 주문 데이터는 남지 않습니다.</div>
+</section>
+
+<!-- 6. 예상 화면 -->
+<section class="brk">
+  <h2><span class="no">06</span>예상 결과물 화면</h2>
+  <p>설계 문서의 화면 계약과 시연 시나리오대로 그린 시안입니다. 시연에서는 체결 서비스(시연용 C 프로그램)에 주문을 1,500건/초에서 6,000건/초까지 몰아 넣어 실제로 체결을 밀리게 만들고, 그 장면을 아래 화면으로 따라갑니다. <span class="muted">화면의 수치는 시연용 합성 부하 기준 예시입니다.</span></p>
+
+  <!-- 6.1 대시보드 -->
+  <div class="sub">
+    <h3>① 대시보드: 서버와 업무를 한 화면에</h3>
+    <figure>
+      <div class="screen">
+        <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">contune · #dashboard</span></div>
+        <div class="nav"><span class="brand">contune</span><span class="on">대시보드</span><span>플로우</span><span>실행 이력</span><span style="margin-left:auto">10:42:35 · 2초마다 갱신</span></div>
+        <div class="body">
+          <div class="dash">
+            <div class="tile"><span class="k"><span>batch-01</span><span class="pill ok">정상</span></span><span class="v">22<small>% CPU</small></span><span class="k">메모리 41%</span></div>
+            <div class="tile"><span class="k"><span>match-01</span><span class="pill warn">높음</span></span><span class="v">71<small>% CPU</small></span><span class="k">메모리 58%</span></div>
+            <div class="tile"><span class="k"><span>gw-01</span><span class="pill ok">정상</span></span><span class="v">47<small>% CPU</small></span><span class="k">메모리 36%</span></div>
+          </div>
+          <div class="biz">
+            <div class="tile"><span class="k">주문 접수</span><span class="v">6,000<small>/초</small></span></div>
+            <div class="tile"><span class="k">체결 처리</span><span class="v">5,860<small>/초</small></span></div>
+            <div class="tile alert"><span class="k">처리 대기</span><span class="v">2,240<small>건</small></span></div>
+            <div class="tile alert"><span class="k">p99 응답</span><span class="v">385<small>ms</small></span><span class="go">누르면 타임머신 →</span></div>
+            <div class="tile"><span class="k">함수 추적 부하</span><span class="v">0.6<small>%</small></span></div>
+          </div>
+        </div>
+      </div>
+      <figcaption><span class="fno">그림 8</span>업무 지표 타일에는 그 지표를 보낸 서비스의 실행 번호가 붙어 있어, 누르면 바로 그 실행의 타임머신으로 갑니다. 함수 추적이 쓰는 CPU도 숨기지 않고 띄웁니다.</figcaption>
+    </figure>
+  </div>
+
+  <!-- 6.2 플로우 그래프 -->
+  <div class="sub">
+    <h3>② 플로우 그래프(DAG): 새벽 개장 준비가 어떻게 돌았나</h3>
+    <figure>
+      <div class="screen">
+        <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">contune · #flow/market-open</span></div>
+        <div class="nav"><span class="brand">contune</span><span>대시보드</span><span class="on">플로우</span><span>실행 이력</span><span style="margin-left:auto">평일 05:30 · 다음 실행 10/30 05:30</span></div>
+        <div class="body">
+          <div class="tm-head"><span class="ttl">market-open</span><span>개장 준비: 기준정보 적재 후 체결 서비스 기동</span><span class="pill ok">완료 05:30:41</span></div>
+          <div class="scroll">
+          <svg viewBox="0 0 900 290" role="img" aria-label="market-open 플로우 그래프">
+            <!-- 열 머리 -->
+            <text x="106" y="16" text-anchor="middle" class="sv-txt3" font-size="11">단계 0</text>
+            <text x="336" y="16" text-anchor="middle" class="sv-txt3" font-size="11">단계 1 · 병렬</text>
+            <text x="566" y="16" text-anchor="middle" class="sv-txt3" font-size="11">단계 2 · 합류</text>
+            <text x="796" y="16" text-anchor="middle" class="sv-txt3" font-size="11">단계 3</text>
+            <!-- 서버 구분 -->
+            <rect x="466" y="26" width="428" height="258" rx="8" fill="none" stroke="var(--accent)" stroke-dasharray="4 4" stroke-width="1.2"/>
+            <text x="884" y="44" text-anchor="end" class="sv-acc" font-size="11.5" font-family="var(--f-mono)">match-01 (체결 서버)</text>
+            <text x="20" y="44" class="sv-txt3" font-size="11.5">batch-01 (배치 서버)</text>
+            <!-- 간선 -->
+            <path class="sv-edge" d="M196 155 C 226 155, 216 95, 246 95"/>
+            <path class="sv-edge" d="M196 155 C 226 155, 216 215, 246 215"/>
+            <path class="sv-edge-x" d="M426 95 C 456 95, 446 155, 476 155"/>
+            <path class="sv-edge-x" d="M426 215 C 456 215, 446 155, 476 155"/>
+            <path class="sv-edge" d="M656 155 L 706 155"/>
+            <polygon points="246,95 238,91 238,99" fill="var(--ink-3)"/>
+            <polygon points="246,215 238,211 238,219" fill="var(--ink-3)"/>
+            <polygon points="476,155 467,150 467,160" fill="var(--accent)"/>
+            <polygon points="706,155 698,151 698,159" fill="var(--ink-3)"/>
+            <!-- 노드: fetch-master -->
+            <g>
+              <rect class="sv-node" x="16" y="122" width="180" height="66" rx="6"/>
+              <rect x="16" y="122" width="5" height="66" rx="2" class="sv-ok"/>
+              <text x="32" y="146" class="sv-mono" font-size="13" font-weight="600">fetch-master</text>
+              <text x="32" y="166" class="sv-txt2" font-size="11.5">기준정보 수신 · 8초</text>
+              <circle cx="180" cy="140" r="6" class="sv-ok"/>
+            </g>
+            <!-- load-equity -->
+            <g>
+              <rect class="sv-node" x="246" y="62" width="180" height="66" rx="6"/>
+              <rect x="246" y="62" width="5" height="66" rx="2" class="sv-ok"/>
+              <text x="262" y="86" class="sv-mono" font-size="13" font-weight="600">load-equity</text>
+              <text x="262" y="106" class="sv-txt2" font-size="11.5">주식 원장 적재 · 15초</text>
+              <rect x="346" y="111" width="72" height="16" rx="8" fill="var(--paper)" stroke="var(--fail)" stroke-width="1"/>
+              <text x="382" y="123" text-anchor="middle" font-size="10.5" fill="var(--fail)" font-family="var(--f-body)">재시도 2회차</text>
+              <circle cx="410" cy="80" r="6" class="sv-ok"/>
+            </g>
+            <!-- load-deriv -->
+            <g>
+              <rect class="sv-node" x="246" y="182" width="180" height="66" rx="6"/>
+              <rect x="246" y="182" width="5" height="66" rx="2" class="sv-ok"/>
+              <text x="262" y="206" class="sv-mono" font-size="13" font-weight="600">load-deriv</text>
+              <text x="262" y="226" class="sv-txt2" font-size="11.5">파생 원장 적재 · 12초</text>
+              <circle cx="410" cy="200" r="6" class="sv-ok"/>
+            </g>
+            <!-- start-matching -->
+            <g>
+              <rect class="sv-node" x="476" y="122" width="180" height="66" rx="6" style="stroke:var(--accent);stroke-width:1.6"/>
+              <rect x="476" y="122" width="5" height="66" rx="2" class="sv-ok"/>
+              <text x="492" y="146" class="sv-mono" font-size="13" font-weight="600">start-matching</text>
+              <text x="492" y="166" class="sv-txt2" font-size="11.5">체결 서비스 기동 · 1초</text>
+              <circle cx="640" cy="140" r="6" class="sv-ok"/>
+              <rect x="476" y="196" width="180" height="22" rx="4" class="sv-tagbg"/>
+              <text x="566" y="211" text-anchor="middle" class="sv-tagtx" font-size="11" font-weight="600">서비스 실행 중 · 01JBQ7…</text>
+            </g>
+            <!-- check-ready -->
+            <g>
+              <rect class="sv-node" x="706" y="122" width="180" height="66" rx="6"/>
+              <rect x="706" y="122" width="5" height="66" rx="2" class="sv-ok"/>
+              <text x="722" y="146" class="sv-mono" font-size="13" font-weight="600">check-ready</text>
+              <text x="722" y="166" class="sv-txt2" font-size="11.5">기동 확인 · 3초</text>
+              <circle cx="870" cy="140" r="6" class="sv-ok"/>
+            </g>
+            <!-- 주석 -->
+            <text x="336" y="160" text-anchor="middle" class="sv-txt3" font-size="10.5">동시에 실행</text>
+            <text x="566" y="250" text-anchor="middle" class="sv-acc" font-size="11" font-family="var(--f-body)">둘 다 성공해야 시작 · 서버를 넘어 실행</text>
+          </svg>
+          </div>
+          <div class="tbl-wrap">
+          <table style="font-size:12.5px">
+            <thead><tr><th>스텝</th><th>서버</th><th>시도</th><th>결과</th><th>실행 번호</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">load-equity</td><td>batch-01</td><td>1</td><td><span class="pill fail">실패 · 원장 파일 수신 대기 초과</span></td><td class="mono">01JBQ5…</td></tr>
+              <tr><td class="mono">load-equity</td><td>batch-01</td><td>2</td><td><span class="pill ok">성공</span></td><td class="mono">01JBQ6…</td></tr>
+              <tr><td class="mono">start-matching</td><td>match-01</td><td>1</td><td><span class="pill ok">성공</span> <span class="pill run">서비스 실행 중</span></td><td><span class="tag">01JBQ7…</span></td></tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+      <figcaption><span class="fno">그림 9</span>작업이 갈라지고(병렬) 합쳐지고(합류) 서버를 넘는 흐름을 한눈에 봅니다. 첫 시도가 실패한 스텝은 재시도 배지로 표시하고, 노드를 누르면 그 실행의 타임머신이 열립니다. 체결 서비스를 띄운 스텝은 끝났어도 서비스가 살아 있는 동안 같은 번호로 계속 기록합니다.</figcaption>
+    </figure>
+  </div>
+
+  <!-- 6.3 타임머신 -->
+  <div class="sub">
+    <h3>③ 타임머신: 그 실행의 기록을 한 시간축에</h3>
+    <figure>
+      <div class="screen">
+        <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">contune · #run/01JBQ7…</span></div>
+        <div class="nav"><span class="brand">contune</span><span>대시보드</span><span>플로우</span><span class="on">실행 01JBQ7…</span><span style="margin-left:auto">CSV · 접힌 스택 내려받기</span></div>
+        <div class="body">
+          <div class="tm-head"><span class="ttl">market-open / start-matching</span><span>match-01</span><span>기동 05:30:37</span><span class="pill run">서비스 실행 중</span><span class="tag">01JBQ7…</span></div>
+          <div class="legend"><span><i style="border-color:var(--s-in);border-top-style:dashed"></i>주문 접수</span><span><i style="border-color:var(--s-out)"></i>체결 처리</span><span><i style="border-color:var(--s-hot)"></i>처리 대기 · p99</span><span><i style="border-color:var(--ink-2)"></i>서비스 CPU</span><span><i class="band" style="background:color-mix(in srgb,var(--ink-3) 25%,transparent)"></i>A 평시 구간</span><span><i class="band" style="background:color-mix(in srgb,var(--tag) 55%,transparent)"></i>B 밀린 구간</span></div>
+          <div class="scroll"><svg id="tm" viewBox="0 0 900 430" role="img" aria-label="타임머신 차트: 주문 폭주 구간의 접수, 처리, 대기, p99, 서비스 CPU"></svg></div>
+        </div>
+      </div>
+      <figcaption><span class="fno">그림 10</span>네 지표가 같은 실행 번호로 같은 시간축에 쌓입니다. 접수가 처리를 앞지르는 순간 대기와 p99가 오르고 서비스 CPU가 100%에 붙습니다. 차트에서 구간을 끌어 고르면 아래 플레임 그래프가 그 구간으로 다시 그려집니다.</figcaption>
+    </figure>
+  </div>
+
+  <!-- 6.4 플레임 그래프 -->
+  <div class="sub">
+    <h3>④ 플레임 그래프: 그 구간에 CPU를 쓴 함수</h3>
+    <figure>
+      <div class="screen">
+        <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">contune · #run/01JBQ7… · 함수</span></div>
+        <div class="body">
+          <div class="flames">
+            <div><div class="flame-h"><span><b>A 평시</b> 10:41:10–10:41:40</span><span>표본 441</span></div><div class="scroll"><svg id="flA" viewBox="0 0 420 150" role="img" aria-label="평시 구간 플레임 그래프"></svg></div></div>
+            <div><div class="flame-h"><span><b>B 밀린 구간</b> 10:42:20–10:42:40</span><span>표본 980</span></div><div class="scroll"><svg id="flB" viewBox="0 0 420 150" role="img" aria-label="밀린 구간 플레임 그래프"></svg></div></div>
+          </div>
+          <div class="verdict">호가 등록 함수 <code>book_insert</code>의 CPU 비중이 <b>15% → 63%</b>로 커졌습니다. 서버를 늘릴 일이 아니라 <b>호가 등록 코드를 고칠 일</b>이라는 근거가 됩니다.</div>
+        </div>
+      </div>
+      <figcaption><span class="fno">그림 11</span>위가 바깥 함수, 아래로 갈수록 안쪽 함수입니다. 막대 폭이 CPU를 쓴 비율입니다. 폭주가 끝난 뒤에도 같은 구간을 다시 고를 수 있으므로 재현이 필요 없습니다.</figcaption>
+    </figure>
+  </div>
+
+  <!-- 6.5 SQL -->
+  <div class="sub">
+    <h3>⑤ 데이터 꺼내기: 화면 밖에서 SQL로 바로</h3>
+    <figure>
+<div class="term"><span class="cm">-- 최근 5영업일, 접수량 구간별 체결 p99: 초당 몇 건부터 밀리기 시작하나</span>
+<span class="pr">$</span> contune sql "SELECT in_tps, seconds, avg_p99_ms FROM ..."
+ in_tps │ seconds │ avg_p99_ms
+────────┼─────────┼───────────
+   1500 │ 109,560 │        3.4
+   3000 │   6,420 │        4.1
+   4500 │   1,140 │        9.8
+   6000 │     180 │ <span class="hl">     254.1</span>
+
+<span class="cm">-- 밀린 구간과 평시에 CPU를 쓴 함수 비중(%): 업무 지표와 함수 기록을 실행 번호로 조인</span>
+<span class="pr">$</span> contune sql --csv "WITH w AS (...) SELECT leaf, normal_pct, slow_pct ..." > slow.csv
+ leaf          │ normal_pct │ slow_pct
+───────────────┼────────────┼─────────
+ <span class="hl">book_insert</span>   │       15.2 │ <span class="hl">    63.4</span>
+ check_risk    │       34.0 │     14.0
+ price_cross   │       21.8 │      9.6
+ expire_orders │       11.1 │      8.2</div>
+      <figcaption><span class="fno">그림 12</span>같은 데이터를 읽기 전용 SQL과 CSV로 꺼냅니다. 첫 질의는 증설 판단의 근거, 두 번째 질의는 코드 수정의 근거입니다. 두 질의는 설계 단계에서 같은 스키마의 합성 데이터로 실행해 확인했습니다(수치는 예시).</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- 7. 실현 가능성 -->
+<section class="brk">
+  <h2><span class="no">07</span>하루, 2명이 만들 수 있는가</h2>
+  <p>대회 규칙상 코드는 당일 처음부터 씁니다. 그래서 사전에는 <b>설계 문서, 작업카드, AI 지시문</b>만 준비했고, 당일에는 2명이 각자 AI 코딩 세션 2개씩, 모두 4개를 병렬로 돌립니다. 사람은 계약(데이터 형식과 API)과 검수를 맡고 AI 세션은 구현을 맡습니다.</p>
+
+  <figure>
+    <div class="sched" id="sched"></div>
+    <figcaption><span class="fno">그림 13</span>당일 일정. 15:00에 개념 7개가 최소 형태로 한 바퀴 도는지 점검하고, 이후에는 범위만 넓힙니다.</figcaption>
+  </figure>
+
+  <div class="sub">
+    <h3>15:00까지 반드시 도는 개념 7개</h3>
+    <p>넓이(화면 수, 기능 수)는 줄여도 개념의 고리는 줄이지 않습니다. 하나라도 빠지면 검증판이 아닙니다.</p>
+    <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>개념</th><th>최소 형태</th><th>점검 방법</th></tr></thead>
+      <tbody>
+        <tr><th>스케줄</th><td>플로우 2개, 선후행(병렬·합류·서버 넘기), 재시도, 시간 초과, 플로우 그래프</td><td>수동 실행 → 스텝 5개가 순서대로 성공, 적재 스텝은 2회차에 성공</td></tr>
+        <tr><th>원격 실행</th><td>명령 큐, 프로세스 그룹 실행, 이벤트 재전송, 서비스 프로세스 추적</td><td>실행 중 매니저를 재시작해도 결과가 반영됨</td></tr>
+        <tr><th>한 통로 수집</th><td>서버·업무 지표 1초, 함수 기록 10초, SQLite 저장, 조회 API</td><td>대시보드에 서버 3대와 업무 지표</td></tr>
+        <tr><th>실행 번호 연결</th><td>타임머신, 업무 지표 타일에서 실행으로 이동</td><td>p99 타일 클릭 → 자원과 업무 지표가 한 차트에</td></tr>
+        <tr><th>함수 단위 추적</th><td>perf 표본 수집, 플레임 그래프, 구간 고르기, 부하 지표</td><td>밀린 구간의 <code>book_insert</code> 비중이 평시보다 큼, 부하 1% 미만</td></tr>
+        <tr><th>데이터 주권</th><td>분석용 뷰, 읽기 전용 SQL, CSV 내보내기</td><td>그림 12의 질의 2개가 결과를 냄</td></tr>
+        <tr><th>보안 최소선</th><td>에이전트 토큰, 검토된 YAML의 명령만 실행, 일반 사용자 권한</td><td>토큰 없는 요청은 거부(401)</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>이미 확인한 것</h3>
+    <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>항목</th><th>결과</th></tr></thead>
+      <tbody>
+        <tr><th>운영 서버 perf 사용</th><td>사용 가능 확인</td></tr>
+        <tr><th>운영과 같은 조건의 C 빌드</th><td>최적화 빌드(<code>-O2</code>, 프레임 포인터 없음)에서도 dwarf 방식으로 호출 경로 <code>main → handle_order → match_order → book_insert</code>를 정확히 복원</td></tr>
+        <tr><th>추적 부하</th><td>10초 구간당 약 0.06초 → 코어 1개의 약 <b>0.6%</b>. 대상 프로그램 소요 시간은 측정 오차 안(13.3~13.4초 → 13.4초)</td></tr>
+        <tr><th>스크립트를 벗어난 서비스 추적</th><td><code>setsid</code>로 띄워 스크립트 밖으로 나간 프로세스를 환경변수 표식으로 찾음(일반 사용자 권한)</td></tr>
+        <tr><th>분석 질의</th><td>그림 12의 SQL 2개를 같은 스키마의 합성 데이터로 실행해 확인</td></tr>
+        <tr><th>시연 컨테이너</th><td>Docker 기본 설정은 perf를 막지만 <code>PERFMON</code> 권한 하나로 일반 사용자 실행 확인</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>시연에서 실제로 동작하는 것과 시연용인 것</h3>
+    <div class="cost">
+      <div class="side"><h4>실제로 동작</h4><p class="small" style="font-size:13.5px;color:var(--ink)">스케줄 실행, 원격 실행, 서비스 프로세스 추적, perf 함수 기록, 수집·저장·조회, 화면, SQL·CSV 꺼내기. 매니저 1대와 에이전트 3개를 컨테이너로 띄웁니다.</p></div>
+      <div class="side"><h4>시연용으로 만든 것</h4><p class="small" style="font-size:13.5px;color:var(--ink)">체결 서비스는 합성 주문으로 부하를 만드는 C 프로그램(약 200줄)이고, 함수 이름과 수치도 시연용입니다. 컨테이너는 서버별 자원 값이 다르게 보이지 않아 서버 자원만 시뮬레이터로 만듭니다. 실서버에서는 수집기 설정 한 줄만 바꿉니다.</p></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>범위 밖으로 둔 것과 늦어질 때의 대응</h3>
+    <div class="tbl-wrap">
+    <table>
+      <tbody>
+        <tr><th>검증판에서 하지 않음</th><td>웹 로그인·권한, 암호화 통신(TLS), 이중화, 휴일 캘린더, 운영자 강제 성공 처리, 자바 함수 추적, 대기 시간 분석, 제품 안의 머신러닝. 모두 인터페이스 자리만 두고, 운영 투입 전에 갖춰야 할 항목으로 정리했습니다.</td></tr>
+        <tr><th>15:00에 늦으면</th><td>① 대시보드를 서버 카드와 업무 타일만으로 ② CSV 내보내기를 뒤로 ③ 플레임 그래프의 구간 고르기를 빼고 화면 전체 범위로 ④ 플레임 그래프 대신 상위 함수 표. <b>플로우 그래프와 함수 기록 수집은 줄이지 않습니다.</b></td></tr>
+        <tr><th>시연 장비 문제</th><td>perf 권한은 사전에 한 줄 명령으로 점검합니다. 15:00 점검 직후와 코드 동결 뒤 두 번 녹화본을 만듭니다. Docker가 막히면 단일 프로세스 모드(<code>contune dev</code>)로 같은 시연을 합니다.</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
+
+<!-- 8. 기대 효과 -->
+<section>
+  <h2><span class="no">08</span>기대 효과</h2>
+  <div class="effects">
+    <div class="eff">
+      <div class="t">시간</div>
+      <div class="ba"><span class="l">지금</span><span>도구 3개, 5단계. 원인 코드는 재현 뒤에야</span><span class="l">이후</span><span class="after">화면 1개, 2단계. 지나간 장애도 함수까지</span></div>
+      <p class="small">판단도 빨라집니다. "서버를 늘릴지, 코드를 고칠지"를 같은 화면에서 근거로 가릅니다.</p>
+    </div>
+    <div class="eff">
+      <div class="t">데이터</div>
+      <div class="ba"><span class="l">지금</span><span>제품 화면과 보고서 범위 안에서만</span><span class="l">이후</span><span class="after">운영 데이터 5종을 SQL 한 번으로 조인</span></div>
+      <p class="small">실행 이력, 서버 자원, 배치·서비스 자원, 업무 지표, 함수 기록. 소요 시간 이상 탐지, 배치 종료 시각 예측, 서버 용량 예측, 배포 전후 성능 회귀 탐지에 바로 씁니다.</p>
+    </div>
+    <div class="eff">
+      <div class="t">비용</div>
+      <div class="ba"><span class="l">지금</span><span>상용 계약 2건 + 사내 APM 유지보수</span><span class="l">이후</span><span class="after">매니저 서버 1대 + 담당자 시간</span></div>
+      <p class="small">필요한 기능은 벤더 일정과 상관없이 직접 붙입니다. 코드가 사내에 있습니다.</p>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>비용 비교 계산식</h3>
+    <div class="callout">연간 절감액 = (스케줄러 라이선스·유지보수 + 서버 관제 라이선스·유지보수 + 사내 APM 유지보수 인건비) − (매니저 서버 비용 + contune 담당자 투입 비율 × 인건비)</div>
+    <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>항목</th><th>지금 (연간)</th><th>contune (연간)</th></tr></thead>
+      <tbody>
+        <tr><th>스케줄러 라이선스·유지보수</th><td><span class="fill-in">금액 또는 비율 기입</span></td><td>0</td></tr>
+        <tr><th>서버 관제 라이선스·유지보수</th><td><span class="fill-in">금액 또는 비율 기입</span></td><td>0</td></tr>
+        <tr><th>업무 관제(사내 APM) 유지보수</th><td><span class="fill-in">투입 인력 기입</span></td><td>contune 유지보수에 포함</td></tr>
+        <tr><th>관리 서버</th><td>제품별 3벌</td><td>매니저 1대</td></tr>
+        <tr><th>자체 유지보수 인력</th><td>-</td><td><span class="fill-in">투입 비율 기입</span></td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>검증판 이후</h3>
+    <p>해커톤 결과물은 개념 검증판입니다. 운영에 쓰려면 7장에서 범위 밖으로 둔 로그인·권한, 암호화 통신, 이중화, 휴일 캘린더를 갖춰야 합니다. 이 항목들은 모두 설계에서 자리를 정해 두었으므로, 이후 작업은 정해진 자리에 구현을 채우는 일입니다. 대상 서버가 수십 대를 넘으면 지표 저장소만 시계열 전용 DB로 바꿉니다.</p>
+  </div>
+
+  <div class="foot">이 문서의 화면은 설계 시안이며, 수치는 시연용 합성 부하 기준 예시입니다. 사전 실측 값은 7장에 출처와 조건을 함께 적었습니다.</div>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs, parent, text) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  /* 타임머신: 시연용 합성 데이터. 10:41:00부터 180초 */
+  function series() {
+    var inT = [], out = [], q = [], p99 = [], cpu = [];
+    var queue = 0, lat = 3.2;
+    for (var t = 0; t <= 180; t++) {
+      var r = t < 40 ? 1500 : t < 60 ? 3000 : t < 80 ? 4500 : t < 100 ? 6000 : 1500;
+      var cap = t < 80 ? 9000 : t < 100 ? 5860 : (t < 102 ? 3600 : 9000);
+      var done = Math.min(queue + r, cap);
+      queue = Math.max(0, queue + r - done);
+      var target = r <= 1500 ? 3.2 : r <= 3000 ? 4.1 : r <= 4500 ? 9.8 : 3.2 + queue / done * 1000;
+      if (t >= 100) target = Math.max(3.2, queue / Math.max(done, 1) * 1000 + 3.2);
+      lat = t >= 100 ? lat + (target - lat) * 0.5 : target;
+      var c = r <= 1500 ? 30 : r <= 3000 ? 55 : r <= 4500 ? 81 : 100;
+      if (t >= 100) c = Math.max(30, 100 * Math.exp(-(t - 100) / 3) + 30 * (1 - Math.exp(-(t - 100) / 3)));
+      var j = Math.sin(t * 1.7) * 0.02 + Math.sin(t * 0.37) * 0.015;
+      inT.push(r * (1 + j)); out.push(done * (1 + j * 0.8)); q.push(queue); p99.push(lat * (1 + j)); cpu.push(Math.min(100, c * (1 + j * 0.6)));
+    }
+    return { inT: inT, out: out, q: q, p99: p99, cpu: cpu };
+  }
+
+  function drawTM() {
+    var svg = document.getElementById("tm");
+    if (!svg) return;
+    var d = series();
+    var L = 64, R = 880, W = R - L;
+    var panels = [
+      { key: "건/초", y0: 14, h: 82, max: 7000, ticks: [0, 3000, 6000], lines: [["inT", "sv-in"], ["out", "sv-out"]], label: "주문 접수 · 체결 처리" },
+      { key: "건", y0: 118, h: 64, max: 2500, ticks: [0, 1000, 2000], lines: [["q", "sv-hot"]], area: "q", label: "처리 대기" },
+      { key: "ms", y0: 204, h: 64, max: 500, ticks: [0, 250, 500], lines: [["p99", "sv-hot"]], label: "p99 응답시간" },
+      { key: "%", y0: 290, h: 64, max: 100, ticks: [0, 50, 100], lines: [["cpu", "sv-cpu"]], label: "서비스 CPU (코어 1개 = 100)" }
+    ];
+    function x(t) { return L + t / 180 * W; }
+    // 선택 구간 띠
+    var top = 8, bottom = 360;
+    el("rect", { x: x(10), y: top, width: x(40) - x(10), height: bottom - top, class: "sv-bandA" }, svg);
+    el("rect", { x: x(80), y: top, width: x(100) - x(80), height: bottom - top, class: "sv-bandB" }, svg);
+    el("text", { x: x(25), y: bottom + 30, "text-anchor": "middle", class: "sv-txt2", "font-size": 11.5 }, svg, "A 평시");
+    el("text", { x: x(90), y: bottom + 30, "text-anchor": "middle", class: "sv-txt", "font-size": 11.5, "font-weight": 600 }, svg, "B 밀린 구간");
+    panels.forEach(function (p) {
+      function y(v) { return p.y0 + p.h - Math.min(v, p.max) / p.max * p.h; }
+      p.ticks.forEach(function (tv) {
+        el("line", { x1: L, x2: R, y1: y(tv), y2: y(tv), class: tv === 0 ? "sv-axis" : "sv-grid" }, svg);
+        el("text", { x: L - 8, y: y(tv) + 4, "text-anchor": "end", class: "sv-txt3", "font-size": 10.5 }, svg, tv.toLocaleString("ko-KR"));
+      });
+      el("text", { x: L + 6, y: p.y0 + 2, class: "sv-txt2", "font-size": 11.5, "font-weight": 600 }, svg, p.label + " (" + p.key + ")");
+      if (p.area) {
+        var a = "M" + x(0) + " " + y(0);
+        d[p.area].forEach(function (v, t) { a += " L" + x(t).toFixed(1) + " " + y(v).toFixed(1); });
+        a += " L" + x(180) + " " + y(0) + "Z";
+        el("path", { d: a, class: "sv-area" }, svg);
+      }
+      p.lines.forEach(function (ln) {
+        var s = "";
+        d[ln[0]].forEach(function (v, t) { s += (t ? " L" : "M") + x(t).toFixed(1) + " " + y(v).toFixed(1); });
+        el("path", { d: s, class: ln[1], "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+      });
+    });
+    // 직접 표기
+    el("text", { x: x(101), y: 30, class: "sv-txt2", "font-size": 11 }, svg, "← 접수 6,000건 · 처리 5,860건: 처리가 접수를 못 따라감");
+    el("text", { x: x(104), y: 215, class: "sv-txt", "font-size": 11, "font-weight": 600 }, svg, "최고 481ms");
+    // 시간축
+    for (var t = 0; t <= 180; t += 30) {
+      var mm = 41 + Math.floor(t / 60), ss = t % 60;
+      el("text", { x: x(t), y: bottom + 12, "text-anchor": t === 180 ? "end" : "middle", class: "sv-txt3", "font-size": 10.5 }, svg, "10:" + mm + ":" + (ss < 10 ? "0" : "") + ss);
+    }
+    // 끌어 고르기 손잡이 표시
+    [x(80), x(100)].forEach(function (xx) { el("line", { x1: xx, x2: xx, y1: top, y2: bottom, stroke: "var(--tag)", "stroke-width": 2 }, svg); });
+    el("text", { x: R, y: bottom + 50, "text-anchor": "end", class: "sv-txt3", "font-size": 10.5 }, svg, "구간을 끌어 고르면 아래 플레임 그래프가 그 구간으로 바뀝니다");
+  }
+
+  /* 플레임 그래프(위가 바깥 함수) */
+  function flame(id, stacks, total) {
+    var svg = document.getElementById(id);
+    if (!svg) return;
+    var root = { name: "matching_svc", v: 0, kids: {} };
+    Object.keys(stacks).forEach(function (k) {
+      var n = root, v = stacks[k]; root.v += v;
+      k.split(";").forEach(function (f) {
+        n.kids[f] = n.kids[f] || { name: f, v: 0, kids: {} };
+        n = n.kids[f]; n.v += v;
+      });
+    });
+    var W = 420, H = 24, G = 2;
+    function cls(name, depth) {
+      if (name === "book_insert") return "fr-hot";
+      if (name === "check_risk") return "fr-risk";
+      return ["fr0", "fr1", "fr2"][depth % 3];
+    }
+    function draw(n, x0, depth) {
+      var w = n.v / total * W;
+      el("rect", { x: x0.toFixed(1), y: depth * (H + G), width: Math.max(w - G, 0.5).toFixed(1), height: H, rx: 2, class: cls(n.name, depth) + " sv-fr" }, svg);
+      if (w > 46) {
+        var pct = Math.round(n.v / total * 100);
+        var label = n.name + (w > 120 ? "  " + pct + "%" : "");
+        var maxChars = Math.floor((w - 10) / 6.6);
+        if (label.length > maxChars) label = label.slice(0, Math.max(maxChars - 1, 1)) + "…";
+        el("text", { x: (x0 + 5).toFixed(1), y: depth * (H + G) + 16, class: "sv-frtx", "font-size": 11 }, svg, label);
+      }
+      var cx = x0;
+      Object.keys(n.kids).forEach(function (k) { draw(n.kids[k], cx, depth + 1); cx += n.kids[k].v / total * W; });
+    }
+    draw(root, 0, 0);
+  }
+  var A = {
+    "main;handle_order;check_risk": 150,
+    "main;handle_order;match_order;book_insert": 67,
+    "main;handle_order;match_order;price_cross": 96,
+    "main;accept_orders": 57,
+    "main;expire_orders": 49,
+    "main;send_metrics": 22
+  };
+  var B = {
+    "main;handle_order;check_risk": 137,
+    "main;handle_order;match_order;book_insert": 621,
+    "main;handle_order;match_order;price_cross": 94,
+    "main;accept_orders": 40,
+    "main;expire_orders": 80,
+    "main;send_metrics": 8
+  };
+  function sum(o) { return Object.keys(o).reduce(function (s, k) { return s + o[k]; }, 0); }
+
+  /* 당일 일정 */
+  function drawSched() {
+    var box = document.getElementById("sched");
+    if (!box) return;
+    var S = 9 * 60, E = 17 * 60 + 30;
+    function pct(h, m) { return ((h * 60 + (m || 0) - S) / (E - S) * 100).toFixed(2) + "%"; }
+    var html = '<div class="row"><span></span><div class="ticks">';
+    [[9, 0], [10, 0], [11, 0], [12, 0], [13, 0], [14, 0], [15, 0], [16, 0], [17, 0]].forEach(function (t) {
+      html += '<span style="left:' + pct(t[0], t[1]) + '">' + t[0] + ':00</span>';
+    });
+    html += '</div></div>';
+    var lanes = [
+      ["단계", "", [[9, 0, 10, 30, "h", "계약·뼈대"], [10, 30, 14, 0, "h", "병렬 구현"], [14, 0, 15, 0, "h", "통합"], [15, 0, 16, 30, "h", "넓히기"], [16, 30, 17, 30, "h", "마감"]]],
+      ["팀원 1", "계약·통합·검수", [[9, 0, 10, 30, "a", "계약·뼈대"], [10, 30, 14, 0, "a", "리뷰·병합·인증"], [14, 0, 15, 0, "a", "통합"], [15, 0, 17, 30, "a", "리허설 · 녹화"]]],
+      ["AI 세션 A·B", "실행·함수 추적 / 상태·스케줄", [[9, 30, 14, 0, "b", "테스트 먼저 → 구현"], [15, 0, 16, 30, "a", "확장 기능"]]],
+      ["팀원 2", "시연 환경·검수", [[9, 0, 10, 30, "a", "시연 환경"], [10, 30, 14, 0, "a", "리뷰·시연 플로우"], [14, 0, 15, 0, "a", "화면 연결"], [15, 0, 17, 30, "a", "대본 · 발표 자료"]]],
+      ["AI 세션 C·D", "수집·데이터 / 화면", [[9, 0, 14, 0, "b", "테스트·시안 먼저 → 구현"], [15, 0, 16, 30, "a", "다듬기"]]]
+    ];
+    lanes.forEach(function (ln) {
+      html += '<div class="row"><span class="who">' + ln[0] + (ln[1] ? '<small>' + ln[1] + '</small>' : '') + '</span><div class="lane">';
+      ln[2].forEach(function (s) {
+        var l = pct(s[0], s[1]);
+        var w = ((s[2] * 60 + s[3]) - (s[0] * 60 + s[1])) / (E - S) * 100;
+        html += '<span class="seg ' + s[4] + '" style="left:' + l + ';width:calc(' + w.toFixed(2) + '% - 2px)">' + s[5] + '</span>';
+      });
+      html += '</div></div>';
+    });
+    html += '<div class="row"><span></span><div class="ms">';
+    [[10, 30, "계약 동결"], [12, 0, "중간 통합"], [14, 0, "중간 통합"], [15, 0, "개념 7개 점검", 1], [16, 30, "코드 동결"]].forEach(function (m) {
+      html += '<div class="' + (m[3] ? "key" : "") + '" style="left:' + pct(m[0], m[1]) + '">' + m[0] + ':' + (m[1] ? m[1] : "00") + '<br>' + m[2] + '</div>';
+    });
+    html += '</div></div>';
+    box.innerHTML = html;
+  }
+
+  drawTM();
+  flame("flA", A, sum(A));
+  flame("flB", B, sum(B));
+  drawSched();
+})();
+</script>
