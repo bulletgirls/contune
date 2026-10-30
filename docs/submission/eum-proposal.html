@@ -88,12 +88,12 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 .qnav span { font-size: 8pt; padding: 2px 9px; border-radius: 99px; border: 1px solid var(--line); color: var(--ink-3); white-space: nowrap; }
 .qnav span b { font-family: var(--f-mono); font-weight: 600; margin-right: 4px; }
 .qnav span.on { background: var(--brand); border-color: var(--brand); color: var(--paper); }
-.p-title { display: flex; flex-direction: column; gap: 1.2mm; }
-.ask { font-size: 9.5pt; font-weight: 600; color: var(--brand); display: flex; gap: 8px; align-items: baseline; }
-.ask .qn { font-family: var(--f-mono); font-size: 8.5pt; background: var(--brand-wash); padding: 0 7px; border-radius: 3px; }
-.ask .sec { color: var(--ink-3); font-weight: 500; font-size: 8.5pt; }
-.p-title h1 { font-size: 19pt; line-height: 1.32; letter-spacing: -0.02em; font-weight: 700; }
-.p-title .sub { font-size: 10pt; color: var(--ink-2); max-width: 230mm; }
+.p-title { display: flex; flex-direction: column; gap: 1.4mm; }
+.ask { font-size: 21pt; font-weight: 700; color: var(--ink); line-height: 1.25; letter-spacing: -0.025em; display: flex; flex-wrap: wrap; gap: 3mm; align-items: center; }
+.ask .qn { font-family: var(--f-mono); font-size: 14pt; font-weight: 600; background: var(--brand); color: var(--paper); padding: 0.4mm 2.6mm; border-radius: 4px; letter-spacing: 0; }
+.ask .sec { color: var(--brand); font-weight: 600; font-size: 9pt; letter-spacing: 0; border: 1px solid var(--brand); border-radius: 99px; padding: 0 3mm; }
+.p-title h1 { font-size: 14.5pt; line-height: 1.4; letter-spacing: -0.015em; font-weight: 700; color: var(--brand); border-left: 3px solid var(--brand); padding-left: 3mm; }
+.p-title .sub { font-size: 9.8pt; color: var(--ink-2); max-width: 230mm; padding-left: calc(3mm + 3px); }
 .content { min-height: 0; display: grid; gap: 7mm; }
 .p-foot { display: flex; justify-content: space-between; align-items: end; font-size: 7.5pt; color: var(--ink-3); border-top: 1px solid var(--line-2); padding-top: 1.6mm; }
 .p-foot b { font-family: var(--f-mono); color: var(--ink-2); }
@@ -131,6 +131,8 @@ th, td { text-align: left; vertical-align: top; padding: 1.7mm 2.2mm; border-bot
 thead th { font-size: 8pt; font-weight: 600; color: var(--ink-2); background: var(--card); border-bottom: 1px solid var(--line); }
 tbody th { font-weight: 600; white-space: nowrap; }
 tr.us > * { background: var(--brand-wash); }
+th.fill { background: var(--brand); color: var(--paper); width: 42%; }
+td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; }
 .c { text-align: center; }
 .y { color: var(--ok); font-weight: 600; }
 .n { color: var(--pain); font-weight: 600; }
@@ -146,9 +148,9 @@ tr.us > * { background: var(--brand-wash); }
 .tagline { font-size: 10pt; font-weight: 600; color: var(--ink-2); margin-top: -2mm; }
 .hook { font-size: 27pt; line-height: 1.3; letter-spacing: -0.03em; font-weight: 700; padding-top: 2mm; border-top: 1px solid var(--line); }
 .hook em { font-style: normal; color: var(--pain); }
-.hook-list { display: flex; flex-direction: column; gap: 1.6mm; }
-.hook-list div { display: grid; grid-template-columns: 19mm 1fr; gap: 3mm; align-items: baseline; font-size: 9.6pt; color: var(--ink-2); line-height: 1.5; }
-.hook-list .hn { font-family: var(--f-mono); font-weight: 600; color: var(--pain); font-size: 10.5pt; white-space: nowrap; }
+.hook-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1.8mm; }
+.hook-list li { position: relative; padding-left: 5mm; font-size: 9.8pt; color: var(--ink-2); line-height: 1.55; }
+.hook-list li::before { content: ""; position: absolute; left: 0.4mm; top: 0.6em; width: 2mm; height: 2mm; border-radius: 50%; background: var(--pain); }
 .answer { font-size: 10.5pt; font-weight: 600; background: var(--brand-wash); border-left: 3px solid var(--brand); padding: 2.4mm 3.6mm; border-radius: 0 4px 4px 0; line-height: 1.6; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { font-size: 8.2pt; padding: 1px 10px; border-radius: 99px; background: var(--card); color: var(--ink-2); }
@@ -160,33 +162,38 @@ tr.us > * { background: var(--brand-wash); }
 .qa-item .ref { font-size: 7.8pt; color: var(--brand); font-weight: 600; margin-top: 0.6mm; }
 
 /* Q1: 합치는 그림 */
-.merge { display: grid; grid-template-columns: minmax(0, 1fr) 8mm minmax(0, 1.08fr); align-items: center; gap: 2mm; }
+.merge { display: grid; grid-template-columns: minmax(0, 1.12fr) 7mm minmax(0, 1fr); align-items: center; gap: 2mm; }
 .merge .ins { display: flex; flex-direction: column; gap: 1.6mm; }
 .merge .in { border: 1px solid var(--line); border-radius: 4px; padding: 1.6mm 2.6mm; display: flex; justify-content: space-between; gap: 6px; font-size: 8.8pt; }
-.merge .in span:last-child { color: var(--ink-3); font-size: 7.8pt; text-align: right; }
-.merge .in.new { border-style: dashed; border-color: var(--brand); }
-.merge .in.new span:last-child { color: var(--brand); font-weight: 600; }
+.merge .in span:last-child { color: var(--ink-3); font-size: 7.8pt; text-align: right; white-space: nowrap; }
+.merge .in small { color: var(--ink-3); font-size: 7.8pt; }
+.merge .in em, .merge .eum .r em { font-style: normal; color: var(--brand); font-weight: 600; }
+.merge .in.biz { border-color: var(--brand); border-style: dashed; }
+.merge .eum .t small { font-family: var(--f-body); font-size: 7.6pt; font-weight: 500; color: var(--ink-3); margin-left: 6px; letter-spacing: 0; }
 .merge .arrow { font-size: 16pt; color: var(--ink-3); text-align: center; }
 .merge .eum { border: 2px solid var(--brand); border-radius: 6px; padding: 3mm; display: flex; flex-direction: column; gap: 1.6mm; background: var(--brand-wash); }
 .merge .eum .t { font-family: var(--f-brand); font-weight: 800; font-size: 15pt; color: var(--brand); line-height: 1.1; }
 .merge .eum .r { font-size: 8.4pt; background: var(--paper); border-radius: 3px; padding: 1.2mm 2.4mm; display: flex; justify-content: space-between; gap: 6px; }
-.merge .eum .r .tag { font-size: 7.4pt; }
+.merge .eum .r .tag { font-size: 7.4pt; align-self: center; }
 .merge-out { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2mm; margin-top: 2.2mm; }
 .merge-out div { text-align: center; font-size: 8.4pt; border: 1px solid var(--line); border-radius: 4px; padding: 1.4mm; }
 .merge-out div b { display: block; font-size: 8.8pt; }
 .merge-db { text-align: center; background: var(--deep); color: var(--on-deep); border-radius: 4px; padding: 1.8mm; font-size: 8.6pt; margin-top: 2.2mm; }
 .merge-db b { font-size: 9.4pt; }
 .merge-db span { color: var(--on-deep-2); }
-.parts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2mm; }
-.parts div { border-top: 2px solid var(--brand); padding-top: 1.4mm; font-size: 8.4pt; color: var(--ink-2); line-height: 1.5; }
-.parts div b { display: block; color: var(--ink); font-size: 9pt; }
+.eq { display: flex; align-items: stretch; gap: 2mm; }
+.eq .op { display: flex; align-items: center; font-family: var(--f-mono); font-size: 16pt; font-weight: 600; color: var(--ink-3); }
+.eq-b { flex: 1; border: 1px solid var(--line); border-radius: 5px; padding: 2mm 2.6mm; display: flex; flex-direction: column; gap: 0.4mm; font-size: 8.2pt; color: var(--ink-2); line-height: 1.45; }
+.eq-b b { font-size: 11pt; color: var(--ink); }
+.eq-b small { font-size: 7.8pt; color: var(--brand); font-weight: 600; }
+.eq-b.eq-r { flex: 0.8; border: 2px solid var(--brand); background: var(--brand-wash); justify-content: center; }
+.eq-b.eq-r b { font-family: var(--f-brand); font-weight: 800; color: var(--brand); font-size: 15pt; letter-spacing: -0.01em; }
 
 /* Q1: 하루를 잇기 (지금 vs 이음) */
 .tl { display: flex; flex-direction: column; gap: 2mm; }
-.tl-row { display: grid; grid-template-columns: 24mm 2.2fr 3fr 2fr 2fr; align-items: stretch; }
-.tl-row.axis > span { font-size: 8.4pt; font-weight: 700; padding: 0 2mm; border-left: 1px dashed var(--line); }
+.tl-row { display: grid; grid-template-columns: 26mm 2fr 3.4fr 2fr; align-items: stretch; }
+.tl-row.axis > span { font-size: 9.4pt; font-weight: 700; padding: 0 2mm; border-left: 1px dashed var(--line); }
 .tl-row.axis > span:first-child { border: 0; }
-.tl-row.axis small { display: block; font-family: var(--f-mono); font-size: 7.6pt; color: var(--ink-3); font-weight: 500; }
 .lane-l { font-weight: 700; font-size: 10pt; display: flex; flex-direction: column; justify-content: center; line-height: 1.3; }
 .lane-l small { font-weight: 500; font-size: 7.8pt; color: var(--ink-3); }
 .now .lane-l { color: var(--pain); }
@@ -197,12 +204,12 @@ tr.us > * { background: var(--brand-wash); }
 .nb small { font-weight: 400; color: var(--ink-3); font-size: 7.6pt; }
 .nb.none { border-style: dashed; background: transparent; color: var(--ink-3); font-weight: 400; justify-content: center; }
 .now-cap { grid-column: 2 / -1; font-size: 8.2pt; color: var(--pain); font-weight: 600; padding-top: 0.6mm; }
-.eband { grid-column: 2 / -1; display: grid; grid-template-columns: 2.2fr 3fr 2fr 2fr; border: 2px solid var(--brand); border-radius: 6px; background: var(--brand-wash); position: relative; padding-top: 7mm; overflow: hidden; }
+.eband { grid-column: 2 / -1; display: grid; grid-template-columns: 2fr 3.4fr 2fr; border: 2px solid var(--brand); border-radius: 6px; background: var(--brand-wash); position: relative; padding-top: 7mm; overflow: hidden; }
 .eband .thread { position: absolute; left: 0; right: 0; top: 0; height: 5.4mm; background: var(--tag); color: var(--tag-ink); font-family: var(--f-mono); font-size: 8pt; font-weight: 600; display: flex; align-items: center; justify-content: space-between; padding: 0 3mm; }
 .eband .st { padding: 2mm 3mm 2.4mm; display: flex; align-items: center; gap: 2mm; font-size: 11pt; font-weight: 700; color: var(--ink); border-left: 1px dashed color-mix(in srgb, var(--brand) 40%, transparent); }
 .eband .st:first-of-type { border-left: 0; }
 .eband .st .n { font-family: var(--f-mono); width: 6.4mm; height: 6.4mm; border-radius: 50%; background: var(--brand); color: var(--paper); display: grid; place-items: center; font-size: 8.6pt; flex: none; }
-.steps4 { display: grid; grid-template-columns: 24mm 2.2fr 3fr 2fr 2fr; }
+.steps4 { display: grid; grid-template-columns: 26mm 2fr 3.4fr 2fr; }
 .steps4 .c4 { border-top: 2px solid var(--brand); margin-right: 3mm; padding-top: 1.6mm; font-size: 8.6pt; color: var(--ink-2); line-height: 1.55; display: flex; flex-direction: column; gap: 0.8mm; }
 .steps4 .c4:last-child { margin-right: 0; }
 .steps4 .c4 b { color: var(--ink); font-size: 9.4pt; }
@@ -388,7 +395,9 @@ tr.us > * { background: var(--brand-wash); }
   .cover .content, .cols-2, .cols-73, .cols-64, .cols-46, .pains, .gains, .merge, .arch { grid-template-columns: 1fr; }
   .gains { grid-template-rows: none; }
   .merge .arrow, .arch .pipe { transform: rotate(90deg); }
-  .silos, .t3, .parts, .steps-h, .scope, .tv-out, .merge-out { grid-template-columns: 1fr 1fr; }
+  .silos, .t3, .steps-h, .scope, .tv-out, .merge-out { grid-template-columns: 1fr 1fr; }
+  .eq { flex-wrap: wrap; }
+  .eq-b { flex-basis: 40%; }
   .t5 { grid-template-columns: 1fr 1fr; }
   .tl-row, .steps4, .eband { grid-template-columns: 1fr; }
   .tl-row.axis, .steps4 > span:first-child { display: none; }
@@ -419,21 +428,21 @@ tr.us > * { background: var(--brand-wash); }
   <div class="content">
     <div class="cover-left">
       <div class="mark-row"><div class="big-mark">이음<small>E:UM</small></div></div>
-      <p class="tagline">배치 실행·서버 관제·업무 관제를 하나로 잇는 사내 운영 도구</p>
-      <h1 class="hook">사건은 하나인데,<br>도구는 <em>셋</em>입니다.</h1>
-      <div class="hook-list">
-        <div><span class="hn">화면 3개</span><span>장애 하나에 도구 3개를 오갑니다. 시각 맞추기는 사람 몫입니다.</span></div>
-        <div><span class="hn">3벌</span><span>계약도, 서버도, 데이터 저장소도 따로입니다. 데이터는 서로 엮이지 않습니다.</span></div>
-        <div><span class="hn">0</span><span>어느 코드가 느렸는지는 어느 도구에도 남지 않습니다.</span></div>
-      </div>
-      <div class="answer">이음은 셋을 하나로 합치고, 실행마다 <span class="tag">실행 번호</span>를 붙여 모든 기록을 잇습니다.</div>
+      <p class="tagline">배치 실행·서버 관제·업무 관제를 하나로 잇는 시스템 운영 도구</p>
+      <h1 class="hook">사건은 하나인데,<br>도구는 <em>여럿</em>입니다.</h1>
+      <ul class="hook-list">
+        <li>장애 한 건을 분석하려면 운영자의 경험과 숙련도에 의존하여 여러 도구를 뒤져봐야 합니다.</li>
+        <li>서버도, 데이터 저장소도 따로입니다. 데이터는 서로 엮이지 않고 분석을 위해 다루기 어렵습니다.</li>
+        <li>어느 코드가 장애와 지연을 유발하는지 어떤 도구에도 남지 않습니다.</li>
+      </ul>
+      <div class="answer">이음은 여러 도구를 하나로 합치고, 실행마다 <span class="tag">실행 번호</span>를 붙여 모든 기록을 잇습니다.</div>
       <div class="chips"><span class="chip">사용자: 운영 담당자·개발자</span><span class="chip">대상: 폐쇄망 리눅스 서버</span><span class="chip">결과물: 하루 만에 만드는 검증판</span></div>
     </div>
     <div class="qa">
-      <div class="qa-item"><span class="qn">Q1</span><div><div class="q">그래서 대체 뭘 만드는 건가요?</div><div class="a">스케줄러·서버 관제·업무 관제에 함수 추적을 더한 운영 도구. 실행 파일 하나로 설치합니다.</div><div class="ref">2~3쪽</div></div></div>
-      <div class="qa-item"><span class="qn">Q2</span><div><div class="q">기존의 뭘 보완하는 건가요?</div><div class="a">도구 사이의 빈틈. 서로 이어지지 않고, 데이터는 갇혀 있고, 비용은 세 갈래로 나갑니다.</div><div class="ref">4~6쪽</div></div></div>
-      <div class="qa-item"><span class="qn">Q3</span><div><div class="q">뭐가 좋아지는 건가요?</div><div class="a">도구가 하나로 줄고, 배치를 업무에 맞춰 돌리고, 지난 장애도 원인 함수까지 보고, 데이터를 분석에 씁니다.</div><div class="ref">7~13쪽</div></div></div>
-      <div class="qa-item"><span class="qn">Q4</span><div><div class="q">어떻게 가능한 건가요?</div><div class="a">번호 하나로 기록을 잇습니다. 어려운 부분은 perf·SQLite 같은 검증된 부품이 맡고, 2명이 AI 세션 4개로 하루에 만듭니다.</div><div class="ref">14~15쪽</div></div></div>
+      <div class="qa-item"><span class="qn">Q1</span><div><div class="q">그래서 대체 뭘 만드는 건가요?</div><div class="a">스케줄러, 서버 관제, 함수 호출 레벨의 업무 관제 도구를 실행 파일 하나로 통합합니다.</div><div class="ref">2~3쪽</div></div></div>
+      <div class="qa-item"><span class="qn">Q2</span><div><div class="q">기존의 뭘 보완하는 건가요?</div><div class="a">비어 있는 도구 사이. 도구끼리 이어지지 않고, 데이터는 제품 안에 갇혀 있고, 비용은 도구마다 나갑니다.</div><div class="ref">4~6쪽</div></div></div>
+      <div class="qa-item"><span class="qn">Q3</span><div><div class="q">뭐가 좋아지는 건가요?</div><div class="a">시스템의 복잡도와 관리 비용이 줄고, 배치를 유연하게 실행하고, 장애 원인을 한눈에 파악하고, 수집된 데이터를 마이닝할 수 있는 가능성을 열어 줍니다.</div><div class="ref">7~13쪽</div></div></div>
+      <div class="qa-item"><span class="qn">Q4</span><div><div class="q">어떻게 가능한 건가요?</div><div class="a">여러 도구를 하나의 키로 잇습니다. 단순화된 아키텍처의 확고한 기반을 2명이 AI 세션 4개로 구현·입증합니다. 확장 가능한 인터페이스와 모듈 설계로, 시간이 허락하는 한 더 정교한 기능을 얼마든지 추가할 수 있도록 계획합니다.</div><div class="ref">14~15쪽</div></div></div>
     </div>
   </div>
 </section>
@@ -442,37 +451,38 @@ tr.us > * { background: var(--brand-wash); }
 <section class="page" data-q="1">
   <div class="p-title">
     <div class="ask"><span class="qn">Q1</span>그래서 대체 뭘 만드는 건가요?</div>
-    <h1>도구 3개가 하던 일을 실행 파일 하나로.</h1>
-    <p class="sub">스케줄러·서버 관제·업무 관제를 합치고, 없던 함수 추적을 더합니다. 해커톤에서는 넷이 이어져 도는 검증판을 만듭니다.</p>
+    <h1>도구 여러 개가 하던 일을 실행 파일 하나로.</h1>
+    <p class="sub">스케줄러·서버 관제·업무 관제의 추적 수준을 강화하여 하나로 통합합니다.</p>
   </div>
   <div class="content cols-64">
     <div class="col center">
       <div class="merge">
         <div class="ins">
           <div class="in"><span><b>배치 스케줄러</b><br>정해진 시각에 작업 실행</span><span>지금: 상용<br>Control-M</span></div>
-          <div class="in"><span><b>서버 관제</b><br>CPU·메모리·프로세스</span><span>지금: 상용<br>onTune</span></div>
-          <div class="in"><span><b>업무 관제</b><br>주문 접수·처리·응답시간</span><span>지금: 사내<br>개발 APM</span></div>
-          <div class="in new"><span><b>함수 단위 추적</b><br>CPU를 쓴 코드 기록</span><span>지금: 없음<br>새로 추가</span></div>
+          <div class="in"><span><b>서버 관제</b><br>서버·프로세스의 CPU·메모리</span><span>지금: 상용<br>onTune</span></div>
+          <div class="in biz"><span><b>업무 관제</b> <small>업무 프로세스 추적</small><br>주문 접수·처리·응답시간<br><em>+ 함수 호출 단위까지</em></span><span>지금: 사내 APM<br>함수 단위 없음</span></div>
         </div>
         <div class="arrow">→</div>
         <div class="eum">
-          <div class="t">이음</div>
-          <div class="r"><span>실행: 플로우·선후행·재시도·원격 실행</span><span class="tag">번호</span></div>
-          <div class="r"><span>자원: 서버·실행별 CPU·메모리, 1초</span><span class="tag">번호</span></div>
-          <div class="r"><span>업무: 접수·처리·대기·응답시간, 1초</span><span class="tag">번호</span></div>
-          <div class="r"><span>함수: CPU를 쓴 함수, 10초 단위</span><span class="tag">번호</span></div>
+          <div class="t">이음<small>+ 표시가 강화한 추적</small></div>
+          <div class="r"><span>실행: 플로우·재시도 <em>+ 띄운 서비스까지</em></span><span class="tag">번호</span></div>
+          <div class="r"><span>자원: 서버 <em>+ 실행별</em> CPU·메모리</span><span class="tag">번호</span></div>
+          <div class="r"><span>업무: 접수·처리·응답 <em>+ 함수 호출</em></span><span class="tag">번호</span></div>
         </div>
       </div>
-      <div class="merge-db"><b>DB 하나, 공개 스키마</b> <span>· 실행 이력 · 서버 자원 · 실행별 자원 · 업무 지표 · 함수 기록</span></div>
+      <div class="merge-db"><b>통합 개방 DB</b> <span>: 실행 이력 · 서버 자원 · 실행별 자원 · 업무 지표 · 함수 기록</span></div>
       <div class="merge-out"><div><b>웹 화면</b>대시보드·플로우·타임머신</div><div><b>SQL 조회</b>읽기 전용</div><div><b>내보내기</b>CSV·함수 기록</div></div>
     </div>
     <div class="col center">
       <h2>설치 구성</h2>
-      <div class="parts">
-        <div><b>매니저 1대</b>스케줄러·저장·화면</div>
-        <div><b>서버마다 에이전트</b>실행·수집·함수 기록</div>
-        <div><b>실행 파일 1개</b>역할만 바꿔 실행</div>
+      <div class="eq">
+        <div class="eq-b"><b>에이전트 1</b><small>서버당</small>실행·수집·함수 기록</div>
+        <span class="op">+</span>
+        <div class="eq-b"><b>매니저 1</b><small>DB 저장·스케줄링·화면</small>에이전트를 모아 관리</div>
+        <span class="op">=</span>
+        <div class="eq-b eq-r"><b>E:UM</b><small>실행 파일 하나</small></div>
       </div>
+      <p class="note">같은 실행 파일을 역할만 바꿔 띄웁니다.</p>
       <div class="tbl-wrap">
       <table>
         <thead><tr><th>운영 요구</th><th>이음의 방식</th></tr></thead>
@@ -489,43 +499,40 @@ tr.us > * { background: var(--brand-wash); }
   </div>
 </section>
 
-<!-- 3. Q1 하루를 잇기 -->
+<!-- 3. Q1 운영 흐름을 잇기 -->
 <section class="page" data-q="1">
   <div class="p-title">
-    <div class="ask"><span class="qn">Q1</span>그래서 대체 뭘 만드는 건가요? <span class="sec">하루 운영으로 보기</span></div>
-    <h1>끊겨 있던 하루를 번호 하나로 잇습니다.</h1>
-    <p class="sub">주식 체결 업무의 하루. 지금은 시간대마다 도구가 바뀌고, 도구끼리 기록이 이어지지 않습니다.</p>
+    <div class="ask"><span class="qn">Q1</span>그래서 대체 뭘 만드는 건가요? <span class="sec">운영 흐름으로 보기</span></div>
+    <h1>띄우고, 지켜보고, 돌아보는 일을 번호 하나로 잇습니다.</h1>
+    <p class="sub">지금은 단계마다 도구가 바뀌고, 도구끼리 기록이 이어지지 않습니다.</p>
   </div>
   <div class="content" style="display: flex; flex-direction: column; gap: 5mm; justify-content: center">
     <div class="tl">
-      <div class="tl-row axis"><span></span><span><small>05:30</small>개장 준비</span><span><small>09:00~15:30</small>장중</span><span><small>15:40</small>정산</span><span><small>언제든</small>돌아보기</span></div>
+      <div class="tl-row axis"><span></span><span>서비스 준비 작업</span><span>서비스</span><span>돌아보기</span></div>
       <div class="tl-row now">
-        <span class="lane-l">지금<small>도구 3개</small></span>
+        <span class="lane-l">지금<small>여러 개의 도구</small></span>
         <div class="nc"><div class="nb">Control-M<small>배치 실행</small></div></div>
         <div class="nc"><div class="nb">onTune<small>서버 자원</small></div><div class="nb">사내 APM<small>업무 지표</small></div><div class="nb none">함수 기록 없음</div></div>
-        <div class="nc"><div class="nb">Control-M<small>정산 실행</small></div></div>
         <div class="nc"><div class="nb">제품별 화면<small>따로 조회</small></div></div>
       </div>
       <div class="tl-row"><span></span><span class="now-cap">✕ 도구가 바뀔 때마다 기록이 끊김 → 사람이 시각·서버 이름으로 맞춤</span></div>
       <div class="tl-row">
         <span class="lane-l eum-l">이음<small>도구 1개</small></span>
         <div class="eband">
-          <div class="thread"><span>실행 번호 01JBQ7…</span><span>하루 끝까지 같은 번호 →</span></div>
+          <div class="thread"><span>실행 번호 01JBQ7…</span><span>서비스가 끝날 때까지 같은 번호 →</span></div>
           <div class="st"><span class="n">1</span>띄운다</div>
           <div class="st"><span class="n">2</span>지켜본다</div>
-          <div class="st"><span class="n">3</span>업무 보고 실행</div>
-          <div class="st"><span class="n">4</span>돌아본다</div>
+          <div class="st"><span class="n">3</span>돌아본다</div>
         </div>
       </div>
     </div>
     <div class="steps4">
       <span></span>
-      <div class="c4"><b>① 띄운다</b>개장 준비 플로우가 원장 2개를 동시에 적재하고 체결 서비스를 기동. 실패하면 자동 재시도. 서비스에 번호를 넘김<span class="was">지금은 Control-M</span></div>
-      <div class="c4"><b>② 지켜본다</b>서버 자원·주문 접수·처리·대기·응답시간은 1초, CPU를 쓴 함수는 10초 단위로 같은 번호에 기록. 스크립트가 끝나도 서비스는 계속 추적<span class="was">지금은 onTune + 사내 APM, 함수 기록은 없음</span></div>
-      <div class="c4"><b>③ 업무 보고 실행</b>체결 대기 0건을 확인한 뒤 정산 시작 <span class="badge ext">확장 목표</span><span class="was">지금은 시각이 되면 실행</span></div>
-      <div class="c4"><b>④ 돌아본다</b>지난 구간을 다시 펼쳐 함수까지 확인. SQL·CSV로 용량·종료 시각·배포 전후 분석<span class="was">지금은 제품 화면 안에서만</span></div>
+      <div class="c4"><b>① 띄운다</b>개장 준비 플로우가 서비스 기동을 책임지고 번호를 발급합니다.<span class="was">지금은 Control-M</span></div>
+      <div class="c4"><b>② 지켜본다</b>시스템 자원 사용 상황, 서비스의 실행 콜스택 정보를 수집하고 추적합니다. 띄운 스크립트가 끝나도 서비스는 같은 번호로 계속 기록됩니다.<span class="was">지금은 onTune + 사내 APM, 함수 기록은 없음</span></div>
+      <div class="c4"><b>③ 돌아본다</b>지난 구간을 다시 펼쳐 함수까지 확인합니다. SQL·CSV로 용량과 배포 전후를 분석합니다.<span class="was">지금은 제품 화면 안에서만</span></div>
     </div>
-    <div class="callout tagged">띄우는 도구가 지켜보는 일까지 맡아야 <span class="tag">실행 번호</span>가 끊기지 않습니다. 세 도구를 하나로 합치는 이유입니다.</div>
+    <div class="callout tagged">띄우는 도구가 지켜보는 일까지 맡아야 <span class="tag">실행 번호</span>가 끊기지 않습니다. 여러 도구를 하나로 합치는 이유입니다.</div>
   </div>
 </section>
 
@@ -533,8 +540,8 @@ tr.us > * { background: var(--brand-wash); }
 <section class="page" data-q="2">
   <div class="p-title">
     <div class="ask"><span class="qn">Q2</span>기존의 뭘 보완하는 건가요?</div>
-    <h1>도구는 제 몫을 합니다. 비어 있는 건 도구 사이입니다.</h1>
-    <p class="sub">세 도구를 잇는 공통 키가 없습니다. 어느 코드가 CPU를 썼는지는 맡는 도구가 없습니다.</p>
+    <h1>비어 있는 도구 사이를 하나로 잇습니다.</h1>
+    <p class="sub">도구마다 제 몫은 합니다. 하지만 도구를 잇는 공통 키가 없고, 어느 코드가 CPU를 썼는지는 어느 도구도 모릅니다.</p>
   </div>
   <div class="content cols-46">
     <div class="col center">
@@ -551,16 +558,16 @@ tr.us > * { background: var(--brand-wash); }
       <h2>비어 있는 곳과 이음이 채우는 것</h2>
       <div class="tbl-wrap">
       <table>
-        <thead><tr><th>도구</th><th>비어 있는 곳</th><th>이음이 채우는 것</th></tr></thead>
+        <thead><tr><th>도구</th><th>비어 있는 곳</th><th class="fill">이음이 채우는 것</th></tr></thead>
         <tbody>
-          <tr><th>배치 스케줄러</th><td>띄운 서비스의 이후 상태를 모름. 업무가 바빠도 시각이 되면 실행</td><td>번호를 서비스까지 이어 추적. 업무 지표로 실행 조건 <span class="badge ext">확장</span></td></tr>
-          <tr><th>서버 관제</th><td>프로세스를 띄운 실행, CPU를 쓴 함수를 모름</td><td>번호로 실행과 연결. 함수 단위 상시 기록</td></tr>
-          <tr><th>업무 관제</th><td>지연 원인이 업무량·자원·코드 중 무엇인지 모름</td><td>업무 지표·자원·함수를 한 시간축에</td></tr>
-          <tr><th>세 도구 공통</th><td>데이터는 제품 안에. 계약·서버·화면 3벌</td><td>DB 하나, 공개 스키마, 실행 파일 1개</td></tr>
+          <tr><th>배치 스케줄러</th><td>띄운 서비스의 이후 상태를 모름. 업무가 바빠도 시각이 되면 실행</td><td class="fill">태어난 서비스는 죽을 때까지 정밀 감시당합니다.</td></tr>
+          <tr><th>서버 관제</th><td>프로세스를 띄운 실행, CPU를 쓴 함수를 모름</td><td class="fill">서버 리소스를 축내는 서비스는 그 자리에서 즉시 코드 레벨까지 파헤쳐집니다.</td></tr>
+          <tr><th>업무 관제</th><td>지연 원인이 업무량·자원·코드 중 무엇인지 모름</td><td class="fill">업무가 밀리면 업무량·자원·함수가 한 시간축에 펼쳐집니다.</td></tr>
+          <tr><th>도구 공통</th><td>데이터는 제품 안에. 계약·서버·화면이 도구마다 따로</td><td class="fill">통합·개방된 DB와 이를 다루는 실행 파일 하나. 극도의 단순함을 추구합니다.</td></tr>
         </tbody>
       </table>
       </div>
-      <div class="takeaway"><small>보완할 곳</small><b>도구 사이의 연결과 데이터입니다.</b></div>
+      <div class="takeaway"><small>보완할 곳</small><b>도구 사이의 연결, 코드 단위 기록, 갇힌 데이터.</b></div>
     </div>
   </div>
 </section>
@@ -573,7 +580,7 @@ tr.us > * { background: var(--brand-wash); }
   </div>
   <div class="content pains">
     <div class="pain-col">
-      <div class="pain-h"><span class="i">불편 1</span><span class="t">특이상황 확인이 번거롭다</span><p>장중 체결 지연을 지금 따라가는 순서</p></div>
+      <div class="pain-h"><span class="i">불편 1</span><span class="t">특이상황 확인이 번거롭다</span><p>장중 체결 지연을 지금 따라가는 순서. 어디부터 볼지는 운영자 경험에 달려 있습니다.</p></div>
       <div class="mini-steps">
         <div class="ms"><span class="n">1</span><span class="w">업무 관제</span><span>응답시간 상승, 처리 대기 증가 확인</span></div>
         <div class="ms"><span class="n">2</span><span class="w">운영 담당</span><span>해당 서비스의 서버·프로세스 확인</span></div>
@@ -581,7 +588,7 @@ tr.us > * { background: var(--brand-wash); }
         <div class="ms"><span class="n">4</span><span class="w">스케줄러</span><span>서비스를 띄운 실행, 같은 시각 다른 작업 확인</span></div>
         <div class="ms bad"><span class="n">5</span><span class="w">개발자</span><span>폭주는 이미 끝남. <b>부하를 다시 만들어 재현</b> 후 측정</span></div>
       </div>
-      <div class="pain-foot">도구 3개, 5단계. 원인 코드는 재현부터</div>
+      <div class="pain-foot">여러 도구, 5단계. 원인 코드는 재현부터</div>
     </div>
     <div class="pain-col">
       <div class="pain-h"><span class="i">불편 2</span><span class="t">쌓인 데이터를 쓰기 어렵다</span><p>운영 질문 대부분은 두 도구 이상의 데이터를 엮어야 답이 나옵니다.</p></div>
@@ -599,11 +606,11 @@ tr.us > * { background: var(--brand-wash); }
         <div class="cb lic"><span>스케줄러 라이선스·유지보수</span><span>상용 · 매년</span></div>
         <div class="cb lic"><span>서버 관제 라이선스·유지보수</span><span>상용 · 매년</span></div>
         <div class="cb own"><span>업무 관제(사내 APM) 유지보수</span><span>사내 인력</span></div>
-        <div class="cb own"><span>제품별 관리 서버·저장소</span><span>3벌</span></div>
+        <div class="cb own"><span>제품별 관리 서버·저장소</span><span>도구마다</span></div>
         <div class="cb own"><span>계약 갱신·교육·문의 창구</span><span>제품마다</span></div>
       </div>
       <p class="note">제품에 없는 기능은 벤더 개발이나 별도 연동을 기다려야 합니다.</p>
-      <div class="pain-foot">쓰는 건 일부, 비용은 세 갈래</div>
+      <div class="pain-foot">쓰는 건 일부, 비용은 도구마다</div>
     </div>
   </div>
 </section>
@@ -628,7 +635,7 @@ tr.us > * { background: var(--brand-wash); }
         </tbody>
       </table>
       </div>
-      <p class="note">B도 결국 세 제품을 잇는 데이터 모델과 연동 코드를 직접 만들어야 합니다. 그 부분이 이 과제의 핵심이라 처음부터 하나로 만듭니다.</p>
+      <p class="note">B도 결국 여러 제품을 잇는 데이터 모델과 연동 코드를 직접 만들어야 합니다. 그 부분이 이 과제의 핵심이라 처음부터 하나로 만듭니다.</p>
     </div>
     <div class="col center">
       <div class="card"><h3>번호는 띄울 때만 붙일 수 있습니다</h3><p>택배 송장번호와 같습니다. 보낼 때 붙여야 이후 기록이 조회됩니다. 배치가 서비스를 띄울 때 번호를 넘겨야 자원·업무 지표·함수 기록이 같은 번호를 답니다.</p></div>
@@ -648,25 +655,25 @@ tr.us > * { background: var(--brand-wash); }
   <div class="content gains">
     <div class="gain">
       <span class="no">①</span>
-      <div class="t">운영이 단순해집니다</div>
-      <div class="ba"><span class="l">지금</span><span>도구 3개, 상용 계약 2건, 관리 서버 3벌</span><span class="l">이음</span><span class="after">실행 파일 1개, 화면 1개, 방화벽 포트 1개</span></div>
+      <div class="t">복잡도와 관리 비용이 줄어듭니다</div>
+      <div class="ba"><span class="l">지금</span><span>도구마다 계약·관리 서버·화면이 따로</span><span class="l">이음</span><span class="after">실행 파일 1개, 화면 1개, 방화벽 포트 1개</span></div>
       <div class="ref">화면 ① 대시보드 · 8쪽</div>
     </div>
     <div class="gain">
       <span class="no">②</span>
-      <div class="t">배치를 업무에 맞춰 돌립니다</div>
+      <div class="t">배치를 유연하게 실행합니다</div>
       <div class="ba"><span class="l">지금</span><span>작업 목록·로그 위주. 업무가 바빠도 시각이 되면 실행</span><span class="l">이음</span><span class="after">병렬·합류·서버 넘기·재시도를 그래프로. "체결 대기 0건 뒤 정산" 같은 조건 실행 <span class="badge ext">확장</span></span></div>
       <div class="ref">화면 ② 플로우 그래프 · 9쪽</div>
     </div>
     <div class="gain">
       <span class="no">③</span>
-      <div class="t">지난 장애도 원인 함수까지 봅니다</div>
-      <div class="ba"><span class="l">지금</span><span>도구 3개, 5단계. 원인 코드는 재현 후에</span><span class="l">이음</span><span class="after">화면 1개, 2단계. 재현 없이 함수까지</span></div>
+      <div class="t">장애 원인을 한눈에 파악합니다</div>
+      <div class="ba"><span class="l">지금</span><span>여러 도구, 5단계. 원인 코드는 재현 후에</span><span class="l">이음</span><span class="after">화면 1개, 2단계. 재현 없이 함수까지</span></div>
       <div class="ref">화면 ③ 타임머신 · ④ 플레임 그래프 · 10~11쪽</div>
     </div>
     <div class="gain">
       <span class="no">④</span>
-      <div class="t">쌓인 데이터가 자산이 됩니다</div>
+      <div class="t">쌓인 데이터를 마이닝합니다</div>
       <div class="ba"><span class="l">지금</span><span>제품 화면·보고서 안에서만 확인</span><span class="l">이음</span><span class="after">운영 데이터 5종을 SQL로 조인. CSV로 통계·머신러닝에</span></div>
       <div class="ref">화면 ⑤ 데이터 꺼내기 · 12쪽</div>
     </div>
@@ -676,9 +683,9 @@ tr.us > * { background: var(--brand-wash); }
 <!-- 8. Q3 ① 대시보드 -->
 <section class="page" data-q="3">
   <div class="p-title">
-    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">① 운영이 단순해집니다</span></div>
+    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">① 복잡도와 관리 비용</span></div>
     <h1>서버·업무·배치를 한 화면에.</h1>
-    <p class="sub">지금은 도구 3개를 따로 열어야 보이는 내용입니다.</p>
+    <p class="sub">지금은 도구를 여러 개 열어야 보이는 내용입니다.</p>
   </div>
   <div class="content cols-73">
     <div class="col center">
@@ -712,7 +719,7 @@ tr.us > * { background: var(--brand-wash); }
     <div class="side">
       <div class="card"><h3>무엇을 보나</h3><p>서버 자원, 주문 접수·처리·대기·응답시간, 오늘의 배치.</p></div>
       <div class="card"><h3>어떻게 쓰나</h3><p>업무 지표에 실행 번호가 붙어 있습니다. 응답시간 타일을 누르면 해당 실행 기록으로 바로 갑니다.</p></div>
-      <div class="takeaway"><small>좋아지는 점</small><b>화면 3개 점검이 화면 1개로.</b></div>
+      <div class="takeaway"><small>좋아지는 점</small><b>여러 화면을 오가던 점검이 화면 하나로.</b></div>
     </div>
   </div>
 </section>
@@ -720,7 +727,7 @@ tr.us > * { background: var(--brand-wash); }
 <!-- 9. Q3 ② 플로우 그래프 -->
 <section class="page" data-q="3">
   <div class="p-title">
-    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">② 배치를 업무에 맞춰</span></div>
+    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">② 배치를 유연하게</span></div>
     <h1>배치 흐름은 그래프로, 실행은 업무에 맞춰.</h1>
     <p class="sub">병렬·합류·서버 넘기·재시도를 한눈에 봅니다.</p>
   </div>
@@ -779,7 +786,7 @@ tr.us > * { background: var(--brand-wash); }
 <!-- 10. Q3 ③ 타임머신 -->
 <section class="page" data-q="3">
   <div class="p-title">
-    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">③ 지난 장애도 원인 함수까지</span></div>
+    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">③ 장애 원인을 한눈에</span></div>
     <h1>지나간 장애도 다시 펼쳐 봅니다.</h1>
     <p class="sub">주문이 초당 1,500건에서 6,000건으로 몰린 3분. 서비스의 실행 번호로 모아 한 시간축에 놓았습니다.</p>
   </div>
@@ -808,7 +815,7 @@ tr.us > * { background: var(--brand-wash); }
 <!-- 11. Q3 ③ 플레임 그래프 -->
 <section class="page" data-q="3">
   <div class="p-title">
-    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">③ 지난 장애도 원인 함수까지</span></div>
+    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">③ 장애 원인을 한눈에</span></div>
     <h1>CPU를 쓴 함수까지 내려갑니다. 재현은 필요 없습니다.</h1>
     <p class="sub">위가 바깥 함수, 아래가 안쪽 함수. 막대 폭은 CPU 사용 비율입니다.</p>
   </div>
@@ -848,8 +855,8 @@ tr.us > * { background: var(--brand-wash); }
 <!-- 12. Q3 ④ 데이터 -->
 <section class="page" data-q="3">
   <div class="p-title">
-    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">④ 쌓인 데이터가 자산으로</span></div>
-    <h1>쌓인 기록을 SQL로 꺼내 씁니다.</h1>
+    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">④ 데이터 마이닝</span></div>
+    <h1>쌓인 기록을 SQL로 꺼내 마이닝합니다.</h1>
     <p class="sub">화면은 DB를 보는 방법 중 하나일 뿐입니다. 읽기 전용 SQL과 CSV 내보내기를 처음부터 기능으로 둡니다.</p>
   </div>
   <div class="content cols-2">
@@ -908,10 +915,10 @@ tr.us > * { background: var(--brand-wash); }
       <table>
         <thead><tr><th>좋아지는 것</th><th>확인 방법</th></tr></thead>
         <tbody>
-          <tr><th>① 운영 단순화</th><td>도구 3개의 점검 항목이 한 화면에 모두 나오는지 점검표로 확인</td></tr>
-          <tr><th>② 배치 운영</th><td>병렬·합류·서버 넘기·재시도가 정의대로 돌고 그래프에 보이는지</td></tr>
-          <tr><th>③ 장애 조사</th><td>같은 시나리오를 지금 절차와 이음으로 처리해 소요 시간 비교. 지난 구간의 함수 비중을 재현 없이 조회하는지</td></tr>
-          <tr><th>④ 데이터 활용</th><td>운영 데이터 5종을 SQL로 조인하고 CSV로 내보내는지</td></tr>
+          <tr><th>① 복잡도·관리 비용</th><td>기존 도구들의 점검 항목이 한 화면에 모두 나오는지 점검표로 확인</td></tr>
+          <tr><th>② 유연한 배치</th><td>병렬·합류·서버 넘기·재시도가 정의대로 돌고 그래프에 보이는지</td></tr>
+          <tr><th>③ 장애 원인 파악</th><td>같은 시나리오를 지금 절차와 이음으로 처리해 소요 시간 비교. 지난 구간의 함수 비중을 재현 없이 조회하는지</td></tr>
+          <tr><th>④ 데이터 마이닝</th><td>운영 데이터 5종을 SQL로 조인하고 CSV로 내보내는지</td></tr>
           <tr><th>수집 부담</th><td>추적 자체의 CPU, 서비스 처리량·응답시간 변화 측정</td></tr>
         </tbody>
       </table>
@@ -937,7 +944,7 @@ tr.us > * { background: var(--brand-wash); }
 <section class="page" data-q="4">
   <div class="p-title">
     <div class="ask"><span class="qn">Q4</span>어떻게 가능한 건가요?</div>
-    <h1>실행마다 번호를 붙이면 기록이 이어집니다.</h1>
+    <h1>실행 번호 하나가 모든 기록을 잇는 키입니다.</h1>
     <p class="sub">새로 발명하는 기술은 없습니다. 검증된 부품을 쓰고, 부품 사이를 잇는 코드만 만듭니다.</p>
   </div>
   <div class="content cols-2">
@@ -984,8 +991,8 @@ tr.us > * { background: var(--brand-wash); }
 <section class="page" data-q="4">
   <div class="p-title">
     <div class="ask"><span class="qn">Q4</span>어떻게 가능한 건가요? <span class="sec">하루, 2명</span></div>
-    <h1>2명이 AI 세션 4개로 하루에 만듭니다.</h1>
-    <p class="sub">대회 규칙상 코드는 당일 처음부터 씁니다. 사전 준비는 설계 문서·작업카드·AI 지시문뿐. 사람은 설계 합의와 검수, AI는 구현을 맡습니다.</p>
+    <h1>기반은 하루에 입증하고, 기능은 계속 얹습니다.</h1>
+    <p class="sub">2명이 AI 세션 4개로 단순한 아키텍처의 기반을 구현·입증합니다. 코드는 대회 당일 처음부터 쓰고, 사전 준비는 설계 문서·작업카드·AI 지시문뿐입니다.</p>
   </div>
   <div class="content cols-2">
     <div class="col center">
@@ -1004,16 +1011,16 @@ tr.us > * { background: var(--brand-wash); }
       <table>
         <tbody>
           <tr><th>함수 이름 복원</th><td>운영과 같은 빌드 조건(<code>-O2</code>, 프레임 포인터 없음)의 C 시험 프로그램에서 호출 경로 정확히 복원</td></tr>
-          <tr><th>추적 부담</th><td>10초당 CPU 약 0.06초 = 코어 1개의 <b>약 0.6%</b>. 대상 프로그램 소요 시간 변화는 오차 범위(13.3~13.4초 → 13.4초)</td></tr>
+          <tr><th>추적 부담</th><td>코어 1개의 <b>약 0.6%</b>, 대상 소요 시간 변화는 오차 범위. 시험 프로그램 기준이라 본선에서 다시 재서 화면에 띄움</td></tr>
           <tr><th>서비스 추적</th><td>스크립트 밖으로 나간 프로세스를 환경변수 표식으로 찾음(일반 사용자 권한)</td></tr>
           <tr><th>분석 질의</th><td>12쪽 SQL 2개를 합성 데이터로 실행</td></tr>
           <tr><th>운영 서버</th><td>perf 사용 가능</td></tr>
         </tbody>
       </table>
       </div>
-      <p class="note">시험 프로그램 기준이라 실서비스 성능을 보장하지 않습니다. 본선에서 다시 재고 화면에 띄웁니다.</p>
+      <div class="card"><h3>기능은 끼워 넣는 구조</h3><p>수집·추적·함수 기록·저장·알림을 인터페이스 6개로 나눕니다. 자바 함수 기록, 시계열 DB, 메신저 알림은 구현만 추가해 붙입니다.</p></div>
       <div class="card"><h3>늦어지면 줄이는 순서</h3><p>대시보드 장식 → 내보내기 → 구간 끌어 고르기(고정 구간으로) → 플레임 그래프(상위 함수 표로). 번호 연결과 함수 수집은 유지합니다.</p></div>
-      <p class="note">본선은 외부망·상용 AI로 개발하고 사내 데이터·소스는 쓰지 않습니다. 시연은 컨테이너 3대와 시연용 C 체결 서비스로 합니다. 서버 자원만 모의 값이고 실행·추적·함수 기록은 실제로 동작합니다.</p>
+      <p class="note">본선은 외부망·상용 AI로 개발하고 사내 데이터·소스는 쓰지 않습니다. 시연은 컨테이너 3대와 C 체결 서비스로 하며, 서버 자원만 모의 값입니다.</p>
     </div>
   </div>
 </section>
@@ -1029,7 +1036,7 @@ tr.us > * { background: var(--brand-wash); }
     head.className = "p-head";
     var nav = Q.map(function (x, k) { return '<span class="' + (q === k + 1 ? "on" : "") + '"><b>' + x[0] + "</b>" + x[1] + "</span>"; }).join("");
     head.innerHTML = '<div class="wordmark">이음<small>E:UM</small></div><nav class="qnav" aria-label="질문 목록">' + nav + "</nav>";
-    if (q === 0) head.innerHTML = '<div class="wordmark" style="font-size:11pt">사내 AI 해커톤 · 서류 심사 기획서</div><nav class="qnav">' + Q.map(function (x) { return "<span><b>" + x[0] + "</b>" + x[1] + "</span>"; }).join("") + "</nav>";
+    if (q === 0) head.innerHTML = '<div class="wordmark" style="font-size:11pt">사내 AI 해커톤 기획서</div><nav class="qnav">' + Q.map(function (x) { return "<span><b>" + x[0] + "</b>" + x[1] + "</span>"; }).join("") + "</nav>";
     pg.insertBefore(head, pg.firstChild);
     var foot = document.createElement("div");
     foot.className = "p-foot";
