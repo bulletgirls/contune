@@ -115,7 +115,6 @@ h3 { font-size: 10pt; font-weight: 700; }
 .badge.must { background: var(--brand-wash); color: var(--brand); }
 .badge.ext { background: var(--warn-wash); color: var(--warn); }
 .badge.out { background: var(--card); color: var(--ink-3); }
-.fill-in { display: inline-block; border: 1px dashed var(--warn); color: var(--warn); font-size: 7.8pt; padding: 0 5px; border-radius: 3px; white-space: nowrap; }
 .card { background: var(--card); border-left: 3px solid var(--brand); padding: 2.6mm 3.6mm; border-radius: 0 4px 4px 0; display: flex; flex-direction: column; gap: 1mm; }
 .card h3 { font-size: 9.6pt; }
 .card p { font-size: 8.9pt; color: var(--ink-2); line-height: 1.55; }
@@ -131,6 +130,16 @@ th, td { text-align: left; vertical-align: top; padding: 1.7mm 2.2mm; border-bot
 thead th { font-size: 8pt; font-weight: 600; color: var(--ink-2); background: var(--card); border-bottom: 1px solid var(--line); }
 tbody th { font-weight: 600; white-space: nowrap; }
 tr.us > * { background: var(--brand-wash); }
+tr.grp td { padding-top: 2.2mm; padding-bottom: 1mm; font-size: 7.8pt; color: var(--ink-3); border-bottom-color: var(--line); }
+table.cmp { font-size: 8.2pt; }
+table.cmp td { line-height: 1.45; }
+.cost2 { display: grid; grid-template-columns: 1fr 1fr; gap: 2.4mm; }
+.cost2 > div { border-radius: 4px; padding: 2mm 3mm; font-size: 8.4pt; line-height: 1.5; display: flex; flex-direction: column; gap: 0.8mm; }
+.cost2 b { font-size: 8.8pt; }
+.cost2 .dn { background: var(--brand-wash); }
+.cost2 .dn b { color: var(--brand); }
+.cost2 .up { background: var(--card); }
+.cost2 span::before { content: "· "; color: var(--ink-3); }
 th.fill { background: var(--brand); color: var(--paper); width: 42%; }
 td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; }
 .c { text-align: center; }
@@ -252,15 +261,27 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
 .cb.own { background: var(--card); border: 1px solid var(--line); }
 .pain-foot { margin-top: 1.5mm; font-size: 8.6pt; font-weight: 600; color: var(--pain); border-top: 1px solid var(--line-2); padding-top: 1.6mm; }
 
-/* Q3: 네 가지 */
-.gains { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 4mm 6mm; }
-.gain { border: 1px solid var(--line); border-radius: 6px; padding: 4mm 5mm; display: grid; grid-template-columns: 12mm 1fr; gap: 2.4mm 3mm; align-content: center; min-height: 0; }
-.gain .no { grid-row: span 3; font-family: var(--f-mono); font-size: 21pt; font-weight: 600; color: var(--brand); line-height: 1; }
-.gain .t { font-size: 13.5pt; font-weight: 700; line-height: 1.35; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+/* Q3: 세 가지. 카드마다 위에 그림 하나 */
+.gains { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6mm; }
+.gain { border: 1px solid var(--line); border-radius: 6px; padding: 4mm 5mm; display: flex; flex-direction: column; gap: 3mm; min-height: 0; min-width: 0; }
+.gain .art { height: 42mm; flex: none; display: grid; place-items: center; background: var(--brand-wash); border-radius: 5px; }
+.gain .art svg { height: 36mm; width: auto; overflow: visible; }
+.gain .hd { display: flex; gap: 3mm; align-items: flex-start; }
+.gain .no { font-family: var(--f-mono); font-size: 21pt; font-weight: 600; color: var(--brand); line-height: 1; }
+.gain .t { font-size: 13.5pt; font-weight: 700; line-height: 1.35; }
 .gain .ba { display: grid; grid-template-columns: 10mm 1fr; gap: 1.4mm 2mm; font-size: 9.6pt; line-height: 1.55; }
 .gain .ba .l { font-size: 8pt; color: var(--ink-3); padding-top: 0.6mm; }
 .gain .ba .after { color: var(--brand); font-weight: 600; }
-.gain .ref { font-size: 7.8pt; color: var(--ink-3); }
+.gain .ref { font-size: 7.8pt; color: var(--ink-3); margin-top: auto; border-top: 1px solid var(--line-2); padding-top: 2mm; }
+.ill .f { fill: color-mix(in srgb, var(--brand) 14%, var(--paper)); stroke: var(--brand); stroke-width: 2.6; stroke-linejoin: round; }
+.ill .ln { fill: none; stroke: var(--brand); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.ill .thin { stroke-width: 1.8; }
+.ill .solid { fill: var(--brand); }
+.ill .coin { fill: var(--tag); stroke: color-mix(in srgb, var(--tag) 55%, var(--ink)); stroke-width: 1.8; }
+.ill .lens { fill: var(--paper); stroke: var(--brand); stroke-width: 5; }
+.ill .bar { fill: color-mix(in srgb, var(--brand) 30%, var(--paper)); }
+.ill .hot { fill: var(--s-hot); }
+.ill .dotx { fill: var(--tag); stroke: var(--brand); stroke-width: 1.6; }
 
 /* 화면 시안 */
 .screen { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--screen); box-shadow: 0 1px 0 var(--line-2), 0 6px 18px -12px rgba(20, 40, 55, .35); min-width: 0; }
@@ -443,7 +464,7 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
 .sched .who small { display: block; font-weight: 400; color: var(--ink-3); font-size: 6.8pt; }
 .sched .ticks { position: relative; height: 3.6mm; font-family: var(--f-mono); font-size: 6.8pt; color: var(--ink-3); }
 .sched .ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
-.sched .ms { position: relative; height: 13mm; }
+.sched .ms { position: relative; height: 10.5mm; display: block; border: 0; padding: 0; }
 .sched .ms div.lo { top: 5.4mm; }
 .sched .ms div.end { transform: translateX(-88%); }
 .sched .ms div { position: absolute; top: 0; transform: translateX(-50%); text-align: center; font-size: 6.9pt; line-height: 1.25; color: var(--ink-2); white-space: nowrap; }
@@ -452,13 +473,21 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
 .sched .ms div.key::before { color: var(--warn); }
 .scope { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2mm; }
 .scope div { border: 1px solid var(--line); border-radius: 4px; padding: 1.8mm 2.4mm; font-size: 8.1pt; line-height: 1.5; color: var(--ink-2); display: flex; flex-direction: column; gap: 0.8mm; }
+.scope.two { grid-template-columns: 1fr 1fr; }
+.scope.two div { display: block; }
+.scope.two .badge { margin-right: 1.4mm; }
+.flows3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2.4mm; }
+.flows3 > div { border: 1px solid color-mix(in srgb, var(--brand) 45%, var(--paper)); border-top: 3px solid var(--brand); border-radius: 4px; padding: 2mm 2.6mm; display: flex; flex-direction: column; gap: 1mm; background: color-mix(in srgb, var(--brand-wash) 55%, var(--paper)); }
+.flows3 .hd3 { display: flex; align-items: center; gap: 2mm; }
+.flows3 .n { font-family: var(--f-mono); font-weight: 600; font-size: 8pt; width: 5.4mm; height: 5.4mm; border-radius: 50%; display: grid; place-items: center; background: var(--brand); color: var(--paper); }
+.flows3 b { font-size: 11pt; color: var(--brand); }
+.flows3 p { font-size: 8.5pt; line-height: 1.5; }
+.flows3 small { margin-top: auto; font-size: 7.4pt; color: var(--ink-3); border-top: 1px dashed var(--line); padding-top: 1mm; line-height: 1.45; }
 
 .steps-h { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2mm; }
 .steps-h div { border-top: 2px solid var(--brand); padding-top: 1.4mm; font-size: 8.3pt; color: var(--ink-2); line-height: 1.5; }
 .steps-h div b { display: block; color: var(--ink); font-size: 9pt; }
 .steps-h div small { font-family: var(--f-mono); color: var(--brand); font-weight: 600; font-size: 7.6pt; }
-.formula { font-size: 9pt; background: var(--card); border-radius: 4px; padding: 2mm 3mm; line-height: 1.6; }
-.formula b { color: var(--brand); }
 
 /* 화면이 좁을 때: 쪽을 풀어서 쌓음 */
 @media screen and (max-width: 1180px) {
@@ -471,6 +500,7 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
   .gains { grid-template-rows: none; }
   .merge .arrow, .arch .pipe { transform: rotate(90deg); }
   .silos, .t3, .steps-h, .scope, .tv-out, .merge-out, .boards { grid-template-columns: 1fr 1fr; }
+  .flows3, .cost2 { grid-template-columns: 1fr; }
   .app, .hw, .under { grid-template-columns: 1fr; }
   .tree { border-right: 0; border-bottom: 1px solid var(--line-2); }
   .eq { flex-wrap: wrap; }
@@ -508,9 +538,9 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
       <p class="tagline">배치 실행·서버 관제·업무 관제를 하나로 잇는 시스템 운영 도구</p>
       <h1 class="hook">사건은 하나인데,<br>도구는 <em>여럿</em>입니다.</h1>
       <ul class="hook-list">
-        <li>장애 한 건을 분석하려면 운영자의 경험과 숙련도에 의존하여 여러 도구를 뒤져봐야 합니다.</li>
+        <li>아침 점검부터 화면을 여러 개 엽니다. 배치는 스케줄러에서, 서버는 서버 관제에서, 업무량은 업무 관제에서 따로 봅니다.</li>
         <li>서버도, 데이터 저장소도 따로입니다. 데이터는 서로 엮이지 않고 분석을 위해 다루기 어렵습니다.</li>
-        <li>어느 코드가 장애와 지연을 유발하는지 어떤 도구에도 남지 않습니다.</li>
+        <li>장애가 나면 도구마다 시각을 맞춰 가며 원인을 좇습니다. 어느 코드가 지연을 일으켰는지는 어떤 도구에도 남지 않습니다.</li>
       </ul>
       <div class="answer">이음은 여러 도구를 하나로 합치고, 실행마다 <span class="tag">실행 번호</span>를 붙여 모든 기록을 잇습니다.</div>
       <div class="chips"><span class="chip">사용자: 운영 담당자·개발자</span><span class="chip">대상: 폐쇄망 리눅스 서버</span><span class="chip">결과물: 하루 만에 만드는 검증판</span></div>
@@ -518,8 +548,8 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
     <div class="qa">
       <div class="qa-item"><span class="qn">Q1</span><div><div class="q">그래서 대체 뭘 만드는 건가요?</div><div class="a">스케줄러, 서버 관제, 함수 호출 레벨의 업무 관제 도구를 실행 파일 하나로 통합합니다.</div><div class="ref">2~3쪽</div></div></div>
       <div class="qa-item"><span class="qn">Q2</span><div><div class="q">기존의 뭘 보완하는 건가요?</div><div class="a">비어 있는 도구 사이. 도구끼리 이어지지 않고, 데이터는 제품 안에 갇혀 있고, 비용은 도구마다 나갑니다.</div><div class="ref">4~6쪽</div></div></div>
-      <div class="qa-item"><span class="qn">Q3</span><div><div class="q">뭐가 좋아지는 건가요?</div><div class="a">시스템의 복잡도와 관리 비용이 줄고, 배치를 유연하게 실행하고, 장애 원인을 한눈에 파악하고, 수집된 데이터를 마이닝할 수 있는 가능성을 열어 줍니다.</div><div class="ref">7~13쪽</div></div></div>
-      <div class="qa-item"><span class="qn">Q4</span><div><div class="q">어떻게 가능한 건가요?</div><div class="a">여러 도구를 하나의 키로 잇습니다. 단순화된 아키텍처의 확고한 기반을 2명이 AI 세션 4개로 구현·입증합니다. 확장 가능한 인터페이스와 모듈 설계로, 시간이 허락하는 한 더 정교한 기능을 얼마든지 추가할 수 있도록 계획합니다.</div><div class="ref">14~15쪽</div></div></div>
+      <div class="qa-item"><span class="qn">Q3</span><div><div class="q">뭐가 좋아지는 건가요?</div><div class="a">시스템의 복잡도와 관리 비용이 줄고, 장애 조사의 근거를 한 흐름에서 확인하고, 쌓인 운영 기록을 직접 분석해 예측의 기반을 만듭니다.</div><div class="ref">7~13쪽</div></div></div>
+      <div class="qa-item"><span class="qn">Q4</span><div><div class="q">어떻게 가능한 건가요?</div><div class="a">실행 번호 하나로 여러 도구의 기록을 잇습니다. 검증된 부품을 쓰고 실행 관리와 기록 연결에 구현을 집중해, 실행·연결·활용 세 흐름을 하루에 완성합니다. 수집·저장·알림은 모듈별로 확장할 수 있게 설계합니다.</div><div class="ref">14~15쪽</div></div></div>
     </div>
   </div>
 </section>
@@ -609,7 +639,7 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
       <div class="c4"><b>② 지켜본다</b>시스템 자원 사용 상황, 서비스의 실행 콜스택 정보를 수집하고 추적합니다. 띄운 스크립트가 끝나도 서비스는 같은 번호로 계속 기록됩니다.<span class="was">지금은 onTune + 사내 APM, 함수 기록은 없음</span></div>
       <div class="c4"><b>③ 돌아본다</b>지난 구간을 다시 펼쳐 함수까지 확인합니다. SQL·CSV로 용량과 배포 전후를 분석합니다.<span class="was">지금은 제품 화면 안에서만</span></div>
     </div>
-    <div class="callout tagged">띄우는 도구가 지켜보는 일까지 맡아야 <span class="tag">실행 번호</span>가 끊기지 않습니다. 여러 도구를 하나로 합치는 이유입니다.</div>
+    <div class="callout tagged">운영자는 <span class="tag">실행 번호</span> 하나로 띄운 작업, 지금 상태, 지난 기록을 오갑니다. 도구를 바꿔 가며 시각을 맞추지 않습니다.</div>
   </div>
 </section>
 
@@ -637,8 +667,8 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
       <table>
         <thead><tr><th>도구</th><th>비어 있는 곳</th><th class="fill">이음이 채우는 것</th></tr></thead>
         <tbody>
-          <tr><th>배치 스케줄러</th><td>띄운 서비스의 이후 상태를 모름. 업무가 바빠도 시각이 되면 실행</td><td class="fill">태어난 서비스는 죽을 때까지 정밀 감시당합니다.</td></tr>
-          <tr><th>서버 관제</th><td>프로세스를 띄운 실행, CPU를 쓴 함수를 모름</td><td class="fill">서버 리소스를 축내는 서비스는 그 자리에서 즉시 코드 레벨까지 파헤쳐집니다.</td></tr>
+          <tr><th>배치 스케줄러</th><td>띄운 서비스의 이후 상태를 모름. 업무가 바빠도 시각이 되면 실행</td><td class="fill">기동부터 종료까지, 서비스의 실행과 자원 기록이 하나로 이어집니다.</td></tr>
+          <tr><th>서버 관제</th><td>프로세스를 띄운 실행, CPU를 쓴 함수를 모름</td><td class="fill">자원 사용이 늘어난 서비스는 CPU를 쓴 함수까지 바로 확인합니다.</td></tr>
           <tr><th>업무 관제</th><td>지연 원인이 업무량·자원·코드 중 무엇인지 모름</td><td class="fill">업무가 밀리면 업무량·자원·함수가 한 시간축에 펼쳐집니다.</td></tr>
           <tr><th>도구 공통</th><td>데이터는 제품 안에. 계약·서버·화면이 도구마다 따로</td><td class="fill">통합·개방된 DB와 이를 다루는 실행 파일 하나. 극도의 단순함을 추구합니다.</td></tr>
         </tbody>
@@ -695,29 +725,29 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
 <!-- 6. Q2 왜 하나로, 왜 새로 -->
 <section class="page" data-q="2">
   <div class="p-title">
-    <div class="ask"><span class="qn">Q2</span>기존의 뭘 보완하는 건가요? <span class="sec">보완 방법</span></div>
-    <h1>연동으로는 못 메웁니다. 하나로 새로 만듭니다.</h1>
-    <p class="sub">보완 방법 네 가지를 비교했습니다. 기준은 두 가지. 실행 번호로 기록을 이을 수 있는가, 데이터를 우리가 쥐는가.</p>
+    <div class="ask"><span class="qn">Q2</span>기존의 뭘 보완하는 건가요? <span class="sec">이 설계를 고른 이유</span></div>
+    <h1>필요한 운영 기능과 데이터 연결을 함께 설계합니다.</h1>
+    <p class="sub">이음은 실행·수집·저장을 공통 데이터 모델로 구성해, 별도 연동 지점과 운영 구성을 줄이는 방식을 선택했습니다. 보완 방법 네 가지를 같은 기준으로 비교했습니다.</p>
   </div>
   <div class="content cols-73">
     <div class="col center">
       <div class="tbl-wrap">
-      <table>
-        <thead><tr><th>방법</th><th>실행 번호로 잇기</th><th>함수 단위 기록</th><th>데이터를 SQL로 직접</th><th>비용</th><th>폐쇄망·기능 추가</th></tr></thead>
+      <table class="cmp">
+        <thead><tr><th>방법</th><th>기록을 잇는 방식</th><th>추가 연동 개발</th><th>관리할 구성 요소</th><th>데이터 추출</th><th>유지보수 책임</th></tr></thead>
         <tbody>
-          <tr><th>A. 지금 도구 + 연동</th><td><span class="p">△</span> 번호를 주고받지 못해 시각으로 맞춤</td><td><span class="n">×</span></td><td><span class="p">△</span> 제품별 형식</td><td><span class="n">높음</span> 기존 + 연동비</td><td><span class="p">△</span> 벤더 일정</td></tr>
-          <tr><th>B. 오픈소스 조합<br><small class="muted">스케줄러+관제+프로파일러</small></th><td><span class="p">△</span> 잇는 코드를 결국 직접 작성</td><td><span class="p">△</span> 별도 도구</td><td><span class="y">○</span> 저장소 3개</td><td><span class="y">낮음</span></td><td><span class="p">△</span> 제품 3개 운영</td></tr>
-          <tr><th>C. 통합 관측 제품<br><small class="muted">상용 APM·관측 플랫폼</small></th><td><span class="p">△</span> 배치 스케줄러 없음</td><td><span class="p">△</span> 제품마다 다름</td><td><span class="p">△</span> 벤더 저장소</td><td><span class="n">매우 높음</span></td><td><span class="p">△</span> 폐쇄망 제약</td></tr>
-          <tr class="us"><th>D. 이음</th><td><span class="y">○</span> 띄울 때 번호 부여</td><td><span class="y">○</span> 같은 번호·같은 DB</td><td><span class="y">○</span> 공개 스키마</td><td><span class="y">낮음</span> 서버 + 인건비</td><td><span class="y">○</span> 코드 사내 보유</td></tr>
+          <tr><th>A. 지금 도구 + 연동</th><td>도구마다 키가 달라 시각·서버 이름으로 맞춤</td><td>도구 사이마다 개발. 제품별 API·로그 형식에 맞춤</td><td>제품 3개와 각 관리 서버·저장소, 연동 모듈</td><td>제품별 화면·보고서·API. 범위는 제품이 정함</td><td>제품은 벤더, 연동 코드는 우리</td></tr>
+          <tr><th>B. 오픈소스 조합<br><small class="muted">스케줄러+관제+프로파일러</small></th><td>공통 키와 데이터 모델을 직접 설계</td><td>도구 3개 사이 개발</td><td>오픈소스 3개, 저장소 3개, 연동 코드</td><td>저장소마다 다른 질의 방식</td><td>우리. 도구별 업그레이드 대응 포함</td></tr>
+          <tr><th>C. 통합 관측 제품<br><small class="muted">상용 APM·관측 플랫폼</small></th><td>관측 데이터는 제품 안에서 연결. 배치 실행은 제품 밖</td><td>기존 스케줄러와 연동. 폐쇄망 설치 조건 확인</td><td>관측 제품, 기존 스케줄러</td><td>벤더 저장소·API</td><td>벤더. 기능 추가는 벤더 일정</td></tr>
+          <tr class="us"><th>D. 이음</th><td>띄울 때 실행 번호를 붙여 처음부터 연결</td><td>제품 안에서 처리. 별도 연동 지점 없음</td><td>실행 파일 1개(매니저·에이전트 역할)와 DB</td><td>공개 스키마. 읽기 전용 SQL·CSV</td><td>우리. 코드 사내 보유</td></tr>
         </tbody>
       </table>
       </div>
-      <p class="note">B도 결국 여러 제품을 잇는 데이터 모델과 연동 코드를 직접 만들어야 합니다. 그 부분이 이 과제의 핵심이라 처음부터 하나로 만듭니다.</p>
+      <p class="note">A~C로도 기록을 이을 수는 있습니다. 다만 도구 사이마다 연동 지점이 생기고, 그 연동 코드는 어느 경우든 우리가 관리합니다. 이음은 그 연결을 처음부터 제품 안에 둡니다.</p>
     </div>
     <div class="col center">
-      <div class="card"><h3>번호는 띄울 때만 붙일 수 있습니다</h3><p>택배 송장번호와 같습니다. 보낼 때 붙여야 이후 기록이 조회됩니다. 배치가 서비스를 띄울 때 번호를 넘겨야 자원·업무 지표·함수 기록이 같은 번호를 답니다.</p></div>
-      <div class="card"><h3>자체 구현 부담도 셉니다</h3><p>유지보수는 우리 몫입니다. 비용 비교에 인건비를 넣고, 검증된 범위부터 병행 운영합니다(13쪽).</p></div>
-      <div class="takeaway"><small>결론</small><b>띄우는 쪽(스케줄러)과 재는 쪽(관제)이 한 제품이어야 번호가 끊기지 않습니다.</b></div>
+      <div class="card"><h3>번호는 띄우는 쪽이 붙이면 간단합니다</h3><p>택배 송장번호처럼, 보낼 때 붙이면 이후 기록이 따라옵니다. 이음이 서비스를 띄우며 번호를 넘기면 자원·업무 지표·함수 기록이 별도 매칭 없이 같은 번호를 답니다.</p></div>
+      <div class="card"><h3>자체 구현의 부담</h3><p>유지보수는 우리 몫입니다. 그래서 검증된 부품을 쓰고, 직접 만드는 범위를 실행 관리와 기록 연결로 좁힙니다(14쪽). 대체 범위와 비용은 병행 운영에서 판단합니다(13쪽).</p></div>
+      <div class="takeaway"><small>선택 이유</small><b>실행과 수집을 한 데이터 모델로 설계하면 연동 지점이 줄고, 기록은 처음부터 이어집니다.</b></div>
     </div>
   </div>
 </section>
@@ -726,33 +756,67 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
 <section class="page" data-q="3">
   <div class="p-title">
     <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요?</div>
-    <h1>좋아지는 건 네 가지입니다.</h1>
-    <p class="sub">장애 대응만 달라지지 않습니다. 평소 운영, 배치 관리, 데이터 활용이 함께 달라집니다.</p>
+    <h1>좋아지는 건 세 가지입니다.</h1>
+    <p class="sub">장애 대응만 달라지지 않습니다. 평소 운영의 부담과 데이터 활용도 함께 달라집니다.</p>
   </div>
   <div class="content gains">
     <div class="gain">
-      <span class="no">①</span>
-      <div class="t">복잡도와 관리 비용이 줄어듭니다</div>
-      <div class="ba"><span class="l">지금</span><span>도구마다 계약·관리 서버·화면이 따로</span><span class="l">이음</span><span class="after">실행 파일 1개, 화면 1개, 방화벽 포트 1개. 서버 수십 대는 그룹 트리로</span></div>
-      <div class="ref">화면 ① 대시보드 · 8쪽</div>
+      <div class="art">
+        <svg class="ill" viewBox="0 0 140 110" role="img" aria-label="돈보따리 그림">
+          <path class="ln" d="M14 34 V 58 M7 51 L14 58 L21 51"/>
+          <ellipse class="coin" cx="112" cy="98" rx="16" ry="5"/>
+          <ellipse class="coin" cx="112" cy="91" rx="16" ry="5"/>
+          <ellipse class="coin" cx="112" cy="84" rx="16" ry="5"/>
+          <path class="f" d="M52 40 C 30 50, 20 70, 24 86 C 27 98, 42 104, 62 104 C 82 104, 97 98, 100 86 C 104 70, 94 50, 72 40 Z"/>
+          <path class="f" d="M53 34 L 44 16 C 51 20, 56 13, 62 18 C 68 13, 73 20, 80 16 L 71 34 Z"/>
+          <rect class="solid" x="48" y="32" width="28" height="9" rx="3"/>
+          <path class="ln" d="M46 60 L 53 88 L 62 68 L 71 88 L 78 60" style="stroke-width:3.4"/>
+          <path class="ln thin" d="M44 70 H 80 M44 77 H 80"/>
+        </svg>
+      </div>
+      <div class="hd"><span class="no">①</span><div class="t">복잡도와 관리 비용이 줄어듭니다</div></div>
+      <div class="ba"><span class="l">지금</span><span>도구마다 계약·관리 서버·화면이 따로</span><span class="l">이음</span><span class="after">실행 파일 1개, 화면 1개, 방화벽 포트 1개. 서버 수십 대는 그룹 트리로 한 화면에</span></div>
+      <div class="ref">화면 · 대시보드 8쪽, 배치판 9쪽</div>
     </div>
     <div class="gain">
-      <span class="no">②</span>
-      <div class="t">배치를 유연하게 실행합니다</div>
-      <div class="ba"><span class="l">지금</span><span>작업 목록·로그 위주. 업무가 바빠도 시각이 되면 실행</span><span class="l">이음</span><span class="after">플로우 수십 개는 배치판 트리로, 병렬·합류·서버 넘기·재시도는 그래프로. "체결 대기 0건 뒤 정산" 같은 조건 실행 <span class="badge ext">확장</span></span></div>
-      <div class="ref">화면 ② 플로우 그래프 · 9쪽</div>
+      <div class="art">
+        <svg class="ill" viewBox="0 0 140 110" role="img" aria-label="돋보기 그림">
+          <defs><clipPath id="lensClip"><circle cx="58" cy="48" r="32"/></clipPath></defs>
+          <line x1="83" y1="73" x2="114" y2="104" stroke="var(--brand)" stroke-width="13" stroke-linecap="round"/>
+          <circle class="lens" cx="58" cy="48" r="34"/>
+          <g clip-path="url(#lensClip)">
+            <rect class="bar" x="24" y="25" width="68" height="9" rx="1.5"/>
+            <rect class="bar" x="24" y="36" width="46" height="9" rx="1.5"/><rect class="bar" x="72" y="36" width="20" height="9" rx="1.5"/>
+            <rect class="hot" x="24" y="47" width="40" height="9" rx="1.5"/><rect class="bar" x="72" y="47" width="13" height="9" rx="1.5"/>
+            <rect class="hot" x="28" y="58" width="26" height="9" rx="1.5" style="opacity:.7"/><rect class="bar" x="56" y="58" width="8" height="9" rx="1.5"/>
+            <rect class="bar" x="32" y="69" width="14" height="9" rx="1.5"/>
+          </g>
+          <circle cx="58" cy="48" r="34" fill="none" stroke="var(--brand)" stroke-width="5"/>
+        </svg>
+      </div>
+      <div class="hd"><span class="no">②</span><div class="t">장애 조사의 근거를 한 흐름에서 확인합니다</div></div>
+      <div class="ba"><span class="l">지금</span><span>여러 도구, 5단계. 원인 코드는 재현 후에</span><span class="l">이음</span><span class="after">화면 1개, 2단계. 수집된 구간은 재현 없이 CPU를 쓴 함수까지</span></div>
+      <div class="ref">화면 · 타임머신 10쪽, 플레임 그래프 11쪽</div>
     </div>
     <div class="gain">
-      <span class="no">③</span>
-      <div class="t">장애 원인을 한눈에 파악합니다</div>
-      <div class="ba"><span class="l">지금</span><span>여러 도구, 5단계. 원인 코드는 재현 후에</span><span class="l">이음</span><span class="after">화면 1개, 2단계. 재현 없이 함수까지</span></div>
-      <div class="ref">화면 ③ 타임머신 · ④ 플레임 그래프 · 10~11쪽</div>
-    </div>
-    <div class="gain">
-      <span class="no">④</span>
-      <div class="t">쌓인 데이터를 마이닝합니다</div>
-      <div class="ba"><span class="l">지금</span><span>제품 화면·보고서 안에서만 확인</span><span class="l">이음</span><span class="after">운영 데이터 5종을 SQL로 조인. CSV로 통계·머신러닝에</span></div>
-      <div class="ref">화면 ⑤ 데이터 꺼내기 · 12쪽</div>
+      <div class="art">
+        <svg class="ill" viewBox="0 0 140 110" role="img" aria-label="두뇌 그림">
+          <path class="f" d="M70 72 C 73 84, 71 93, 67 102 L 79 102 C 82 92, 83 82, 84 72 Z"/>
+          <ellipse class="f" cx="98" cy="74" rx="15" ry="9.5"/>
+          <path class="f" d="M30 66 C 18 62, 15 46, 25 38 C 25 24, 39 15, 52 19 C 60 9, 78 9, 85 17 C 97 13, 111 21, 111 33 C 121 41, 119 57, 109 62 C 107 72, 95 76, 87 72 C 79 80, 65 80, 58 74 C 48 78, 36 76, 30 66 Z"/>
+          <path class="ln thin" d="M90 75 C 96 79, 104 79, 110 73 M93 70 C 99 73, 105 72, 110 68"/>
+          <path class="ln thin" d="M70 13 C 65 25, 74 33, 68 46"/>
+          <path class="ln thin" d="M38 63 C 51 56, 64 58, 80 50"/>
+          <path class="ln thin" d="M27 47 C 35 42, 41 51, 50 44 M38 29 C 45 34, 51 26, 57 33 M48 38 C 53 42, 58 40, 60 47"/>
+          <path class="ln thin" d="M79 26 C 86 32, 93 27, 98 35 M83 44 C 89 39, 96 46, 104 41 M95 54 C 100 58, 105 53, 111 56"/>
+          <path class="ln thin" d="M48 69 C 57 64, 65 70, 75 64"/>
+          <path class="ln thin" d="M4 98 L 18 90 L 28 93 L 42 80" style="stroke-dasharray:3 3"/>
+          <circle class="dotx" cx="4" cy="98" r="3"/><circle class="dotx" cx="18" cy="90" r="3"/><circle class="dotx" cx="28" cy="93" r="3"/><circle class="dotx" cx="42" cy="80" r="3.4"/>
+        </svg>
+      </div>
+      <div class="hd"><span class="no">③</span><div class="t">운영 기록을 직접 분석하고, 예측의 기반을 만듭니다</div></div>
+      <div class="ba"><span class="l">지금</span><span>제품 화면·보고서 안에서만 확인</span><span class="l">이음</span><span class="after">운영 데이터 5종을 SQL로 엮어 처리량별 지연, 함수 비중 변화를 분석. 종료 시각 예측·이상 탐지 <span class="badge ext">확장</span></span></div>
+      <div class="ref">화면 · 데이터 꺼내기 12쪽</div>
     </div>
   </div>
 </section>
@@ -799,7 +863,7 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
 <!-- 9. Q3 ② 플로우 그래프 -->
 <section class="page" data-q="3">
   <div class="p-title">
-    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">② 배치를 유연하게</span></div>
+    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">① 복잡도와 관리 비용 · 배치판</span></div>
     <h1>배치 흐름은 그래프로, 실행은 업무에 맞춰.</h1>
     <p class="sub">플로우 수십 개는 배치판 트리로 묶고, 고른 플로우의 병렬·합류·서버 넘기·재시도를 한눈에 봅니다.</p>
   </div>
@@ -856,7 +920,7 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
 <!-- 10. Q3 ③ 타임머신 -->
 <section class="page" data-q="3">
   <div class="p-title">
-    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">③ 장애 원인을 한눈에</span></div>
+    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">② 장애 조사</span></div>
     <h1>지나간 장애도 다시 펼쳐 봅니다.</h1>
     <p class="sub">주문이 초당 1,500건에서 6,000건으로 몰린 3분. 서비스의 실행 번호로 모아 한 시간축에 놓았습니다.</p>
   </div>
@@ -885,8 +949,8 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
 <!-- 11. Q3 ③ 플레임 그래프 -->
 <section class="page" data-q="3">
   <div class="p-title">
-    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">③ 장애 원인을 한눈에</span></div>
-    <h1>CPU를 쓴 함수까지 내려갑니다. 재현은 필요 없습니다.</h1>
+    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">② 장애 조사</span></div>
+    <h1>CPU를 쓴 함수까지 내려갑니다. 수집된 구간은 재현 없이 확인합니다.</h1>
     <p class="sub">위가 바깥 함수, 아래가 안쪽 함수. 막대 폭은 CPU 사용 비율입니다.</p>
   </div>
   <div class="content" style="display: flex; flex-direction: column; gap: 4.5mm">
@@ -925,8 +989,8 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
 <!-- 12. Q3 ④ 데이터 -->
 <section class="page" data-q="3">
   <div class="p-title">
-    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">④ 데이터 마이닝</span></div>
-    <h1>쌓인 기록을 SQL로 꺼내 마이닝합니다.</h1>
+    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">③ 데이터 분석</span></div>
+    <h1>운영 기록을 직접 분석하고, 예측에 활용할 기반을 만듭니다.</h1>
     <p class="sub">화면은 DB를 보는 방법 중 하나일 뿐입니다. 읽기 전용 SQL과 CSV 내보내기를 처음부터 기능으로 둡니다.</p>
   </div>
   <div class="content cols-2">
@@ -957,11 +1021,13 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
       <table>
         <thead><tr><th>활용</th><th>엮는 데이터</th><th>얻는 것</th></tr></thead>
         <tbody>
+          <tr class="grp"><td colspan="3"><span class="badge must">본선</span> 지금 쌓는 데이터로 바로 하는 분석</td></tr>
           <tr><th>용량 판단</th><td>업무 지표 + 자원</td><td>밀리기 시작하는 처리량 → 증설 시점</td></tr>
           <tr><th>코드 개선</th><td>업무 지표 + 함수</td><td>지연 때 비중이 커지는 함수</td></tr>
+          <tr><th>배포 전후 비교</th><td>실행 이력 + 함수</td><td>함수 비중 변화로 성능 저하 발견</td></tr>
+          <tr class="grp"><td colspan="3"><span class="badge ext">확장</span> 쌓인 데이터로 예측</td></tr>
           <tr><th>배치 종료 예측</th><td>실행 이력 + 자원</td><td>정산 종료 시각 추세</td></tr>
           <tr><th>이상 탐지</th><td>실행 이력</td><td>평소보다 오래 걸린 실행 표시</td></tr>
-          <tr><th>배포 전후 비교</th><td>실행 이력 + 함수</td><td>함수 비중 변화로 성능 저하 발견</td></tr>
         </tbody>
       </table>
       </div>
@@ -975,26 +1041,25 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
 <section class="page" data-q="3">
   <div class="p-title">
     <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">확인 방법</span></div>
-    <h1>효과는 숫자로 확인합니다.</h1>
-    <p class="sub">확인 안 된 절감 수치는 쓰지 않습니다. 검증판이 상용 제품을 바로 대체한다고 가정하지도 않습니다.</p>
+    <h1>효과는 시연으로 확인하고, 비용은 병행 운영에서 따집니다.</h1>
+    <p class="sub">본선에서는 기능과 절차를 확인합니다. 확인 안 된 절감 수치는 쓰지 않고, 검증판이 상용 제품을 바로 대체한다고 가정하지도 않습니다.</p>
   </div>
   <div class="content cols-2">
     <div class="col center">
-      <h2>확인 방법</h2>
+      <h2>본선에서 확인할 것</h2>
       <div class="tbl-wrap">
       <table>
         <thead><tr><th>좋아지는 것</th><th>확인 방법</th></tr></thead>
         <tbody>
           <tr><th>① 복잡도·관리 비용</th><td>서버 40여 대·플로우 40여 개를 트리로 묶어 띄우고, 기존 도구들의 점검 항목이 한 화면에 모두 나오는지 점검표로 확인</td></tr>
-          <tr><th>② 유연한 배치</th><td>병렬·합류·서버 넘기·재시도가 정의대로 돌고 그래프에 보이는지</td></tr>
-          <tr><th>③ 장애 원인 파악</th><td>같은 시나리오를 지금 절차와 이음으로 처리해 소요 시간 비교. 지난 구간의 함수 비중을 재현 없이 조회하는지</td></tr>
-          <tr><th>④ 데이터 마이닝</th><td>운영 데이터 5종을 SQL로 조인하고 CSV로 내보내는지</td></tr>
+          <tr><th>② 장애 조사</th><td>같은 시나리오를 지금 절차와 이음으로 처리해 단계 수와 걸린 시간 비교. 지난 구간의 함수 비중을 재현 없이 조회하는지</td></tr>
+          <tr><th>③ 데이터 분석</th><td>운영 데이터 5종을 SQL로 엮어 12쪽 두 질의가 결과를 내는지, CSV로 내보내지는지</td></tr>
+          <tr><th>배치 실행</th><td>병렬·합류·서버 넘기·재시도가 정의대로 돌고 그래프에 보이는지</td></tr>
           <tr><th>수집 부담</th><td>추적 자체의 CPU, 서비스 처리량·응답시간 변화 측정</td></tr>
         </tbody>
       </table>
       </div>
-      <div class="formula"><b>연간 절감 시간</b> = 월 조사 건수 <span class="fill-in">기입</span> × 건당 조사 시간 차이 × 12<br><b>연간 순절감액</b> = 실제 대체한 라이선스·유지보수 <span class="fill-in">기입</span> − 추가 운영·유지보수 비용 <span class="fill-in">기입</span></div>
-      <p class="note">초기 개발·전환 비용은 따로 넣어 총비용과 회수 기간을 봅니다. 건수·시간·계약 금액은 제출 전 사내 확인이 필요합니다.</p>
+      <div class="card"><h3>운영 전 필수</h3><p>로그인·권한, 암호화 통신(TLS), 복구·이중화, 수집 누락·보존 정책. 설계상 자리는 있고, 투입 전에 구현·검증합니다.</p></div>
     </div>
     <div class="col center">
       <h2>적용 순서</h2>
@@ -1003,8 +1068,12 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
         <div><small>2단계</small><b>비운영 서버 시험</b>권한·빌드 조건·부하·장시간 안정성</div>
         <div><small>3단계</small><b>제한적 병행 운영</b>일부 작업에 기존 도구와 함께 사용, 대체 범위 판단</div>
       </div>
-      <div class="card"><h3>운영 전 필수</h3><p>로그인·권한, 암호화 통신(TLS), 복구·이중화, 수집 누락·보존 정책. 설계상 자리는 있고, 투입 전에 구현·검증합니다.</p></div>
-      <div class="card"><h3>비용은 대체한 만큼만</h3><p>병행 운영에서 실제로 대체한 기능만 절감액으로 셉니다. 유지보수 인건비, 저장 공간, 보안 점검 비용도 함께 넣습니다.</p></div>
+      <h2>비용은 항목부터 맞춥니다</h2>
+      <div class="cost2">
+        <div class="dn"><b>줄어드는 비용</b><span>겹치는 상용 제품의 라이선스·유지보수</span><span>제품별 관리 서버·저장소</span><span>도구 사이 연동 개발, 데이터 추출 요청</span><span>장애 때 도구를 오가며 시각을 맞추는 시간</span></div>
+        <div class="up"><b>늘어나는 비용</b><span>자체 유지보수·기능 추가 인력</span><span>초기 개발·전환, 병행 기간의 이중 운영</span><span>저장 공간, 보안 점검</span></div>
+      </div>
+      <p class="note">절감은 병행 운영에서 실제로 대체한 기능만 셉니다. 금액은 대체 범위와 투입 인력이 정해진 뒤 계산하고, 조사 시간은 본선 시연의 실측값으로 비교합니다.</p>
       <div class="takeaway"><small>원칙</small><b>작게 검증하고, 확인된 만큼 넓힙니다.</b></div>
     </div>
   </div>
@@ -1015,7 +1084,7 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
   <div class="p-title">
     <div class="ask"><span class="qn">Q4</span>어떻게 가능한 건가요?</div>
     <h1>실행 번호 하나가 모든 기록을 잇는 키입니다.</h1>
-    <p class="sub">새로 발명하는 기술은 없습니다. 검증된 부품을 쓰고, 부품 사이를 잇는 코드만 만듭니다.</p>
+    <p class="sub">새로 발명하는 기술은 없습니다. 검증된 부품을 활용하고, 실행 상태 관리와 기록 연결에 구현을 집중합니다.</p>
   </div>
   <div class="content cols-2">
     <div class="col center">
@@ -1062,16 +1131,20 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
 <section class="page" data-q="4">
   <div class="p-title">
     <div class="ask"><span class="qn">Q4</span>어떻게 가능한 건가요? <span class="sec">하루, 2명</span></div>
-    <h1>기반은 하루에 입증하고, 기능은 계속 얹습니다.</h1>
-    <p class="sub">2명이 AI 세션 4개로 단순한 아키텍처의 기반을 구현·입증합니다. 코드는 대회 당일 처음부터 쓰고, 사전 준비는 설계 문서·작업카드·AI 지시문뿐입니다.</p>
+    <h1>하루에 완성할 흐름은 실행·연결·활용 세 가지입니다.</h1>
+    <p class="sub">2명이 AI 코딩 세션 4개를 나눠 맡아 이 세 흐름을 구현합니다. 코드는 대회 당일 처음부터 쓰고, 사전 준비는 설계 문서·작업카드·AI 지시문뿐입니다.</p>
   </div>
   <div class="content cols-2">
     <div class="col center">
+      <h2>15:00까지 반드시 완성할 흐름</h2>
+      <div class="flows3">
+        <div><span class="hd3"><span class="n">1</span><b>실행</b></span><p>선후행·재시도가 있는 플로우로 서비스를 기동합니다.</p><small>화면: 배치판 트리, 플로우 그래프</small></div>
+        <div><span class="hd3"><span class="n">2</span><b>연결</b></span><p>기동 스크립트가 끝나도 업무·자원·함수 기록을 같은 실행으로 조회합니다.</p><small>화면: 서버 트리, 대시보드, 타임머신</small></div>
+        <div><span class="hd3"><span class="n">3</span><b>활용</b></span><p>지난 구간을 비교하고, 실제 수집 데이터를 SQL로 꺼냅니다.</p><small>화면: 플레임 그래프, SQL·CSV</small></div>
+      </div>
       <h2>당일 일정</h2>
       <div class="sched" id="sched"></div>
-      <h2>범위</h2>
-      <div class="scope">
-        <div><span class="badge must">15:00까지 필수</span>시각 실행, 선후행·병렬·합류·재시도, 원격 실행, 서비스 추적, 자원·업무 지표 수집, 함수 기록, 서버·배치판 트리, 타임머신·플레임 그래프, SQL·CSV, 에이전트 토큰</div>
+      <div class="scope two">
         <div><span class="badge ext">시간이 남으면</span>업무 지표 조건 실행(정산 대기), 함수 비교 표, 임계치 알림, 실행 강제 종료</div>
         <div><span class="badge out">이번에 안 함</span>로그인·권한, TLS, 이중화, 휴일 캘린더, 자바 함수 추적, 잠금·디스크 대기 분석</div>
       </div>
@@ -1090,7 +1163,7 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
       </table>
       </div>
       <div class="card"><h3>기능은 끼워 넣는 구조</h3><p>수집·추적·함수 기록·저장·알림을 인터페이스 6개로 나눕니다. 자바 함수 기록, 시계열 DB, 메신저 알림은 구현만 추가해 붙입니다.</p></div>
-      <div class="card"><h3>늦어지면 줄이는 순서</h3><p>서버 열지도(목록으로) → 내보내기 → 구간 끌어 고르기(고정 구간으로) → 플레임 그래프(상위 함수 표로). 번호 연결, 함수 수집, 트리는 유지합니다.</p></div>
+      <div class="card"><h3>늦어지면 줄이는 순서</h3><p>서버 열지도(목록으로) → CSV 내보내기 → 구간 끌어 고르기(고정 구간으로) → 플레임 그래프(상위 함수 표로). 세 흐름과 서버·배치판 트리는 끝까지 지킵니다.</p></div>
       <p class="note">본선은 외부망·상용 AI로 개발하고 사내 데이터·소스는 쓰지 않습니다. 시연은 컨테이너 3대와 C 체결 서비스에 모의 서버 40대·플로우 37개를 더해 하며, 서버 자원은 모의 값입니다.</p>
     </div>
   </div>
