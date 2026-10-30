@@ -286,6 +286,8 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
 .tile.alert { border-color: var(--pain); }
 .tile.alert .v { color: var(--pain); }
 .tile .go { font-size: 7pt; color: var(--brand); }
+.tiles.slim .tile { padding: 0.8mm 2mm; }
+.tiles.slim .tile .v { font-size: 11.5pt; }
 .pill { display: inline-flex; align-items: center; gap: 4px; font-size: 7.2pt; padding: 0 6px; border-radius: 99px; border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
 .pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .pill.ok { color: var(--ok); } .pill.run { color: var(--run); } .pill.fail { color: var(--pain); } .pill.warn { color: var(--warn); } .pill.wait { color: var(--ink-3); }
@@ -308,6 +310,78 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
 
 /* 화면 옆 설명 */
 .side { display: flex; flex-direction: column; gap: 2.6mm; justify-content: center; min-width: 0; }
+.wide { display: flex; flex-direction: column; gap: 3mm; justify-content: center; }
+.under { display: grid; grid-template-columns: 2fr 1fr; gap: 3mm; align-items: stretch; }
+
+/* 화면 시안: 트리 + 본문 */
+.app { display: grid; grid-template-columns: 37mm minmax(0, 1fr); }
+.tree { border-right: 1px solid var(--line-2); padding: 2mm 1.6mm 2.4mm 2mm; font-size: 7pt; line-height: 1.4; display: flex; flex-direction: column; gap: 0.25mm; }
+.tree .n { display: flex; align-items: center; gap: 1.2mm; padding: 0.15mm 1mm; border-radius: 3px; white-space: nowrap; color: var(--ink-2); min-width: 0; }
+.tree .n.root { color: var(--ink); font-weight: 700; margin-top: 1.4mm; }
+.tree .n.root:first-child { margin-top: 0; }
+.tree .n.l2 { padding-left: 3.6mm; }
+.tree .n.l3 { padding-left: 7.2mm; }
+.tree .n .tw { color: var(--ink-3); width: 2mm; font-size: 6pt; flex: none; }
+.tree .n .c { font-family: var(--f-mono); color: var(--ink-3); font-size: 6.8pt; }
+.tree .n .st { margin-left: auto; font-size: 6.4pt; font-weight: 600; padding: 0 1.2mm; border-radius: 3px; }
+.tree .n .flow { font-family: var(--f-mono); font-size: 6.9pt; }
+.tree .n .dot { width: 1.6mm; height: 1.6mm; border-radius: 50%; flex: none; background: var(--ink-3); }
+.tree .n .note2 { margin-left: auto; font-size: 6.3pt; color: var(--warn); font-weight: 600; }
+.tree .n.sel { background: var(--brand-wash); color: var(--brand); font-weight: 600; }
+.tree .n.more { color: var(--ink-3); font-size: 6.6pt; }
+.st.ok { color: var(--ok); } .st.run { color: var(--run); } .st.warn { color: var(--warn); background: var(--warn-wash); } .st.bad { color: var(--pain); background: var(--pain-wash); }
+.dot.ok { background: var(--ok); } .dot.run { background: var(--run); } .dot.wait { background: var(--line); border: 1px solid var(--ink-3); } .dot.hold { background: var(--warn); } .dot.bad { background: var(--pain); }
+.app .main { padding: 2.2mm 3.2mm 2.8mm; display: flex; flex-direction: column; gap: 1.7mm; min-width: 0; }
+.crumb { font-size: 7.6pt; color: var(--ink-3); display: flex; flex-wrap: wrap; gap: 1mm 2.4mm; align-items: center; }
+.crumb b { color: var(--ink); font-family: var(--f-mono); font-size: 8.4pt; }
+.crumb .btn { margin-left: auto; border: 1px solid var(--brand); color: var(--brand); border-radius: 3px; padding: 0 2mm; font-weight: 600; }
+
+/* 서버 열지도: 칸 하나 = 서버 하나 */
+.hw { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 3mm; align-items: start; }
+.heat { display: flex; flex-direction: column; gap: 1mm; min-width: 0; }
+.heatg { display: grid; grid-template-columns: auto auto auto; justify-content: start; gap: 0.5mm 1.8mm; align-items: center; font-size: 7pt; }
+.heat .g { color: var(--ink-2); white-space: nowrap; }
+.heat .g small { font-family: var(--f-mono); color: var(--ink-3); margin-left: 1mm; }
+.heat .cells { display: flex; gap: 0.6mm; }
+.heat .cells i { width: 3.7mm; height: 3.7mm; border-radius: 1.5px; display: grid; place-items: center; font-style: normal; font-size: 6.4pt; font-weight: 700; color: #fff; line-height: 1; }
+.heat .avg { font-family: var(--f-mono); color: var(--ink-3); font-size: 6.6pt; text-align: right; }
+.h0 { background: color-mix(in srgb, var(--brand) 16%, var(--paper)); }
+.h1 { background: color-mix(in srgb, var(--brand) 34%, var(--paper)); }
+.h2 { background: color-mix(in srgb, var(--brand) 56%, var(--paper)); }
+.h3 { background: color-mix(in srgb, var(--brand) 82%, var(--paper)); }
+.hw-c { background: var(--warn); } .hc-c { background: var(--pain); }
+.hx-c { background: repeating-linear-gradient(135deg, var(--line) 0 1.5px, var(--paper) 1.5px 3px); outline: 1px solid var(--ink-3); outline-offset: -1px; color: var(--ink-2) !important; }
+.hlegend { display: flex; flex-wrap: wrap; gap: 0.6mm 2.4mm; font-size: 6.6pt; color: var(--ink-3); align-items: center; }
+.hlegend i { display: inline-block; width: 2.6mm; height: 2.6mm; border-radius: 1px; vertical-align: -0.4mm; margin-right: 0.4mm; }
+.watch { display: flex; flex-direction: column; gap: 0.9mm; }
+.watch .wt { font-size: 6.8pt; color: var(--ink-3); }
+.wr { display: grid; grid-template-columns: minmax(0, 1fr) 15mm; gap: 1.6mm; align-items: center; border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: 3px; padding: 0.6mm 1.6mm; background: var(--paper); font-size: 7pt; line-height: 1.35; }
+.wr.bad { border-left-color: var(--pain); }
+.wr .id { font-family: var(--f-mono); font-weight: 600; color: var(--ink); }
+.wr .lv { font-size: 6.4pt; font-weight: 600; margin-left: 1mm; }
+.wr .m { color: var(--ink-2); margin-left: 1.6mm; }
+.wr > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wr .m b { color: var(--ink); font-family: var(--f-mono); }
+.wr svg { width: 15mm; height: 4mm; }
+.spk { fill: none; stroke: var(--ink-2); stroke-width: 1.4; }
+.spk-th { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 2; }
+
+/* 배치판 진행 */
+.boards { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1.1mm 1.8mm; }
+.bx { border: 1px solid var(--line); border-radius: 3px; padding: 0.8mm 1.8mm 1mm; background: var(--paper); font-size: 6.9pt; display: flex; flex-direction: column; gap: 0.6mm; line-height: 1.3; }
+.bx .h { display: flex; justify-content: space-between; gap: 1mm; color: var(--ink-2); white-space: nowrap; font-size: 6.6pt; }
+.bx .h b { color: var(--ink); }
+.sbar { display: flex; gap: 1px; height: 1.7mm; border-radius: 2px; overflow: hidden; }
+.sbar span { display: block; min-width: 1mm; }
+.s-ok { background: var(--ok); } .s-run { background: var(--run); } .s-wait { background: var(--line); } .s-hold { background: var(--warn); } .s-bad { background: var(--pain); }
+.slegend { display: flex; flex-wrap: wrap; gap: 0.6mm 3mm; font-size: 6.8pt; color: var(--ink-2); }
+.slegend i { display: inline-block; width: 2.4mm; height: 2.4mm; border-radius: 1px; margin-right: 0.8mm; vertical-align: -0.3mm; }
+.slegend b { font-family: var(--f-mono); color: var(--ink); }
+.strip .sbar { height: 2.6mm; }
+.failrow { font-size: 7.2pt; color: var(--ink-2); border: 1px solid var(--pain); border-radius: 3px; padding: 0.7mm 2mm; background: var(--pain-wash); display: flex; flex-wrap: wrap; gap: 0.4mm 2.4mm; }
+.failrow b { color: var(--pain); }
+.failrow code { color: var(--ink); font-weight: 600; }
+.failrow .go { margin-left: auto; color: var(--brand); font-weight: 600; }
 
 /* SVG */
 .sv-txt { fill: var(--ink); font-family: var(--f-body); }
@@ -351,6 +425,7 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
 .arch { display: grid; grid-template-columns: 1fr 7mm 1.2fr; gap: 1.4mm; align-items: stretch; font-size: 8.2pt; }
 .arch .ag { display: flex; flex-direction: column; gap: 1.4mm; }
 .arch .ag div { border: 1px solid var(--line); border-radius: 4px; padding: 1.2mm 2mm; line-height: 1.45; }
+.arch .ag div.muted { border: 0; padding: 0 2mm; font-size: 7.6pt; }
 .arch .ag b { font-family: var(--f-mono); }
 .arch .pipe { display: flex; align-items: center; justify-content: center; color: var(--ink-3); font-size: 13pt; }
 .arch .mg { border: 1.5px solid var(--brand); background: var(--brand-wash); border-radius: 5px; padding: 2mm; display: flex; flex-direction: column; gap: 1.2mm; }
@@ -395,7 +470,9 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
   .cover .content, .cols-2, .cols-73, .cols-64, .cols-46, .pains, .gains, .merge, .arch { grid-template-columns: 1fr; }
   .gains { grid-template-rows: none; }
   .merge .arrow, .arch .pipe { transform: rotate(90deg); }
-  .silos, .t3, .steps-h, .scope, .tv-out, .merge-out { grid-template-columns: 1fr 1fr; }
+  .silos, .t3, .steps-h, .scope, .tv-out, .merge-out, .boards { grid-template-columns: 1fr 1fr; }
+  .app, .hw, .under { grid-template-columns: 1fr; }
+  .tree { border-right: 0; border-bottom: 1px solid var(--line-2); }
   .eq { flex-wrap: wrap; }
   .eq-b { flex-basis: 40%; }
   .t5 { grid-template-columns: 1fr 1fr; }
@@ -471,7 +548,7 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
         </div>
       </div>
       <div class="merge-db"><b>통합 개방 DB</b> <span>: 실행 이력 · 서버 자원 · 실행별 자원 · 업무 지표 · 함수 기록</span></div>
-      <div class="merge-out"><div><b>웹 화면</b>대시보드·플로우·타임머신</div><div><b>SQL 조회</b>읽기 전용</div><div><b>내보내기</b>CSV·함수 기록</div></div>
+      <div class="merge-out"><div><b>웹 화면</b>서버·배치판 트리, 대시보드, 타임머신</div><div><b>SQL 조회</b>읽기 전용</div><div><b>내보내기</b>CSV·함수 기록</div></div>
     </div>
     <div class="col center">
       <h2>설치 구성</h2>
@@ -656,13 +733,13 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
     <div class="gain">
       <span class="no">①</span>
       <div class="t">복잡도와 관리 비용이 줄어듭니다</div>
-      <div class="ba"><span class="l">지금</span><span>도구마다 계약·관리 서버·화면이 따로</span><span class="l">이음</span><span class="after">실행 파일 1개, 화면 1개, 방화벽 포트 1개</span></div>
+      <div class="ba"><span class="l">지금</span><span>도구마다 계약·관리 서버·화면이 따로</span><span class="l">이음</span><span class="after">실행 파일 1개, 화면 1개, 방화벽 포트 1개. 서버 수십 대는 그룹 트리로</span></div>
       <div class="ref">화면 ① 대시보드 · 8쪽</div>
     </div>
     <div class="gain">
       <span class="no">②</span>
       <div class="t">배치를 유연하게 실행합니다</div>
-      <div class="ba"><span class="l">지금</span><span>작업 목록·로그 위주. 업무가 바빠도 시각이 되면 실행</span><span class="l">이음</span><span class="after">병렬·합류·서버 넘기·재시도를 그래프로. "체결 대기 0건 뒤 정산" 같은 조건 실행 <span class="badge ext">확장</span></span></div>
+      <div class="ba"><span class="l">지금</span><span>작업 목록·로그 위주. 업무가 바빠도 시각이 되면 실행</span><span class="l">이음</span><span class="after">플로우 수십 개는 배치판 트리로, 병렬·합류·서버 넘기·재시도는 그래프로. "체결 대기 0건 뒤 정산" 같은 조건 실행 <span class="badge ext">확장</span></span></div>
       <div class="ref">화면 ② 플로우 그래프 · 9쪽</div>
     </div>
     <div class="gain">
@@ -685,40 +762,35 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
   <div class="p-title">
     <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">① 복잡도와 관리 비용</span></div>
     <h1>서버·업무·배치를 한 화면에.</h1>
-    <p class="sub">지금은 도구를 여러 개 열어야 보이는 내용입니다.</p>
+    <p class="sub">서버 수십 대와 플로우 수십 개를 트리로 묶어 봅니다. 지금은 도구를 여러 개 열어야 보이는 내용입니다.</p>
   </div>
-  <div class="content cols-73">
-    <div class="col center">
-      <div class="screen">
-        <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">eum · #dashboard</span></div>
-        <div class="nav"><span class="brand">이음</span><span class="on">대시보드</span><span>플로우</span><span>실행 이력</span><span class="r">10:42:35 · 2초마다 갱신</span></div>
-        <div class="body">
-          <div class="sec-l"><span>서버</span><span>서버 관제가 하던 일</span></div>
-          <div class="tiles t3">
-            <div class="tile"><span class="k"><span>batch-01 · 배치</span><span class="pill ok">정상</span></span><span class="v">22<small>% CPU</small></span><span class="k">메모리 41%</span></div>
-            <div class="tile"><span class="k"><span>match-01 · 체결</span><span class="pill warn">높음</span></span><span class="v">71<small>% CPU</small></span><span class="k">메모리 58%</span></div>
-            <div class="tile"><span class="k"><span>gw-01 · 주문 게이트웨이</span><span class="pill ok">정상</span></span><span class="v">47<small>% CPU</small></span><span class="k">메모리 36%</span></div>
+  <div class="content wide">
+    <div class="screen">
+      <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">eum · #dashboard</span></div>
+      <div class="nav"><span class="brand">이음</span><span class="on">대시보드</span><span>서버</span><span>배치판</span><span>실행 이력</span><span class="r">10:42:35 · 2초마다 갱신</span></div>
+      <div class="app">
+        <div class="tree" id="treeDash" aria-label="서버 그룹과 배치판 트리"></div>
+        <div class="main">
+          <div class="sec-l"><span>서버 43대 · 그룹별 CPU · 칸 하나가 서버 하나</span><span>서버 관제가 하던 일</span></div>
+          <div class="hw">
+            <div class="heat" id="heat"></div>
+            <div class="watch" id="watch"></div>
           </div>
-          <div class="sec-l"><span>업무 처리 · 체결 서비스 <span class="tag">01JBQ7…</span></span><span>업무 관제가 하던 일</span></div>
-          <div class="tiles t5">
+          <div class="sec-l"><span>업무 패널 · 매매/체결 <span class="tag">01JBQ7…</span></span><span>업무 관제가 하던 일 · <code>panels/체결.yaml</code>로 구성</span></div>
+          <div class="tiles t5 slim">
             <div class="tile"><span class="k">주문 접수</span><span class="v">6,000<small>/초</small></span></div>
             <div class="tile"><span class="k">체결 처리</span><span class="v">5,860<small>/초</small></span></div>
             <div class="tile alert"><span class="k">처리 대기</span><span class="v">2,240<small>건</small></span></div>
-            <div class="tile alert"><span class="k">p99 응답</span><span class="v">385<small>ms</small></span><span class="go">누르면 타임머신 →</span></div>
+            <div class="tile alert"><span class="k"><span>p99 응답</span><span class="go">누르면 타임머신 →</span></span><span class="v">385<small>ms</small></span></div>
             <div class="tile"><span class="k">함수 추적 부하</span><span class="v">0.6<small>%</small></span></div>
           </div>
-          <div class="sec-l"><span>오늘의 플로우</span><span>스케줄러가 하던 일</span></div>
-          <div class="flows">
-            <div class="fl"><span class="id">market-open</span><span class="tm">05:30</span><span class="d">개장 준비 · 스텝 5/5 · 재시도 1회</span><span class="pill ok">완료</span></div>
-            <div class="fl"><span class="id">daily-settle</span><span class="tm">15:40</span><span class="d">정산 · 조건: 체결 대기 0건</span><span class="pill wait">예정</span></div>
-          </div>
+          <div class="sec-l"><span>배치판 · 오늘 플로우 39개</span><span>스케줄러가 하던 일</span></div>
+          <div class="boards" id="boards"></div>
         </div>
       </div>
-      <div class="cap">설계 시안 · 수치는 합성 부하 예시</div>
     </div>
-    <div class="side">
-      <div class="card"><h3>무엇을 보나</h3><p>서버 자원, 주문 접수·처리·대기·응답시간, 오늘의 배치.</p></div>
-      <div class="card"><h3>어떻게 쓰나</h3><p>업무 지표에 실행 번호가 붙어 있습니다. 응답시간 타일을 누르면 해당 실행 기록으로 바로 갑니다.</p></div>
+    <div class="under">
+      <div class="card"><p><b>어떻게 쓰나</b> 트리에서 그룹이나 배치판을 고르면 화면이 그 범위로 좁혀집니다. 이상 있는 서버는 목록 맨 위로 올라오고, 업무 패널은 업무마다 정의 파일 하나로 지표를 고릅니다. 업무 타일을 누르면 해당 실행 기록으로 갑니다.</p></div>
       <div class="takeaway"><small>좋아지는 점</small><b>여러 화면을 오가던 점검이 화면 하나로.</b></div>
     </div>
   </div>
@@ -729,55 +801,53 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
   <div class="p-title">
     <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">② 배치를 유연하게</span></div>
     <h1>배치 흐름은 그래프로, 실행은 업무에 맞춰.</h1>
-    <p class="sub">병렬·합류·서버 넘기·재시도를 한눈에 봅니다.</p>
+    <p class="sub">플로우 수십 개는 배치판 트리로 묶고, 고른 플로우의 병렬·합류·서버 넘기·재시도를 한눈에 봅니다.</p>
   </div>
   <div class="content cols-73">
     <div class="col center">
-      <div class="screen">
-        <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">eum · #flow/market-open</span></div>
-        <div class="nav"><span class="brand">이음</span><span>대시보드</span><span class="on">플로우</span><span>실행 이력</span><span class="r">평일 05:30 · 다음 실행 10/30 05:30</span></div>
-        <div class="body">
-          <div class="tm-head"><span class="ttl">market-open</span><span>개장 준비: 원장 적재 후 체결 서비스 기동</span><span class="pill ok">완료 05:30:41</span></div>
-          <svg viewBox="0 0 900 262" role="img" aria-label="market-open 플로우 그래프">
-            <text x="106" y="14" text-anchor="middle" class="sv-txt3" font-size="11">단계 0</text>
-            <text x="336" y="14" text-anchor="middle" class="sv-txt3" font-size="11">단계 1 · 병렬</text>
-            <text x="566" y="14" text-anchor="middle" class="sv-txt3" font-size="11">단계 2 · 합류</text>
-            <text x="796" y="14" text-anchor="middle" class="sv-txt3" font-size="11">단계 3</text>
-            <rect x="466" y="24" width="428" height="234" rx="8" fill="none" stroke="var(--brand)" stroke-dasharray="4 4" stroke-width="1.2"/>
-            <text x="884" y="42" text-anchor="end" class="sv-brand" font-size="11.5" font-family="var(--f-mono)">match-01 (체결 서버)</text>
-            <text x="20" y="42" class="sv-txt3" font-size="11.5">batch-01 (배치 서버)</text>
-            <path class="sv-edge" d="M196 145 C 226 145, 216 85, 246 85"/>
-            <path class="sv-edge" d="M196 145 C 226 145, 216 205, 246 205"/>
-            <path class="sv-edge-x" d="M426 85 C 456 85, 446 145, 476 145"/>
-            <path class="sv-edge-x" d="M426 205 C 456 205, 446 145, 476 145"/>
-            <path class="sv-edge" d="M656 145 L 706 145"/>
-            <polygon points="246,85 238,81 238,89" fill="var(--ink-3)"/>
-            <polygon points="246,205 238,201 238,209" fill="var(--ink-3)"/>
-            <polygon points="476,145 467,140 467,150" fill="var(--brand)"/>
-            <polygon points="706,145 698,141 698,149" fill="var(--ink-3)"/>
-            <g><rect class="sv-node" x="16" y="112" width="180" height="66" rx="6"/><rect x="16" y="112" width="5" height="66" rx="2" class="sv-ok"/><text x="32" y="136" class="sv-mono" font-size="13" font-weight="600">fetch-master</text><text x="32" y="156" class="sv-txt2" font-size="11.5">기준정보 수신 · 8초</text><circle cx="180" cy="130" r="6" class="sv-ok"/></g>
-            <g><rect class="sv-node" x="246" y="52" width="180" height="66" rx="6"/><rect x="246" y="52" width="5" height="66" rx="2" class="sv-ok"/><text x="262" y="76" class="sv-mono" font-size="13" font-weight="600">load-equity</text><text x="262" y="96" class="sv-txt2" font-size="11.5">주식 원장 적재 · 15초</text><rect x="346" y="101" width="72" height="16" rx="8" fill="var(--paper)" stroke="var(--pain)" stroke-width="1"/><text x="382" y="113" text-anchor="middle" font-size="10.5" fill="var(--pain)" font-family="var(--f-body)">재시도 2회차</text><circle cx="410" cy="70" r="6" class="sv-ok"/></g>
-            <g><rect class="sv-node" x="246" y="172" width="180" height="66" rx="6"/><rect x="246" y="172" width="5" height="66" rx="2" class="sv-ok"/><text x="262" y="196" class="sv-mono" font-size="13" font-weight="600">load-deriv</text><text x="262" y="216" class="sv-txt2" font-size="11.5">파생 원장 적재 · 12초</text><circle cx="410" cy="190" r="6" class="sv-ok"/></g>
-            <g><rect class="sv-node" x="476" y="112" width="180" height="66" rx="6" style="stroke:var(--brand);stroke-width:1.6"/><rect x="476" y="112" width="5" height="66" rx="2" class="sv-ok"/><text x="492" y="136" class="sv-mono" font-size="13" font-weight="600">start-matching</text><text x="492" y="156" class="sv-txt2" font-size="11.5">체결 서비스 기동 · 1초</text><circle cx="640" cy="130" r="6" class="sv-ok"/><rect x="476" y="186" width="180" height="22" rx="4" class="sv-tagbg"/><text x="566" y="201" text-anchor="middle" class="sv-tagtx" font-size="11" font-weight="600">서비스 실행 중 · 01JBQ7…</text></g>
-            <g><rect class="sv-node" x="706" y="112" width="180" height="66" rx="6"/><rect x="706" y="112" width="5" height="66" rx="2" class="sv-ok"/><text x="722" y="136" class="sv-mono" font-size="13" font-weight="600">check-ready</text><text x="722" y="156" class="sv-txt2" font-size="11.5">기동 확인 · 3초</text><circle cx="870" cy="130" r="6" class="sv-ok"/></g>
-            <text x="336" y="150" text-anchor="middle" class="sv-txt3" font-size="10.5">동시 실행</text>
-            <text x="566" y="236" text-anchor="middle" class="sv-brand" font-size="11" font-family="var(--f-body)">둘 다 성공하면 시작 · 서버를 넘어 실행</text>
-          </svg>
-          <div class="sec-l"><span>daily-settle · 15:40 정산 <span class="badge ext">확장 목표</span></span><span>업무 지표를 실행 조건으로</span></div>
-          <svg viewBox="0 0 900 70" role="img" aria-label="정산 플로우가 체결 대기 0건을 기다리는 모습">
-            <g><rect class="sv-node" x="16" y="6" width="300" height="58" rx="6" style="stroke:var(--warn);stroke-width:1.6"/><rect x="16" y="6" width="5" height="58" rx="2" class="sv-warn"/><text x="32" y="29" class="sv-mono" font-size="13" font-weight="600">settle</text><text x="32" y="50" class="sv-txt2" font-size="11.5">대기 중 · 조건: match-01 체결 대기 0건</text><circle cx="300" cy="24" r="6" class="sv-warn blink"/></g>
-            <path class="sv-edge" d="M316 35 L 376 35"/><polygon points="376,35 368,31 368,39" fill="var(--ink-3)"/>
-            <g><rect class="sv-node" x="376" y="6" width="200" height="58" rx="6"/><rect x="376" y="6" width="5" height="58" rx="2" class="sv-wait"/><text x="392" y="29" class="sv-mono" font-size="13" font-weight="600">settle-report</text><text x="392" y="50" class="sv-txt2" font-size="11.5">정산 보고 · 선행 대기</text></g>
-            <text x="600" y="28" class="sv-txt" font-size="12" font-weight="600">현재 체결 대기 2,240건</text>
-            <text x="600" y="48" class="sv-txt2" font-size="11">0건이 되면 자동 시작 · 30분 넘게 대기하면 실패 알림</text>
-          </svg>
+    <div class="screen">
+      <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">eum · #board/개장준비/market-open</span></div>
+      <div class="nav"><span class="brand">이음</span><span>대시보드</span><span>서버</span><span class="on">배치판</span><span>실행 이력</span><span class="r">평일 05:30 · 다음 실행 10/30 05:30</span></div>
+      <div class="app">
+        <div class="tree" id="treeBatch" aria-label="배치판 트리"></div>
+        <div class="main">
+          <div class="crumb"><span>배치판 › 개장준비 ›</span><b>market-open</b><span>원장 적재 후 체결 서비스 기동</span><span class="pill ok">완료 05:30:41</span><span class="btn">지금 실행</span></div>
+          <svg viewBox="0 0 652 250" role="img" aria-label="market-open 플로우 그래프">
+              <text x="76" y="12" text-anchor="middle" class="sv-txt3" font-size="10.5">단계 0</text>
+              <text x="240" y="12" text-anchor="middle" class="sv-txt3" font-size="10.5">단계 1 · 병렬</text>
+              <text x="404" y="12" text-anchor="middle" class="sv-txt3" font-size="10.5">단계 2 · 합류</text>
+              <text x="568" y="12" text-anchor="middle" class="sv-txt3" font-size="10.5">단계 3</text>
+              <rect x="326" y="22" width="320" height="222" rx="7" fill="none" stroke="var(--brand)" stroke-dasharray="4 4" stroke-width="1.2"/>
+              <text x="638" y="38" text-anchor="end" class="sv-brand" font-size="10.5" font-family="var(--f-mono)">match-01 · 체결 서버</text>
+              <text x="8" y="38" class="sv-txt3" font-size="10.5">batch-01 · 배치 서버</text>
+              <path class="sv-edge" d="M144 135 C 160 135, 156 79, 172 79"/>
+              <path class="sv-edge" d="M144 135 C 160 135, 156 191, 172 191"/>
+              <path class="sv-edge-x" d="M308 79 C 324 79, 320 135, 336 135"/>
+              <path class="sv-edge-x" d="M308 191 C 324 191, 320 135, 336 135"/>
+              <path class="sv-edge" d="M472 135 L 500 135"/>
+              <polygon points="172,79 165,75.5 165,82.5" fill="var(--ink-3)"/>
+              <polygon points="172,191 165,187.5 165,194.5" fill="var(--ink-3)"/>
+              <polygon points="336,135 328,131 328,139" fill="var(--brand)"/>
+              <polygon points="500,135 493,131.5 493,138.5" fill="var(--ink-3)"/>
+              <g><rect class="sv-node" x="8" y="104" width="136" height="62" rx="5"/><rect x="8" y="104" width="4" height="62" rx="2" class="sv-ok"/><text x="21" y="127" class="sv-mono" font-size="12.5" font-weight="600">fetch-master</text><text x="21" y="146" class="sv-txt2" font-size="11">기준정보 수신 · 8초</text><circle cx="134" cy="116" r="4.5" class="sv-ok"/></g>
+              <g><rect class="sv-node" x="172" y="48" width="136" height="62" rx="5"/><rect x="172" y="48" width="4" height="62" rx="2" class="sv-ok"/><text x="185" y="71" class="sv-mono" font-size="12.5" font-weight="600">load-equity</text><text x="185" y="90" class="sv-txt2" font-size="11">주식 원장 적재 · 15초</text><circle cx="298" cy="60" r="4.5" class="sv-ok"/><rect x="238" y="94" width="64" height="13" rx="6.5" fill="var(--paper)" stroke="var(--pain)" stroke-width="1"/><text x="270" y="104" text-anchor="middle" font-size="9.5" fill="var(--pain)" font-family="var(--f-body)">재시도 2회차</text></g>
+              <g><rect class="sv-node" x="172" y="160" width="136" height="62" rx="5"/><rect x="172" y="160" width="4" height="62" rx="2" class="sv-ok"/><text x="185" y="183" class="sv-mono" font-size="12.5" font-weight="600">load-deriv</text><text x="185" y="202" class="sv-txt2" font-size="11">파생 원장 적재 · 12초</text><circle cx="298" cy="172" r="4.5" class="sv-ok"/></g>
+              <g><rect class="sv-node" x="336" y="104" width="136" height="62" rx="5" style="stroke:var(--brand);stroke-width:1.6"/><rect x="336" y="104" width="4" height="62" rx="2" class="sv-ok"/><text x="349" y="127" class="sv-mono" font-size="12.5" font-weight="600">start-matching</text><text x="349" y="146" class="sv-txt2" font-size="11">체결 서비스 기동 · 1초</text><circle cx="462" cy="116" r="4.5" class="sv-ok"/><rect x="336" y="172" width="136" height="19" rx="3" class="sv-tagbg"/><text x="404" y="185.5" text-anchor="middle" class="sv-tagtx" font-size="10" font-weight="600">서비스 실행 중 · 01JBQ7…</text></g>
+              <g><rect class="sv-node" x="500" y="104" width="136" height="62" rx="5"/><rect x="500" y="104" width="4" height="62" rx="2" class="sv-ok"/><text x="513" y="127" class="sv-mono" font-size="12.5" font-weight="600">check-ready</text><text x="513" y="146" class="sv-txt2" font-size="11">기동 확인 · 3초</text><circle cx="626" cy="116" r="4.5" class="sv-ok"/></g>
+              <text x="240" y="139" text-anchor="middle" class="sv-txt3" font-size="10">동시 실행</text>
+              <text x="336" y="210" class="sv-brand" font-size="10" font-family="var(--f-body)">둘 다 성공하면 시작 · 서버를 넘어 실행</text>
+            </svg>
+          <div class="sec-l"><span>오늘 배치판 전체 · 플로우 39개</span><span>10:42 기준</span></div>
+          <div class="strip" id="strip"></div>
+          <div class="failrow"><b>실패 1</b><span>대외송수신 › <code>ext-send-margin</code></span><span>10:12 종료 코드 2 · 재시도 2회 모두 실패</span><span class="go">실행 기록 →</span></div>
         </div>
       </div>
-      <div class="cap">설계 시안 · 노드를 누르면 해당 실행 기록(타임머신)으로 이동</div>
+    </div>
+    <div class="cap">설계 시안 · 노드를 누르면 해당 실행 기록(타임머신)으로 이동</div>
     </div>
     <div class="side">
-      <div class="card"><h3>무엇을 보나</h3><p>선후행, 병렬과 합류, 서버 간 실행, 재시도. 서비스를 띄운 스텝이 끝나도 서비스는 같은 번호로 계속 기록합니다.</p></div>
-      <div class="card"><h3>업무를 아는 스케줄러</h3><p>업무 지표가 같은 DB에 있어 "체결 대기 0건 뒤 정산" 같은 조건을 바로 겁니다. 지표가 끊기면 실행하지 않습니다.</p></div>
+      <div class="card"><h3>무엇을 보나</h3><p>플로우는 배치판(폴더)으로 묶고, 진행 상황은 트리에 모아 올립니다. 플로우를 고르면 선후행, 병렬과 합류, 서버 간 실행, 재시도가 그래프로 보입니다.</p></div>
+      <div class="card"><h3>업무를 아는 스케줄러 <span class="badge ext">확장</span></h3><p>업무 지표가 같은 DB에 있어 "체결 대기 0건 뒤 정산" 같은 조건을 바로 겁니다. 지표가 끊기면 실행하지 않습니다.</p></div>
       <div class="takeaway"><small>좋아지는 점</small><b>시각만 보던 배치가 업무 상황까지 봅니다.</b></div>
     </div>
   </div>
@@ -796,7 +866,7 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
         <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">eum · #run/01JBQ7…</span></div>
         <div class="nav"><span class="brand">이음</span><span>대시보드</span><span>플로우</span><span class="on">실행 01JBQ7…</span><span class="r">CSV · 함수 기록 내려받기</span></div>
         <div class="body">
-          <div class="tm-head"><span class="ttl">market-open / start-matching</span><span>match-01</span><span>기동 05:30:37</span><span class="pill run">서비스 실행 중</span><span class="tag">01JBQ7…</span></div>
+          <div class="tm-head"><span class="ttl">개장준비 › market-open › start-matching</span><span>매매/체결 · match-01</span><span>기동 05:30:37</span><span class="pill run">서비스 실행 중</span><span class="tag">01JBQ7…</span></div>
           <div class="legend"><span><i style="border-color:var(--s-in);border-top-style:dashed"></i>주문 접수</span><span><i style="border-color:var(--s-out)"></i>체결 처리</span><span><i style="border-color:var(--s-hot)"></i>처리 대기 · p99</span><span><i style="border-color:var(--ink-2)"></i>서비스 CPU</span><span><i class="band" style="background:color-mix(in srgb,var(--ink-3) 25%,transparent)"></i>A 평시</span><span><i class="band" style="background:color-mix(in srgb,var(--tag) 55%,transparent)"></i>B 지연 구간</span></div>
           <svg id="tm" viewBox="0 0 900 400" role="img" aria-label="타임머신 차트: 주문 폭주 구간의 접수, 처리, 대기, p99, 서비스 CPU"></svg>
         </div>
@@ -915,7 +985,7 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
       <table>
         <thead><tr><th>좋아지는 것</th><th>확인 방법</th></tr></thead>
         <tbody>
-          <tr><th>① 복잡도·관리 비용</th><td>기존 도구들의 점검 항목이 한 화면에 모두 나오는지 점검표로 확인</td></tr>
+          <tr><th>① 복잡도·관리 비용</th><td>서버 40여 대·플로우 40여 개를 트리로 묶어 띄우고, 기존 도구들의 점검 항목이 한 화면에 모두 나오는지 점검표로 확인</td></tr>
           <tr><th>② 유연한 배치</th><td>병렬·합류·서버 넘기·재시도가 정의대로 돌고 그래프에 보이는지</td></tr>
           <tr><th>③ 장애 원인 파악</th><td>같은 시나리오를 지금 절차와 이음으로 처리해 소요 시간 비교. 지난 구간의 함수 비중을 재현 없이 조회하는지</td></tr>
           <tr><th>④ 데이터 마이닝</th><td>운영 데이터 5종을 SQL로 조인하고 CSV로 내보내는지</td></tr>
@@ -973,13 +1043,14 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
           <tr><th>저장·조회</th><td>SQLite(파일 하나짜리 DB)</td><td>공개 스키마, 분석용 뷰, 조회 API</td></tr>
           <tr><th>실행 시각</th><td>검증된 cron 해석 라이브러리</td><td>선후행·재시도 판단, 실행 루프</td></tr>
           <tr><th>차트</th><td>uPlot(경량 차트)</td><td>플로우 그래프, 플레임 그래프</td></tr>
+          <tr><th>묶어 보기</th><td>설정의 그룹 경로, 플로우 폴더</td><td>서버·배치판 트리, 그룹별 상태 집계, 업무 패널</td></tr>
           <tr><th>배포</th><td>Go 단일 실행 파일</td><td>매니저·에이전트 역할 분리</td></tr>
         </tbody>
       </table>
       </div>
-      <div class="lbl">구성</div>
+      <div class="lbl">구성 · 서버는 에이전트 설정의 그룹 경로로 묶습니다</div>
       <div class="arch">
-        <div class="ag"><div><b>batch-01</b> 배치 서버 에이전트</div><div><b>match-01</b> 체결 서버 에이전트</div><div><b>gw-01</b> 게이트웨이 에이전트</div></div>
+        <div class="ag"><div><b>매매/체결</b> match-01~08</div><div><b>매매/주문접수</b> gw-01~06</div><div><b>사후처리/배치</b> batch-01~04</div><div class="muted">… 그룹 8개, 서버 43대. 서버마다 에이전트 1개</div></div>
         <div class="pipe">→</div>
         <div class="mg"><div><b>매니저</b> 스케줄러·수집·저장·화면</div><div>실행 상태 DB + 지표·함수 DB</div><div>연결은 에이전트 → 매니저 한 방향</div></div>
       </div>
@@ -1000,7 +1071,7 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
       <div class="sched" id="sched"></div>
       <h2>범위</h2>
       <div class="scope">
-        <div><span class="badge must">15:00까지 필수</span>시각 실행, 선후행·병렬·합류·재시도, 원격 실행, 서비스 추적, 자원·업무 지표 수집, 함수 기록, 타임머신·플레임 그래프, SQL·CSV, 에이전트 토큰</div>
+        <div><span class="badge must">15:00까지 필수</span>시각 실행, 선후행·병렬·합류·재시도, 원격 실행, 서비스 추적, 자원·업무 지표 수집, 함수 기록, 서버·배치판 트리, 타임머신·플레임 그래프, SQL·CSV, 에이전트 토큰</div>
         <div><span class="badge ext">시간이 남으면</span>업무 지표 조건 실행(정산 대기), 함수 비교 표, 임계치 알림, 실행 강제 종료</div>
         <div><span class="badge out">이번에 안 함</span>로그인·권한, TLS, 이중화, 휴일 캘린더, 자바 함수 추적, 잠금·디스크 대기 분석</div>
       </div>
@@ -1019,8 +1090,8 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
       </table>
       </div>
       <div class="card"><h3>기능은 끼워 넣는 구조</h3><p>수집·추적·함수 기록·저장·알림을 인터페이스 6개로 나눕니다. 자바 함수 기록, 시계열 DB, 메신저 알림은 구현만 추가해 붙입니다.</p></div>
-      <div class="card"><h3>늦어지면 줄이는 순서</h3><p>대시보드 장식 → 내보내기 → 구간 끌어 고르기(고정 구간으로) → 플레임 그래프(상위 함수 표로). 번호 연결과 함수 수집은 유지합니다.</p></div>
-      <p class="note">본선은 외부망·상용 AI로 개발하고 사내 데이터·소스는 쓰지 않습니다. 시연은 컨테이너 3대와 C 체결 서비스로 하며, 서버 자원만 모의 값입니다.</p>
+      <div class="card"><h3>늦어지면 줄이는 순서</h3><p>서버 열지도(목록으로) → 내보내기 → 구간 끌어 고르기(고정 구간으로) → 플레임 그래프(상위 함수 표로). 번호 연결, 함수 수집, 트리는 유지합니다.</p></div>
+      <p class="note">본선은 외부망·상용 AI로 개발하고 사내 데이터·소스는 쓰지 않습니다. 시연은 컨테이너 3대와 C 체결 서비스에 모의 서버 40대·플로우 37개를 더해 하며, 서버 자원은 모의 값입니다.</p>
     </div>
   </div>
 </section>
@@ -1186,6 +1257,115 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
     box.innerHTML = html;
   }
 
+  /* 운영 규모 시안: 서버 43대(그룹 8개), 배치판 6개(플로우 39개). 이름과 수치는 예시 */
+  function st(v) { if (!v) return ""; var a = v.split(":"); return '<span class="st ' + a[0] + '">' + a[1] + "</span>"; }
+  function drawTree(id, rows) {
+    var box = document.getElementById(id);
+    if (!box) return;
+    box.innerHTML = rows.map(function (r) {
+      var lv = r[0], o = r[5] || {}, cls = "n l" + lv + (lv === 1 ? " root" : "") + (o.sel ? " sel" : "") + (o.more ? " more" : "");
+      if (o.more) return '<div class="' + cls + '">' + r[2] + "</div>";
+      if (o.flow) return '<div class="' + cls + '"><span class="dot ' + o.flow + '"></span><span class="flow">' + r[2] + "</span>" + (o.note ? '<span class="note2">' + o.note + "</span>" : "") + "</div>";
+      return '<div class="' + cls + '"><span class="tw">' + r[1] + "</span><span>" + r[2] + '</span><span class="c">' + r[3] + "</span>" + st(r[4]) + "</div>";
+    }).join("");
+  }
+  var BOARDS = [["개장준비", 6, 0, 0, 0, 0], ["장중", 2, 2, 1, 0, 0], ["정산", 0, 0, 7, 0, 0], ["대외송수신", 6, 1, 1, 0, 1], ["정보계적재", 5, 0, 3, 0, 0], ["주간월간", 0, 0, 4, 0, 0]];
+  var SCLS = ["s-ok", "s-run", "s-wait", "s-hold", "s-bad"], SNAME = ["완료", "실행 중", "예정", "조건 대기", "실패"];
+  function sbar(c) { return '<div class="sbar">' + c.map(function (v, k) { return v ? '<span class="' + SCLS[k] + '" style="flex:' + v + '"></span>' : ""; }).join("") + "</div>"; }
+  drawTree("treeDash", [
+    [1, "▾", "서버", 43, "bad:이상 4", { sel: 1 }],
+    [2, "▾", "매매", 20, "warn:주의 2"], [3, "", "주문접수", 6], [3, "", "체결", 8, "warn:주의 2"], [3, "", "시세", 6],
+    [2, "▸", "사후처리", 8],
+    [2, "▾", "대외정보", 11, "bad:이상 2"], [3, "", "대외연계", 6, "bad:무응답"], [3, "", "정보계", 5, "bad:위험 1"],
+    [2, "▸", "공통", 4],
+    [1, "▾", "배치판", 39, "bad:실패 1"]
+  ].concat(BOARDS.map(function (b) {
+    var s = b[5] ? "bad:실패 " + b[5] : b[2] ? "run:실행 " + b[2] : !b[3] && !b[4] ? "ok:완료" : "";
+    return [2, "▸", b[0], b[1] + b[2] + b[3] + b[4] + b[5], s];
+  })));
+  drawTree("treeBatch", [
+    [1, "▾", "배치판", 39, "bad:실패 1"],
+    [2, "▾", "개장준비", 6, "ok:완료"],
+    [3, "", "market-open", 0, "", { flow: "ok", sel: 1 }], [3, "", "fetch-ref", 0, "", { flow: "ok" }], [3, "", "load-margin", 0, "", { flow: "ok" }],
+    [3, "", "warmup-cache", 0, "", { flow: "ok" }], [3, "", "feed-start", 0, "", { flow: "ok" }], [3, "", "open-check", 0, "", { flow: "ok" }],
+    [2, "▸", "장중", 5, "run:실행 2"],
+    [2, "▾", "정산", 7, ""],
+    [3, "", "daily-settle", 0, "", { flow: "wait", note: "조건" }], [3, "", "close-report", 0, "", { flow: "wait" }], [3, "", "fee-calc", 0, "", { flow: "wait" }],
+    [3, "", "… 4개 더", 0, "", { more: 1 }],
+    [2, "▸", "대외송수신", 9, "bad:실패 1"], [2, "▸", "정보계적재", 8], [2, "▸", "주간월간", 4],
+    [1, "▸", "서버", 43, "bad:이상 4"]
+  ]);
+
+  /* 서버 열지도: 정상은 CPU 단계(한 색의 진하기), 이상은 상태 색 + 표시 */
+  function drawHeat() {
+    var box = document.getElementById("heat");
+    if (!box) return;
+    var G = [["주문접수", "gw", [47, 52, 44, 49, 51, 46]], ["체결", "match", [78, 64, 74, 58, 55, 61, 57, 60]], ["시세", "feed", [38, 41, 36, 40, 39, 37]],
+      ["청산정산", "settle", [12, 9, 11, 10]], ["배치", "batch", [22, 35, 18, 27]], ["대외연계", "ext", [29, 33, 31, null, 28, 30]],
+      ["정보계", "dw", [44, "m63", 41, 39, 46]], ["관리", "ops", [8, 12, 15, 9]]];
+    var html = '<div class="heatg">';
+    G.forEach(function (g) {
+      var sum = 0, n = 0;
+      var cells = g[2].map(function (v, k) {
+        var name = g[1] + "-0" + (k + 1);
+        if (v === null) return '<i class="hx-c" title="' + name + ' 무응답">×</i>';
+        var mem = typeof v === "string", cpu = mem ? +v.slice(1) : v;
+        sum += cpu; n++;
+        if (mem) return '<i class="hc-c" title="' + name + " CPU " + cpu + '% · 메모리 93%">!</i>';
+        if (cpu >= 90) return '<i class="hc-c" title="' + name + " CPU " + cpu + '%">!</i>';
+        if (cpu >= 70) return '<i class="hw-c" title="' + name + " CPU " + cpu + '%">!</i>';
+        return '<i class="h' + (cpu < 25 ? 0 : cpu < 45 ? 1 : cpu < 60 ? 2 : 3) + '" title="' + name + " CPU " + cpu + '%"></i>';
+      }).join("");
+      html += '<span class="g">' + g[0] + "<small>" + g[2].length + '</small></span><span class="cells">' + cells + '</span><span class="avg">' + Math.round(sum / n) + "%</span>";
+    });
+    html += '</div><div class="hlegend"><span>CPU <i class="h0"></i><i class="h1"></i><i class="h2"></i><i class="h3"></i> 70% 미만</span><span><i class="hw-c"></i>주의</span><span><i class="hc-c"></i>위험</span><span><i class="hx-c"></i>무응답</span><span>오른쪽 숫자는 그룹 평균</span></div>';
+    box.innerHTML = html;
+  }
+  function spark(vals, th) {
+    var s = "", W = 60, H = 20, started = false;
+    vals.forEach(function (v, k) {
+      if (v == null) { started = false; return; }
+      s += (started ? " L" : "M") + (k / (vals.length - 1) * W).toFixed(1) + " " + (H - 1 - v / 100 * (H - 2)).toFixed(1);
+      started = true;
+    });
+    var ty = (H - 1 - th / 100 * (H - 2)).toFixed(1);
+    return '<svg viewBox="0 0 60 20" preserveAspectRatio="none" aria-hidden="true"><line class="spk-th" x1="0" x2="60" y1="' + ty + '" y2="' + ty + '"/><path class="spk" d="' + s + '"/></svg>';
+  }
+  function drawWatch() {
+    var box = document.getElementById("watch");
+    if (!box) return;
+    function ser(f) { var a = []; for (var k = 0; k < 30; k++) a.push(f(k)); return a; }
+    var W = [
+      ["bad", "ext-04", "무응답", "대외정보/대외연계 · 마지막 수신 <b>18초</b> 전", ser(function (k) { return k < 27 ? 30 + Math.sin(k) * 3 : null; }), 70],
+      ["bad", "dw-02", "위험", "대외정보/정보계 · 메모리 <b>93%</b>", ser(function (k) { return 70 + k * 0.8 + Math.sin(k * 1.3) * 1.5; }), 90],
+      ["warn", "match-01", "주의", "매매/체결 · CPU <b>78%</b> · 처리 대기 증가", ser(function (k) { return k < 20 ? 40 + Math.sin(k) * 3 : 40 + (k - 19) * 4 + Math.sin(k) * 2; }), 70],
+      ["warn", "match-03", "주의", "매매/체결 · CPU <b>74%</b>", ser(function (k) { return 55 + k * 0.6 + Math.sin(k * 0.9) * 4; }), 70]
+    ];
+    box.innerHTML = '<span class="wt">이상 있는 서버 · 심한 순 · 최근 15분</span>' + W.map(function (w) {
+      return '<div class="wr ' + w[0] + '"><div><span class="id">' + w[1] + '</span><span class="lv st ' + w[0] + '">' + w[2] + '</span><span class="m">' + w[3] + "</span></div>" + spark(w[4], w[5]) + "</div>";
+    }).join("") + '<span class="wt">나머지 39대 정상</span>';
+  }
+  function drawBoards() {
+    var box = document.getElementById("boards");
+    if (!box) return;
+    box.innerHTML = BOARDS.map(function (b) {
+      var c = b.slice(1), tot = c.reduce(function (x, y) { return x + y; }, 0);
+      var right = b[5] ? '<span class="st bad">실패 ' + b[5] + "</span>" : b[2] ? "실행 " + b[2] : b[1] === tot ? "완료" : b[1] ? b[1] + "/" + tot : "예정";
+      return '<div class="bx"><div class="h"><span><b>' + b[0] + "</b> " + tot + "</span><span>" + right + "</span></div>" + sbar(c) + "</div>";
+    }).join("");
+  }
+  function drawStrip() {
+    var box = document.getElementById("strip");
+    if (!box) return;
+    var t = [0, 0, 0, 0, 0];
+    BOARDS.forEach(function (b) { for (var k = 0; k < 5; k++) t[k] += b[k + 1]; });
+    box.innerHTML = sbar(t) + '<div class="slegend" style="margin-top:1mm">' + t.map(function (v, k) { return v ? '<span><i class="' + SCLS[k] + '"></i>' + SNAME[k] + " <b>" + v + "</b></span>" : ""; }).join("") + '<span>정산 배치판의 <code>daily-settle</code>은 "체결 대기 0건"이 조건</span></div>';
+  }
+
+  drawHeat();
+  drawWatch();
+  drawBoards();
+  drawStrip();
   drawTM();
   flame("flA", A);
   flame("flB", B);

@@ -15,7 +15,8 @@
 | AI | 제품 안의 AI·ML 기능은 범위에서 뺀다. AI는 **개발 수단**(사람 1명당 AI 세션 2개, 모두 4개)이다 |
 | 운영 환경 | 업무는 **온라인(체결) 중심**이고, 배치는 개장 준비와 정산에 쓴다. 배치 작업은 셸 스크립트이고 스크립트가 띄우는 서비스는 C다(자바 일부). **운영 서버는 perf를 쓸 수 있다(확인)** |
 | 업무 지표 | 접수·처리 건수, 대기 건수, 응답시간 같은 처리 현황을 **시스템 지표와 같은 통로**로 받는다. 시연에서는 시연용 C 체결 서비스가 보낸다 |
-| 시연 | 컨테이너 3개. 장애 장면은 **주문량 폭주로 체결 처리가 밀리는 상황**이다. 스케줄, 실행, 프로세스 추적, 함수 프로파일, 수집 경로는 실제로 동작한다. 서버 자원은 시뮬레이터이고, 체결 서비스는 합성 주문으로 부하를 만드는 시연용 C 프로그램이다(함수 이름과 수치는 시연용) |
+| 조직화 | 서버가 수십 대, 플로우가 수십 개라는 전제로 화면을 짠다. 서버는 에이전트 설정의 **그룹 경로**(`매매/체결`), 플로우는 `flows/` 아래 **폴더(배치판)** 로 묶고, 화면은 이 경로로 **트리**를 그린다. 업무 지표 화면은 업무마다 다르므로 **업무 패널**을 YAML로 정의한다(§12.1) |
+| 시연 | 컨테이너 3개 + 모의 서버 40대(`contune fleet`)와 보조 플로우 37개로 서버 43대·플로우 39개 규모를 채운다. 장애 장면은 **주문량 폭주로 체결 처리가 밀리는 상황**이다. 스케줄, 실행, 프로세스 추적, 함수 프로파일, 수집 경로는 실제로 동작한다. 서버 자원은 시뮬레이터이고, 체결 서비스는 합성 주문으로 부하를 만드는 시연용 C 프로그램이다(함수 이름과 수치는 시연용) |
 
 ## 1. 설계 원칙: 3원칙을 구체 규칙으로 번역
 
@@ -41,7 +42,7 @@
 | 통신 | HTTP/JSON, `Authorization: Bearer <에이전트 토큰>` | curl로 디버깅할 수 있고, 표준 TLS, 프록시, 로드밸런서를 그대로 쓸 수 있습니다. |
 | 사내망 대비 | 당일 첫 커밋에서 `go mod vendor` + uPlot 파일을 저장소에 포함 | 이후 세션들이 외부 다운로드에 막히지 않습니다. 모듈을 받을 수 있는지는 사전에 확인만 합니다. 웹 화면은 외부 CDN을 쓰지 않습니다. |
 
-> 바이너리는 하나이고 서브커맨드로 역할을 나눕니다: `contune manager`, `contune agent`, `contune dev`(매니저 + 에이전트 3개를 한 프로세스로, 노트북 시연용), `contune burn`(시연용 CPU 부하 잡), `contune sql`(두 DB를 읽기 전용으로 여는 SQL 조회, §6.1). 시연용 체결 서비스 `matching_svc`는 제품이 아니라 추적 대상이므로 C로 따로 빌드합니다(§13).
+> 바이너리는 하나이고 서브커맨드로 역할을 나눕니다: `contune manager`, `contune agent`, `contune dev`(매니저 + 에이전트 3개를 한 프로세스로, 노트북 시연용), `contune burn`(시연용 CPU 부하 잡), `contune fleet`(설정 파일에 적은 모의 서버 N대를 한 프로세스의 에이전트로 띄움, 시연 규모용, §13), `contune sql`(두 DB를 읽기 전용으로 여는 SQL 조회, §6.1). 시연용 체결 서비스 `matching_svc`는 제품이 아니라 추적 대상이므로 C로 따로 빌드합니다(§13).
 
 ## 3. 기능 범위
 
@@ -52,6 +53,7 @@
 | **서버 관제** | 서버 자원을 1초 단위로 수집한다 | `host.*` 지표 |
 | **함수 단위 추적** | 실행과 그 실행이 띄운 프로세스가 CPU를 쓴 함수를 상시 표본 수집한다. 끝난 배치와 몇 분 만에 지나간 장애 구간도 나중에 구간을 골라 본다 | `stacks`, `profile_samples`, `v_profiles` |
 | **열린 데이터** | 공개 스키마, 분석용 뷰, SQL 조회, CSV·접힌 스택 내보내기 | §6.1 |
+| **조직화** | 서버를 그룹 경로로, 플로우를 배치판(폴더)으로 묶어 트리로 보이고, 그룹마다 상태를 모아 올린다. 업무 패널은 업무마다 YAML로 정의한다 | `hosts.grp`, 플로우 폴더, `panels/*.yaml` (§12.1) |
 
 **실행(스케줄러) → 처리 현황(업무 지표) → 자원(서버·배치·서비스) → 함수** 를 `exec_id`와 시간축 하나로 잇고, 그 데이터를 우리가 직접 쓰는 것이 핵심입니다. 지금 사내에서는 앞의 세 영역을 서로 다른 세 도구가 따로 맡고 있고, 네 번째(함수)는 맡는 도구가 없습니다(기획서 1장).
 
@@ -77,7 +79,7 @@ flowchart TB
     SS[("state.db<br/>StateStore")]
     SC["scheduler<br/>순수 코어 Decide + 런너"]
     Q["commands 큐"]
-    W["web UI / REST API<br/>대시보드 · 플로우 그래프 · 타임머신 · 플레임 그래프"]
+    W["web UI / REST API<br/>서버·배치판 트리 · 대시보드 · 플로우 그래프 · 타임머신 · 플레임 그래프"]
     D["열린 데이터<br/>v_samples · v_profiles · contune sql · 내보내기"]
     N["notify (넓히기)"]
     I --> MS
@@ -152,6 +154,7 @@ flowchart LR
 ```yaml
 # deploy/agent-match-01.yaml (시연용 컨테이너)
 host: match-01
+group: 매매/체결              # 서버 트리 경로. '/'로 단계를 나눔(§12.1)
 manager: http://manager:8080
 token: ${CONTUNE_TOKEN}
 interval: 1s
@@ -268,20 +271,21 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 
 | 메서드 · 경로 | 내용 |
 |---|---|
-| `GET /api/v1/hosts` | 호스트 목록, 마지막 수신 시각, 최신 지표 값 |
-| `GET /api/v1/series?host=&name=&exec_id=&from=&to=&step=` | 시계열 조회. `step`(초) 단위 평균으로 다운샘플. `name`은 `biz.order.*`처럼 접두사로도 받음 |
+| `GET /api/v1/hosts` | 호스트 목록: 그룹 경로, 마지막 수신 시각, 최신 `host.*` 값, 상태(정상·주의·위험·무응답, §12.1) |
+| `GET /api/v1/series?host=&group=&name=&exec_id=&from=&to=&step=` | 시계열 조회. `step`(초) 단위 평균으로 다운샘플. `name`은 `biz.order.*`처럼 접두사로도 받음. `host`를 비우고 `group`을 주면 그 그룹(하위 포함) 서버 전부 |
 | `GET /api/v1/profile?exec_id=&from=&to=` | 구간과 겹치는 프로파일을 합친 접힌 스택(표본 수 내림차순) |
 | `GET /api/v1/runs?flow=&host=&limit=` | 실행 이력 |
 | `GET /api/v1/runs/{exec_id}` | 실행 상세 + 상태 전이 이력 |
-| `GET /api/v1/flows` | 플로우 목록, 스텝 구조(호스트, 선행, **깊이 `level`**), cron 다음 실행 시각, 최근 실행의 스텝별 상태와 attempt |
+| `GET /api/v1/flows?board=` | 플로우 목록, **배치판 경로 `board`**, 스텝 구조(호스트, 선행, **깊이 `level`**), cron 다음 실행 시각, 최근 실행의 스텝별 상태와 attempt |
 | `POST /api/v1/flows/{id}/run` | 플로우 수동 실행 |
+| `GET /api/v1/panels` | 업무 패널 정의(`panels/*.yaml`)와 타일마다 최신 집계 값, 그 값을 보낸 `exec_id` |
 | `GET /api/v1/export/samples?from=&to=&host=&name=&exec_id=` | 지표 CSV 내보내기 (§6.1) |
 | `GET /api/v1/export/runs?from=&to=` | 실행 이력 CSV 내보내기 (§6.1) |
 | `GET /api/v1/export/profile?exec_id=&from=&to=` | 접힌 스택 텍스트(`스택 표본수` 줄) 내보내기 (§6.1) |
 
 ```jsonc
 // POST /api/v1/agent/metrics
-{"host":"match-01","samples":[
+{"host":"match-01","group":"매매/체결","samples":[
   {"ts":1761534000000,"name":"host.cpu.pct","value":42.5},
   {"ts":1761534000000,"name":"biz.order.latency_p99_ms","value":3.8,"exec_id":"01JBQ7..."},
   {"ts":1761534000000,"name":"biz.order.queue","value":0,"exec_id":"01JBQ7..."},
@@ -379,6 +383,12 @@ type Sample struct {
     ExecID string  // 잡 실행 태그, 일반 지표면 ""
 }
 
+type Host struct {
+    ID       string
+    Group    string // 그룹 경로 '매매/체결' ('' = 미분류)
+    LastSeen int64  // unix ms
+}
+
 type Profile struct {
     Host   string
     ExecID string
@@ -421,6 +431,8 @@ type StateStore interface {
     AppendEvent(ctx context.Context, e model.RunEvent) error   // 상태 전이 감사 로그, (exec_id, seq) 멱등
     GetRun(ctx context.Context, execID string) (model.Run, []model.RunEvent, error)
     ListRuns(ctx context.Context, f model.RunFilter) ([]model.Run, error)
+    UpsertHost(ctx context.Context, h model.Host) error        // 지표를 받을 때마다 그룹 경로, last_seen 갱신
+    ListHosts(ctx context.Context) ([]model.Host, error)
 }
 
 // internal/manager/notify — 알림 확장 (webhook, 사내 메신저) · 검증판에서는 넓히기
@@ -491,7 +503,8 @@ PRAGMA journal_mode = WAL;
 PRAGMA synchronous  = FULL;
 
 CREATE TABLE hosts (
-  id TEXT PRIMARY KEY, last_seen INTEGER, agent_version TEXT, info TEXT
+  id TEXT PRIMARY KEY, last_seen INTEGER, agent_version TEXT, info TEXT,
+  grp TEXT NOT NULL DEFAULT ''           -- 그룹 경로 '매매/체결' (에이전트 설정의 group, §12.1)
 );
 
 CREATE TABLE runs (                      -- 스텝 실행 1회 = 1행
@@ -524,10 +537,20 @@ CREATE TABLE run_events (                -- 상태 전이 + 운영자 조작 감
 
 ## 9. 잡 정의: 플로우 단위 스케줄
 
+플로우 파일은 `flows/` 아래 폴더에 둡니다. **폴더 경로가 곧 배치판**이고, 화면의 배치판 트리가 됩니다.
+
+```text
+flows/
+  개장준비/market-open.yaml     # 배치판 "개장준비"
+  개장준비/fetch-ref.yaml
+  정산/daily-settle.yaml        # 배치판 "정산"
+  대외송수신/ext-send-margin.yaml
+```
+
 잡마다 cron을 두고 선행 잡을 지정하는 방식은 "어느 날의 선행 실행인가"를 맞추는 로직(업무일 기준 매칭)이 필요합니다. contune은 **플로우(DAG) 단위로 스케줄**하고, 한 번의 플로우 실행 안에서만 의존성을 따져 이 문제 자체를 없앱니다.
 
 ```yaml
-# flows/market-open.yaml — 새벽 개장 준비: 기준정보 적재 후 체결 서비스 기동
+# flows/개장준비/market-open.yaml — 새벽 개장 준비: 기준정보 적재 후 체결 서비스 기동
 id: market-open
 schedule: "30 5 * * 1-5"      # 평일 05:30 (KST)
 on_missed: skip               # 매니저 다운 등으로 놓친 실행은 건너뛰고 기록
@@ -563,7 +586,7 @@ steps:
 ```
 
 ```yaml
-# flows/daily-settle.yaml — 장 마감 후 정산
+# flows/정산/daily-settle.yaml — 장 마감 후 정산
 id: daily-settle
 schedule: "40 15 * * 1-5"     # 평일 15:40
 steps:
@@ -582,6 +605,7 @@ steps:
 ```
 
 - **병렬과 합류:** 선행이 모두 SUCCEEDED인 스텝은 동시에 DISPATCHED됩니다. 에이전트는 명령 여러 개를 동시에 실행합니다.
+- **배치판:** 로더가 `flows/` 아래 폴더 경로를 그 플로우의 `board`로 읽습니다(폴더 아래 폴더도 됨). 플로우 `id`는 배치판이 달라도 겹칠 수 없습니다(로더가 검사). 배치판을 옮기는 일은 파일을 옮기는 일이고, 실행 이력은 `flow_id`로 남아 영향이 없습니다.
 - **깊이(level):** 로더가 YAML을 읽을 때 순환을 검사하면서 스텝마다 깊이(선행 경로의 최대 길이)를 계산하고 `GET /flows`로 내보냅니다. 플로우 그래프는 깊이별로 열을 나눠 그립니다.
 - 리소스 게이트는 **지표 통로를 그대로 재사용**합니다. 서버 지표든 업무 지표든 같은 조회로 판단하므로, "체결 대기가 남아 있으면 정산을 미룬다" 같은 조건을 추가 개발 없이 씁니다. 로더는 `gate`를 처음부터 읽고, 판단은 넓히기에서 켭니다.
 - 플로우 사이의 의존(업무일 기준)과 휴일 캘린더는 검증판 범위 밖입니다.
@@ -624,7 +648,42 @@ stateDiagram-v2
 | 운영 조건 | 함수 추적: 운영 서버는 perf 사용 가능(확인). 비root면 `perf_event_paranoid` 2 이하(일반 기본값) 또는 `CAP_PERFMON`, 컨테이너는 `cap_add: [PERFMON]`. 함수 이름은 실행 파일의 심볼로 표시(strip 했다면 디버그 심볼 파일) |
 | 검증판 제외 | 웹 로그인, TLS, 호스트별 토큰, 조작 권한, `run_as_user`(보안 정책 협의 후). 운영에 쓰려면 필요합니다 |
 
-## 12. 원인 추적(타임머신) 설계
+## 12. 화면 설계
+
+### 12.1 조직화된 보기: 서버 트리, 배치판, 업무 패널
+
+운영 서버는 수십 대이고 플로우도 수십 개입니다. 서버 카드 몇 장, 플로우 목록 몇 줄을 크게 늘어놓는 화면은 시연용 3대에서만 통합니다. 화면은 처음부터 **묶어서 보고, 이상한 것만 위로 올리는** 구조로 짭니다.
+
+| 화면 요소 | 내용 | 출처 |
+|---|---|---|
+| **트리** (모든 화면 왼쪽) | 뿌리 두 개. `서버`: 그룹 경로 → 서버, `배치판`: 폴더 경로 → 플로우. 노드마다 하위의 가장 나쁜 상태와 개수를 모아 올립니다(예: "주의 2", "실패 1"). 노드를 고르면 오른쪽 화면이 그 범위로 좁혀집니다 | `GET /hosts`의 `group`, `GET /flows`의 `board` |
+| **서버 열지도** | 칸 하나가 서버 하나, 그룹마다 한 줄. 정상은 CPU 구간을 한 색의 진하기로, 이상은 상태 색과 표시(주의·위험·무응답)로. 수백 대도 한 화면에 들어갑니다 | `GET /hosts` |
+| **이상 서버 목록** | 상태가 심한 순서로 서버, 그룹, 넘은 지표와 값, 최근 15분 꺾은선. 나머지는 "N대 정상" 한 줄 | `GET /hosts`, `GET /series?group=&name=host.*&step=30` |
+| **업무 패널** | 업무마다 보는 지표가 달라 화면 코드에 박지 않고 `panels/*.yaml`로 정의합니다. 패널은 트리의 그룹에 붙고, 타일마다 지표·집계·단위·임계치를 적습니다. 타일을 누르면 그 값을 보낸 실행의 타임머신으로 갑니다 | `GET /panels` |
+| **배치판 진행** | 배치판마다 오늘 플로우의 상태 비율(완료·실행 중·예정·조건 대기·실패) 막대. 실패한 플로우는 따로 한 줄로 | `GET /flows` |
+| **서버 상세** `#host/<id>` | `host.*` 차트와 그 서버에서 돈 실행 목록 | `GET /series?host=`, `GET /runs?host=` |
+| **배치판** `#board/<경로>` | 그 배치판의 플로우 목록(최근 상태, 다음 실행, 최근 소요 시간). 플로우를 고르면 플로우 그래프(§9) | `GET /flows?board=` |
+
+```yaml
+# panels/체결.yaml — 업무 패널: 업무마다 보는 지표가 달라 파일로 정의
+id: matching
+title: 체결
+group: 매매/체결              # 서버 트리에서 이 그룹(또는 상위)을 고르면 보임
+tiles:
+  - { title: 주문 접수,      metric: biz.order.in_tps,         agg: sum, unit: 건/초 }
+  - { title: 체결 처리,      metric: biz.order.tps,            agg: sum, unit: 건/초 }
+  - { title: 처리 대기,      metric: biz.order.queue,          agg: sum, unit: 건, warn: 500, crit: 2000 }
+  - { title: p99 응답,       metric: biz.order.latency_p99_ms, agg: max, unit: ms, warn: 50, crit: 200 }
+  - { title: 함수 추적 부하, metric: agent.profiler.cpu_pct,   agg: max, unit: "%", warn: 1 }
+```
+
+- **그룹 경로는 에이전트 설정 한 줄**입니다(§5.3). 에이전트가 지표를 보낼 때 함께 보내고, 매니저는 `hosts.grp`에 적습니다. 서버를 다른 그룹으로 옮기려면 설정을 바꾸고 에이전트를 다시 띄웁니다. 그룹이 없으면 "미분류"에 놓입니다.
+- **서버 상태 판정**: CPU 70% 이상 주의, 90% 이상 위험, 메모리 80% 이상 주의, 90% 이상 위험, 10초 넘게 수신이 없으면 무응답. 기준값은 매니저 설정 파일에서 바꿉니다.
+- 트리의 상태 집계는 화면이 `/hosts`와 `/flows` 결과로 계산합니다. 집계용 테이블이나 API를 따로 두지 않습니다.
+- 정의의 기준은 파일입니다(에이전트 설정, 플로우 폴더, 업무 패널). 화면에서 그룹·배치판·패널을 편집하는 기능은 만들지 않습니다(§2의 잡 정의 원칙과 같음).
+- 분석할 때는 `hosts.grp`를 조인해 그룹 단위로 묶어 봅니다(예: 그룹별 CPU 95퍼센타일, 배치판별 소요 시간 추세).
+
+### 12.2 원인 추적(타임머신)
 
 실행 하나를 고르면 화면이 **결정론적으로** 근거를 모아 한 시간축에 겹치고, 고른 구간의 함수까지 내려갑니다. LLM은 쓰지 않습니다. 순서는 **업무 지표 → 실행 → 자원 → 함수**입니다.
 
@@ -651,6 +710,7 @@ services:
   match-01: { image: contune, command: [agent, --config, /etc/contune/agent-match-01.yaml], cap_add: [PERFMON] }
   gw-01:    { image: contune, command: [agent, --config, /etc/contune/agent-gw-01.yaml] }
   batch-01: { image: contune, command: [agent, --config, /etc/contune/agent-batch-01.yaml], cap_add: [PERFMON] }
+  fleet:    { image: contune, command: [fleet, --config, /etc/contune/fleet.yaml] }   # 모의 서버 40대
 ```
 
 | 호스트 | 역할(가정) | 수집 |
@@ -658,7 +718,30 @@ services:
 | `match-01` | 체결 서버 | `sim/host`, `push`(체결 서비스가 보냄), 프로파일러 `perf` |
 | `gw-01` | 주문 게이트웨이 | `sim/host` |
 | `batch-01` | 적재·정산 배치 서버 | `sim/host`, 프로파일러 `perf` |
+| `fleet` | 모의 서버 40대(그룹 8개) | 서버마다 `sim/host`. 함수 추적·서비스 추적 없음 |
 
+- 실제 컨테이너 3대의 그룹: `match-01` = `매매/체결`, `gw-01` = `매매/주문접수`, `batch-01` = `사후처리/배치`.
+- **규모: 모의 서버와 보조 플로우.** 서버 트리와 배치판은 수십 대·수십 개를 전제로 한 화면이라 3대·2개로는 보여 줄 수 없습니다. `contune fleet`은 `contune dev`가 에이전트 여러 개를 한 프로세스에 띄우는 방식을 설정 파일로 넓힌 것으로, 아래 40대를 각각 에이전트로 띄웁니다. 실행 명령은 `fleet` 컨테이너 안에서 돕니다.
+
+```yaml
+# deploy/fleet.yaml — 모의 서버 40대. 실제 서버 3대와 같은 매니저에 붙음
+manager: http://manager:8080
+token: ${CONTUNE_TOKEN}
+hosts:                         # prefix-NN 이름으로 from~to
+  - { group: 매매/주문접수,     prefix: gw,     from: 2, to: 6 }
+  - { group: 매매/체결,         prefix: match,  from: 2, to: 8 }
+  - { group: 매매/시세,         prefix: feed,   from: 1, to: 6 }
+  - { group: 사후처리/청산정산, prefix: settle, from: 1, to: 4 }
+  - { group: 사후처리/배치,     prefix: batch,  from: 2, to: 4 }
+  - { group: 대외정보/대외연계, prefix: ext,    from: 1, to: 6 }
+  - { group: 대외정보/정보계,   prefix: dw,     from: 1, to: 5 }
+  - { group: 공통/관리,         prefix: ops,    from: 1, to: 4 }
+faults:                        # 열지도·이상 서버 목록 장면용
+  - { host: ext-04, kind: silent }           # 지표를 보내지 않음 → 무응답
+  - { host: dw-02,  kind: mem, value: 93 }   # 메모리 높음 → 위험
+```
+
+- 보조 플로우 37개는 배치판 6개(개장준비, 장중, 정산, 대외송수신, 정보계적재, 주간월간)에 나눠 두고, 모의 서버에서 `contune burn`으로 몇 초씩 CPU를 쓰고 끝납니다. 시각은 하루에 흩어 둡니다. 하나(`대외송수신/ext-send-margin`)는 일부러 실패해 배치판 트리에 "실패 1"이 올라오게 합니다. 파일은 `deploy/gen_flows.sh`로 만들어 커밋합니다.
 - 컨테이너 안의 `/proc/stat`은 호스트 값이라 서버별로 다르게 보이지 않습니다. 그래서 시연에서는 `host.*`만 `sim`으로 만듭니다.
 - **실제로 동작하는 것:** 스케줄, 잡 실행, 서비스 프로세스 추적, 함수 프로파일, 수집·저장·조회 경로. 체결 서비스의 함수 이름과 부하 모양은 시연용으로 만든 것입니다. 보여 주려는 것은 수치가 아니라 **실행에서 함수까지 이어지는 경로가 실제로 동작한다**는 점입니다.
 - **시연 장애: 주문량 폭주.** 운영 업무는 온라인 중심이고 장중 배치는 드물기 때문에, 장애 장면은 배치가 아니라 접수 주문이 몰려 체결 처리가 밀리는 상황으로 잡습니다.
@@ -671,9 +754,9 @@ services:
   - 1초마다 `biz.order.in_tps`, `biz.order.tps`, `biz.order.queue`, `biz.order.latency_p99_ms`(접수부터 처리 완료까지)를 자기 `CONTUNE_EXEC_ID`와 함께 `push`(UDP `127.0.0.1:9101`)로 보냅니다.
   - `start_matching.sh`가 `setsid nohup`으로 띄우고 바로 끝나므로, 서비스는 스크립트의 프로세스 그룹을 벗어납니다(실행 ID 표식으로 추적, §5.5).
 - 이미지에는 perf 패키지와 `matching_svc`가 들어갑니다(Dockerfile 빌드 단계에서 `gcc -O2`).
-- 시연 플로우는 2개입니다.
-  - `flows/market-open.yaml`: §9와 같은 모양. 배치 스텝은 `contune burn`으로 실제 CPU를 쓰고, `load-equity`는 첫 시도만 실패해 재시도를 보여 줍니다. `start-matching`이 체결 서비스를 띄웁니다.
-  - `flows/daily-settle.yaml`: §9와 같은 모양(`settle` → `settle-report`, `contune burn`). 리소스 게이트를 넓히기에서 만들면 "체결 대기가 남아 있는 동안 정산이 HELD로 대기" 장면에 씁니다.
+- 이야기를 끌고 가는 시연 플로우는 2개입니다(나머지는 보조 플로우).
+  - `flows/개장준비/market-open.yaml`: §9와 같은 모양. 배치 스텝은 `contune burn`으로 실제 CPU를 쓰고, `load-equity`는 첫 시도만 실패해 재시도를 보여 줍니다. `start-matching`이 체결 서비스를 띄웁니다.
+  - `flows/정산/daily-settle.yaml`: §9와 같은 모양(`settle` → `settle-report`, `contune burn`). 리소스 게이트를 넓히기에서 만들면 "체결 대기가 남아 있는 동안 정산이 HELD로 대기" 장면에 씁니다.
 - 폭주는 `demo.sh surge`가 `match-01`의 접수율 파일을 20초마다 3000, 4500, 6000으로 바꾼 뒤 1500으로 되돌려 만듭니다.
 - 데이터 주권 장면은 `docker compose exec manager contune sql --data /data "<질의>"`로 실행합니다(§6.1의 질의 2개: 접수량 구간별 p99, 밀린 구간과 평시의 함수 비중).
 - **사전 점검(코드 아님):** 시연 노트북의 Docker에서 `docker run --rm --cap-add PERFMON alpine:3.20 sh -c 'apk add -q perf && su -s /bin/sh nobody -c "perf stat -e cpu-clock -- true"'`가 성공하는지 확인합니다.
@@ -692,6 +775,7 @@ services:
 | `StateStore` | SQLite | MySQL/PostgreSQL (**같은 계약 테스트 재사용**) |
 | `Notifier` | (넓히기) webhook | 사내 메신저, SMS 게이트웨이 |
 | 스케줄러 | 플로우 cron, 선후행(병렬·합류), 재시도, (넓히기) 리소스 게이트 | `kind: service`(기동·정지 짝, 살아 있음 기준), 운영자 조작, LOST 복구, 휴일 캘린더, 플로우 간 의존, 매니저 HA |
+| 조직화 | 그룹 경로 1개(에이전트 설정), 배치판 = 폴더, 업무 패널 YAML | 한 서버를 여러 기준(업무·위치·OS)으로 묶는 `labels`, 그룹별 권한과 알림 대상 |
 | 원인 추적·분석 | 타임머신(결정론적), 플레임 그래프, `v_samples`, `v_profiles`, `contune sql`, 내보내기 | 함수 비교(넓히기), 실행 간 함수 비중 회귀 탐지, 소요 시간 이상 플래그, 근거 요약 `Analyzer`(선택) |
 | 에이전트 OS | Linux | AIX/Windows용 `Probe` 구현 |
 
