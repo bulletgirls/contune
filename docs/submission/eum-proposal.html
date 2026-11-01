@@ -276,6 +276,53 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
 .ill .hot { fill: var(--s-hot); }
 .ill .dotx { fill: var(--tag); stroke: var(--brand); stroke-width: 1.6; }
 
+/* 결론: 한눈에 보는 이음 */
+.p-title h1.concl-t { border: 0; padding: 0; color: var(--ink); font-size: 24pt; font-weight: 700; line-height: 1.25; letter-spacing: -0.03em; display: flex; align-items: center; gap: 3mm; }
+.concl-t .qn { font-size: 12pt; font-weight: 600; background: var(--deep); color: var(--on-deep); padding: 0.6mm 2.8mm; border-radius: 4px; letter-spacing: 0; }
+.concl-t em { font-style: normal; color: var(--brand); }
+.summary { grid-template-rows: auto auto auto; gap: 5mm; align-content: center; }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) 30mm minmax(0, 1.25fr); grid-template-rows: auto repeat(4, auto); column-gap: 3mm; row-gap: 1.8mm; align-items: stretch; }
+.split .h { font-size: 13pt; font-weight: 700; display: flex; align-items: baseline; gap: 2.4mm; padding-bottom: 0.6mm; align-self: end; line-height: 1.2; }
+.split .h small { font-size: 8pt; font-weight: 500; color: var(--ink-3); }
+.split .h.cut { color: var(--pain); }
+.split .h.link { font-family: var(--f-brand); font-weight: 800; color: var(--brand); font-size: 15pt; }
+.split .h.link small { font-family: var(--f-body); }
+.tool { position: relative; border: 1px solid var(--line); background: var(--card); border-radius: 4px; padding: 1.6mm 3mm; display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 9pt; }
+.tool b { font-size: 9.6pt; }
+.tool small { color: var(--ink-3); font-size: 7.8pt; white-space: nowrap; }
+.tool:not(.last)::after { content: "✕"; position: absolute; left: 50%; bottom: -1.8mm; transform: translate(-50%, 50%); color: var(--pain); font-weight: 700; font-size: 9pt; line-height: 1; background: var(--paper); padding: 0 1.4mm; z-index: 1; }
+.cut-cap { font-size: 8.2pt; color: var(--pain); font-weight: 600; align-self: center; padding-left: 0.6mm; }
+.bridge { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.6mm; }
+.bridge .ar { font-size: 22pt; color: var(--ink-3); line-height: 1; }
+.bridge small { font-size: 7.8pt; color: var(--ink-2); text-align: center; line-height: 1.4; }
+.eum-box { border: 2px solid var(--brand); border-radius: 6px; background: var(--brand-wash); padding: 2.4mm 3mm; display: grid; grid-template-rows: repeat(4, 1fr); gap: 1.8mm; position: relative; }
+.eum-box::before { content: ""; position: absolute; top: 4mm; bottom: 4mm; right: calc(3mm + 9mm); width: 2px; background: var(--tag); }
+.er { position: relative; background: var(--paper); border-radius: 3px; padding: 1.6mm 3mm; display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 9.4pt; font-weight: 600; }
+.er .tag { font-size: 7.6pt; position: relative; z-index: 1; }
+.er.new { color: var(--brand); }
+.er.new .badge { margin-left: 4px; }
+.split .h.cut { grid-area: 1 / 1; }
+.split .h.link { grid-area: 1 / 3; }
+.split .t1 { grid-area: 2 / 1; }
+.split .t2 { grid-area: 3 / 1; }
+.split .t3 { grid-area: 4 / 1; }
+.split .cut-cap { grid-area: 5 / 1; }
+.split .bridge { grid-area: 2 / 2 / 6 / 3; }
+.split .eum-box { grid-area: 2 / 3 / 6 / 4; }
+.nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4mm; }
+.num { border: 1px solid var(--line); border-radius: 6px; padding: 2.6mm 3.4mm; display: grid; grid-template-columns: 19mm minmax(0, 1fr); gap: 3mm; align-items: start; min-width: 0; }
+.num .art { height: 17mm; display: grid; place-items: center; background: var(--brand-wash); border-radius: 4px; }
+.num .art svg { height: 14mm; width: auto; overflow: visible; }
+.num .k { font-size: 8pt; color: var(--ink-3); font-weight: 600; }
+.num .v { font-size: 17pt; font-weight: 700; color: var(--brand); line-height: 1.2; letter-spacing: -0.02em; white-space: nowrap; }
+.num p { font-size: 8.4pt; color: var(--ink-2); line-height: 1.45; }
+.num p span { display: block; color: var(--ink-3); font-size: 7.6pt; }
+.closing { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 4mm; align-items: stretch; }
+.closing .proof { background: var(--card); border-left: 3px solid var(--brand); border-radius: 0 4px 4px 0; padding: 3mm 4mm; display: flex; flex-direction: column; justify-content: center; gap: 0.6mm; }
+.closing .proof small { font-size: 7.8pt; color: var(--ink-3); }
+.closing .proof b { font-size: 11pt; line-height: 1.45; }
+.closing .takeaway { justify-content: center; }
+
 /* 화면 시안 */
 .screen { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--screen); box-shadow: 0 1px 0 var(--line-2), 0 6px 18px -12px rgba(20, 40, 55, .35); min-width: 0; }
 .screen .bar { display: flex; align-items: center; gap: 8px; padding: 1.2mm 3mm; background: var(--screen-bar); border-bottom: 1px solid var(--line); font-family: var(--f-mono); font-size: 7.4pt; color: var(--ink-2); }
@@ -490,6 +537,10 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
   .merge .arrow, .arch .pipe { transform: rotate(90deg); }
   .silos, .t3, .scope, .tv-out, .merge-out, .boards { grid-template-columns: 1fr 1fr; }
   .flows3 { grid-template-columns: 1fr; }
+  .split, .nums, .closing { grid-template-columns: 1fr; }
+  .split .h.cut, .split .h.link, .split .t1, .split .t2, .split .t3, .split .cut-cap, .split .bridge, .split .eum-box { grid-area: auto; }
+  .bridge .ar { transform: rotate(90deg); }
+  .concl-t { font-size: 19pt; flex-wrap: wrap; }
   .app, .hw, .under { grid-template-columns: 1fr; }
   .tree { border-right: 0; border-bottom: 1px solid var(--line-2); }
   .eq { flex-wrap: wrap; }
@@ -1115,6 +1166,79 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
   </div>
 </section>
 
+<!-- 15. 결론 -->
+<section class="page concl" data-q="5">
+  <div class="p-title">
+    <h1 class="concl-t"><span class="qn">결론</span><span>사건은 하나, 도구도 <em>하나</em>.</span></h1>
+  </div>
+  <div class="content summary">
+    <div class="split">
+      <div class="h cut">단절 <small>도구 3개, 저장소도 따로</small></div>
+      <div class="tool t1"><b>배치 스케줄러</b><small>실행 결과</small></div>
+      <div class="tool t2"><b>서버 관제</b><small>서버 자원</small></div>
+      <div class="tool t3 last"><b>업무 관제</b><small>업무 지표</small></div>
+      <div class="cut-cap">도구마다 키가 달라 시각·서버 이름으로 맞춤</div>
+      <div class="bridge"><span class="tag">실행 번호</span><span class="ar">→</span><small>띄울 때 붙여<br>처음부터 연결</small></div>
+      <div class="h link">이음 <small>실행 파일 1개, 통합 개방 DB</small></div>
+      <div class="eum-box">
+        <div class="er"><span>실행 결과</span><span class="tag">01JBQ7…</span></div>
+        <div class="er"><span>서버 자원</span><span class="tag">01JBQ7…</span></div>
+        <div class="er"><span>업무 지표</span><span class="tag">01JBQ7…</span></div>
+        <div class="er new"><span>함수 콜스택 등 심화 지표</span><span class="tag">01JBQ7…</span></div>
+      </div>
+    </div>
+    <div class="nums">
+      <div class="num"><div class="art">
+          <svg class="ill" aria-hidden="true" viewBox="0 0 140 110">
+          <path class="ln" d="M14 34 V 58 M7 51 L14 58 L21 51"/>
+          <ellipse class="coin" cx="112" cy="98" rx="16" ry="5"/>
+          <ellipse class="coin" cx="112" cy="91" rx="16" ry="5"/>
+          <ellipse class="coin" cx="112" cy="84" rx="16" ry="5"/>
+          <path class="f" d="M52 40 C 30 50, 20 70, 24 86 C 27 98, 42 104, 62 104 C 82 104, 97 98, 100 86 C 104 70, 94 50, 72 40 Z"/>
+          <path class="f" d="M53 34 L 44 16 C 51 20, 56 13, 62 18 C 68 13, 73 20, 80 16 L 71 34 Z"/>
+          <rect class="solid" x="48" y="32" width="28" height="9" rx="3"/>
+          <path class="ln" d="M46 60 L 53 88 L 62 68 L 71 88 L 78 60" style="stroke-width:3.4"/>
+          <path class="ln thin" d="M44 70 H 80 M44 77 H 80"/>
+        </svg>
+        </div><div><div class="k">① 복잡도·관리 비용</div><div class="v">1 · 1 · 1</div><p>실행 파일·화면·방화벽 포트 <span>8~9쪽</span></p></div></div>
+      <div class="num"><div class="art">
+          <svg class="ill" aria-hidden="true" viewBox="0 0 140 110">
+          <defs><clipPath id="lensClip"><circle cx="58" cy="48" r="32"/></clipPath></defs>
+          <line x1="83" y1="73" x2="114" y2="104" stroke="var(--brand)" stroke-width="13" stroke-linecap="round"/>
+          <circle class="lens" cx="58" cy="48" r="34"/>
+          <g clip-path="url(#lensClip)">
+            <rect class="bar" x="24" y="25" width="68" height="9" rx="1.5"/>
+            <rect class="bar" x="24" y="36" width="46" height="9" rx="1.5"/><rect class="bar" x="72" y="36" width="20" height="9" rx="1.5"/>
+            <rect class="hot" x="24" y="47" width="40" height="9" rx="1.5"/><rect class="bar" x="72" y="47" width="13" height="9" rx="1.5"/>
+            <rect class="hot" x="28" y="58" width="26" height="9" rx="1.5" style="opacity:.7"/><rect class="bar" x="56" y="58" width="8" height="9" rx="1.5"/>
+            <rect class="bar" x="32" y="69" width="14" height="9" rx="1.5"/>
+          </g>
+          <circle cx="58" cy="48" r="34" fill="none" stroke="var(--brand)" stroke-width="5"/>
+        </svg>
+        </div><div><div class="k">② 장애 조사</div><div class="v">5 → 2단계</div><p>수집된 구간은 재현 없이 함수까지 <span>10~11쪽</span></p></div></div>
+      <div class="num"><div class="art">
+          <svg class="ill" aria-hidden="true" viewBox="0 0 140 110">
+          <path class="f" d="M70 72 C 73 84, 71 93, 67 102 L 79 102 C 82 92, 83 82, 84 72 Z"/>
+          <ellipse class="f" cx="98" cy="74" rx="15" ry="9.5"/>
+          <path class="f" d="M30 66 C 18 62, 15 46, 25 38 C 25 24, 39 15, 52 19 C 60 9, 78 9, 85 17 C 97 13, 111 21, 111 33 C 121 41, 119 57, 109 62 C 107 72, 95 76, 87 72 C 79 80, 65 80, 58 74 C 48 78, 36 76, 30 66 Z"/>
+          <path class="ln thin" d="M90 75 C 96 79, 104 79, 110 73 M93 70 C 99 73, 105 72, 110 68"/>
+          <path class="ln thin" d="M70 13 C 65 25, 74 33, 68 46"/>
+          <path class="ln thin" d="M38 63 C 51 56, 64 58, 80 50"/>
+          <path class="ln thin" d="M27 47 C 35 42, 41 51, 50 44 M38 29 C 45 34, 51 26, 57 33 M48 38 C 53 42, 58 40, 60 47"/>
+          <path class="ln thin" d="M79 26 C 86 32, 93 27, 98 35 M83 44 C 89 39, 96 46, 104 41 M95 54 C 100 58, 105 53, 111 56"/>
+          <path class="ln thin" d="M48 69 C 57 64, 65 70, 75 64"/>
+          <path class="ln thin" d="M4 98 L 18 90 L 28 93 L 42 80" style="stroke-dasharray:3 3"/>
+          <circle class="dotx" cx="4" cy="98" r="3"/><circle class="dotx" cx="18" cy="90" r="3"/><circle class="dotx" cx="28" cy="93" r="3"/><circle class="dotx" cx="42" cy="80" r="3.4"/>
+        </svg>
+        </div><div><div class="k">③ 데이터 분석</div><div class="v">5종 → SQL</div><p>운영 데이터를 직접 엮어 분석 <span>12쪽</span></p></div></div>
+    </div>
+    <div class="closing">
+      <div class="proof"><small>본선</small><b>해커톤 당일, 2명이 직접 구현해 개념을 실증합니다.</b></div>
+      <div class="takeaway"><small>실행 → 연결 → 활용</small><b>띄우고, 지켜보고, 돌아보는 일을 번호 하나로.</b></div>
+    </div>
+  </div>
+</section>
+
 <script>
 (function () {
   /* 쪽 머리·바닥 채우기 */
@@ -1124,7 +1248,7 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
     var q = +pg.getAttribute("data-q");
     var head = document.createElement("div");
     head.className = "p-head";
-    var nav = Q.map(function (x, k) { return '<span class="' + (q === k + 1 ? "on" : "") + '"><b>' + x[0] + "</b>" + x[1] + "</span>"; }).join("");
+    var nav = Q.map(function (x, k) { return '<span class="' + (q === k + 1 || q === 5 ? "on" : "") + '"><b>' + x[0] + "</b>" + x[1] + "</span>"; }).join("");
     head.innerHTML = '<div class="wordmark">이음<small>E:UM</small></div><nav class="qnav" aria-label="질문 목록">' + nav + "</nav>";
     if (q === 0) head.innerHTML = '<div class="wordmark" style="font-size:11pt">사내 AI 해커톤 기획서</div><nav class="qnav">' + Q.map(function (x) { return "<span><b>" + x[0] + "</b>" + x[1] + "</span>"; }).join("") + "</nav>";
     pg.insertBefore(head, pg.firstChild);
