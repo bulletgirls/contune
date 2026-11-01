@@ -133,13 +133,6 @@ tr.us > * { background: var(--brand-wash); }
 tr.grp td { padding-top: 2.2mm; padding-bottom: 1mm; font-size: 7.8pt; color: var(--ink-3); border-bottom-color: var(--line); }
 table.cmp { font-size: 8.2pt; }
 table.cmp td { line-height: 1.45; }
-.cost2 { display: grid; grid-template-columns: 1fr 1fr; gap: 2.4mm; }
-.cost2 > div { border-radius: 4px; padding: 2mm 3mm; font-size: 8.4pt; line-height: 1.5; display: flex; flex-direction: column; gap: 0.8mm; }
-.cost2 b { font-size: 8.8pt; }
-.cost2 .dn { background: var(--brand-wash); }
-.cost2 .dn b { color: var(--brand); }
-.cost2 .up { background: var(--card); }
-.cost2 span::before { content: "· "; color: var(--ink-3); }
 th.fill { background: var(--brand); color: var(--paper); width: 42%; }
 td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; }
 .c { text-align: center; }
@@ -484,10 +477,6 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
 .flows3 p { font-size: 8.5pt; line-height: 1.5; }
 .flows3 small { margin-top: auto; font-size: 7.4pt; color: var(--ink-3); border-top: 1px dashed var(--line); padding-top: 1mm; line-height: 1.45; }
 
-.steps-h { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2mm; }
-.steps-h div { border-top: 2px solid var(--brand); padding-top: 1.4mm; font-size: 8.3pt; color: var(--ink-2); line-height: 1.5; }
-.steps-h div b { display: block; color: var(--ink); font-size: 9pt; }
-.steps-h div small { font-family: var(--f-mono); color: var(--brand); font-weight: 600; font-size: 7.6pt; }
 
 /* 화면이 좁을 때: 쪽을 풀어서 쌓음 */
 @media screen and (max-width: 1180px) {
@@ -499,8 +488,8 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
   .cover .content, .cols-2, .cols-73, .cols-64, .cols-46, .pains, .gains, .merge, .arch { grid-template-columns: 1fr; }
   .gains { grid-template-rows: none; }
   .merge .arrow, .arch .pipe { transform: rotate(90deg); }
-  .silos, .t3, .steps-h, .scope, .tv-out, .merge-out, .boards { grid-template-columns: 1fr 1fr; }
-  .flows3, .cost2 { grid-template-columns: 1fr; }
+  .silos, .t3, .scope, .tv-out, .merge-out, .boards { grid-template-columns: 1fr 1fr; }
+  .flows3 { grid-template-columns: 1fr; }
   .app, .hw, .under { grid-template-columns: 1fr; }
   .tree { border-right: 0; border-bottom: 1px solid var(--line-2); }
   .eq { flex-wrap: wrap; }
@@ -548,8 +537,8 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
     <div class="qa">
       <div class="qa-item"><span class="qn">Q1</span><div><div class="q">그래서 대체 뭘 만드는 건가요?</div><div class="a">스케줄러, 서버 관제, 함수 호출 레벨의 업무 관제 도구를 실행 파일 하나로 통합합니다.</div><div class="ref">2~3쪽</div></div></div>
       <div class="qa-item"><span class="qn">Q2</span><div><div class="q">기존의 뭘 보완하는 건가요?</div><div class="a">비어 있는 도구 사이. 도구끼리 이어지지 않고, 데이터는 제품 안에 갇혀 있고, 비용은 도구마다 나갑니다.</div><div class="ref">4~6쪽</div></div></div>
-      <div class="qa-item"><span class="qn">Q3</span><div><div class="q">뭐가 좋아지는 건가요?</div><div class="a">시스템의 복잡도와 관리 비용이 줄고, 장애 조사의 근거를 한 흐름에서 확인하고, 쌓인 운영 기록을 직접 분석해 예측의 기반을 만듭니다.</div><div class="ref">7~13쪽</div></div></div>
-      <div class="qa-item"><span class="qn">Q4</span><div><div class="q">어떻게 가능한 건가요?</div><div class="a">실행 번호 하나로 여러 도구의 기록을 잇습니다. 검증된 부품을 쓰고 실행 관리와 기록 연결에 구현을 집중해, 실행·연결·활용 세 흐름을 하루에 완성합니다. 수집·저장·알림은 모듈별로 확장할 수 있게 설계합니다.</div><div class="ref">14~15쪽</div></div></div>
+      <div class="qa-item"><span class="qn">Q3</span><div><div class="q">뭐가 좋아지는 건가요?</div><div class="a">시스템의 복잡도와 관리 비용이 줄고, 장애 조사의 근거를 한 흐름에서 확인하고, 쌓인 운영 기록을 직접 분석해 예측의 기반을 만듭니다.</div><div class="ref">7~12쪽</div></div></div>
+      <div class="qa-item"><span class="qn">Q4</span><div><div class="q">어떻게 가능한 건가요?</div><div class="a">실행 번호 하나로 여러 도구의 기록을 잇습니다. 검증된 부품을 쓰고 실행 관리와 기록 연결에 구현을 집중해, 실행·연결·활용 세 흐름을 하루에 완성합니다. 수집·저장·알림은 모듈별로 확장할 수 있게 설계합니다.</div><div class="ref">13~14쪽</div></div></div>
     </div>
   </div>
 </section>
@@ -746,7 +735,7 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
     </div>
     <div class="col center">
       <div class="card"><h3>번호는 띄우는 쪽이 붙이면 간단합니다</h3><p>택배 송장번호처럼, 보낼 때 붙이면 이후 기록이 따라옵니다. 이음이 서비스를 띄우며 번호를 넘기면 자원·업무 지표·함수 기록이 별도 매칭 없이 같은 번호를 답니다.</p></div>
-      <div class="card"><h3>자체 구현의 부담</h3><p>유지보수는 우리 몫입니다. 그래서 검증된 부품을 쓰고, 직접 만드는 범위를 실행 관리와 기록 연결로 좁힙니다(14쪽). 대체 범위와 비용은 병행 운영에서 판단합니다(13쪽).</p></div>
+      <div class="card"><h3>자체 구현의 부담</h3><p>유지보수는 우리 몫입니다. 그래서 검증된 부품을 쓰고, 직접 만드는 범위를 실행 관리와 기록 연결로 좁힙니다(13쪽). 대체 범위와 비용은 병행 운영에서 판단합니다.</p></div>
       <div class="takeaway"><small>선택 이유</small><b>실행과 수집을 한 데이터 모델로 설계하면 연동 지점이 줄고, 기록은 처음부터 이어집니다.</b></div>
     </div>
   </div>
@@ -941,7 +930,7 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
       <div class="card"><h3>무엇을 보나</h3><p>서비스의 업무 지표, 서비스 CPU, 서버 자원을 한 시간축에. 도구별로 시각을 맞출 필요가 없습니다.</p></div>
       <div class="card"><h3>어떻게 쓰나</h3><p>평시 구간과 지연 구간을 끌어서 고르면 다음 쪽 플레임 그래프가 열립니다.</p></div>
       <div class="takeaway"><small>좋아지는 점</small><b>5단계 → 2단계. 타일 클릭, 구간 선택이면 함수까지.</b></div>
-      <p class="note">단계 수는 절차 설계 기준. 소요 시간은 같은 시나리오로 실측해 비교합니다(13쪽).</p>
+      <p class="note">단계 수는 절차 설계 기준. 소요 시간은 같은 시나리오로 실측해 비교합니다.</p>
     </div>
   </div>
 </section>
@@ -1037,49 +1026,7 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
   </div>
 </section>
 
-<!-- 13. Q3 효과 측정·적용 -->
-<section class="page" data-q="3">
-  <div class="p-title">
-    <div class="ask"><span class="qn">Q3</span>뭐가 좋아지는 건가요? <span class="sec">확인 방법</span></div>
-    <h1>효과는 시연으로 확인하고, 비용은 병행 운영에서 따집니다.</h1>
-    <p class="sub">본선에서는 기능과 절차를 확인합니다. 확인 안 된 절감 수치는 쓰지 않고, 검증판이 상용 제품을 바로 대체한다고 가정하지도 않습니다.</p>
-  </div>
-  <div class="content cols-2">
-    <div class="col center">
-      <h2>본선에서 확인할 것</h2>
-      <div class="tbl-wrap">
-      <table>
-        <thead><tr><th>좋아지는 것</th><th>확인 방법</th></tr></thead>
-        <tbody>
-          <tr><th>① 복잡도·관리 비용</th><td>실서버 3대에 모의 서버 40대를 더해 서버 43대·플로우 39개를 트리로 묶어 띄우고, 기존 도구들의 점검 항목이 한 화면에 모두 나오는지 점검표로 확인</td></tr>
-          <tr><th>② 장애 조사</th><td>같은 시나리오를 지금 절차와 이음으로 처리해 단계 수와 걸린 시간 비교. 지난 구간의 함수 비중을 재현 없이 조회하는지</td></tr>
-          <tr><th>③ 데이터 분석</th><td>운영 데이터 5종을 SQL로 엮어 12쪽 두 질의가 결과를 내는지, CSV로 내보내지는지</td></tr>
-          <tr><th>배치 실행</th><td>병렬·합류·서버 넘기·재시도가 정의대로 돌고 그래프에 보이는지</td></tr>
-          <tr><th>수집 부담</th><td>추적 자체의 CPU, 서비스 처리량·응답시간 변화 측정</td></tr>
-        </tbody>
-      </table>
-      </div>
-      <div class="card"><h3>운영 전 필수</h3><p>로그인·권한, 암호화 통신(TLS), 복구·이중화, 수집 누락·보존 정책. 설계상 자리는 있고, 투입 전에 구현·검증합니다.</p></div>
-    </div>
-    <div class="col center">
-      <h2>적용 순서</h2>
-      <div class="steps-h">
-        <div><small>1단계</small><b>가상 환경 검증</b>연결·과거 조회·함수 비교 확인</div>
-        <div><small>2단계</small><b>비운영 서버 시험</b>권한·빌드 조건·부하·장시간 안정성</div>
-        <div><small>3단계</small><b>제한적 병행 운영</b>일부 작업에 기존 도구와 함께 사용, 대체 범위 판단</div>
-      </div>
-      <h2>비용은 항목부터 맞춥니다</h2>
-      <div class="cost2">
-        <div class="dn"><b>줄어드는 비용</b><span>겹치는 상용 제품의 라이선스·유지보수</span><span>제품별 관리 서버·저장소</span><span>도구 사이 연동 개발, 데이터 추출 요청</span><span>장애 때 도구를 오가며 시각을 맞추는 시간</span></div>
-        <div class="up"><b>늘어나는 비용</b><span>자체 유지보수·기능 추가 인력</span><span>초기 개발·전환, 병행 기간의 이중 운영</span><span>저장 공간, 보안 점검</span></div>
-      </div>
-      <p class="note">절감은 병행 운영에서 실제로 대체한 기능만 셉니다. 금액은 대체 범위와 투입 인력이 정해진 뒤 계산하고, 조사 시간은 본선 시연의 실측값으로 비교합니다.</p>
-      <div class="takeaway"><small>원칙</small><b>작게 검증하고, 확인된 만큼 넓힙니다.</b></div>
-    </div>
-  </div>
-</section>
-
-<!-- 14. Q4 원리 -->
+<!-- 13. Q4 원리 -->
 <section class="page" data-q="4">
   <div class="p-title">
     <div class="ask"><span class="qn">Q4</span>어떻게 가능한 건가요?</div>
@@ -1127,7 +1074,7 @@ td.fill { background: var(--brand-wash); color: var(--brand); font-weight: 600; 
   </div>
 </section>
 
-<!-- 15. Q4 계획 -->
+<!-- 14. Q4 계획 -->
 <section class="page" data-q="4">
   <div class="p-title">
     <div class="ask"><span class="qn">Q4</span>어떻게 가능한 건가요? <span class="sec">하루, 2명</span></div>
