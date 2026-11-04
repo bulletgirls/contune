@@ -11,12 +11,23 @@
 | 심사 | 서류 심사 기준은 창의성 30, **업무 도구 실용성 30**, 구현 가능성 20, 기대 효과 20 ("사내에서 실제 업무 도구로 쓸 수 있는가") |
 | 범위 | **새 스케줄러의 개념 검증판.** 개념 7개(스케줄, 원격 실행, 한 통로 수집, 실행 ID 연결, 함수 단위 추적, 데이터 주권, 보안 최소선)를 15:00까지 최소 형태로 잇는다. 기존 도구에 붙이는 래퍼나 단계적 이행 계획은 두지 않는다 |
 | 함수 단위 추적 | 스케줄러가 띄운 프로세스(스크립트가 띄운 **C 서비스 프로세스** 포함)의 CPU를 함수별로 상시 표본 수집한다. Linux `perf`, 초당 49 표본, 10초 구간, 실행 ID로 태깅(§5.6) |
-| 데이터 주권 | 실행 이력, 지표, 함수 프로파일을 공개 스키마로 저장하고, 분석용 뷰·`contune sql`·내보내기로 연다(§6.1) |
+| 데이터 주권 | 실행 이력, 지표, 함수 프로파일을 공개 스키마로 저장하고, 분석용 뷰·`eum sql`·내보내기로 연다(§6.1) |
 | AI | 제품 안의 AI·ML 기능은 범위에서 뺀다. AI는 **개발 수단**(사람 1명당 AI 세션 2개, 모두 4개)이다 |
 | 운영 환경 | 업무는 **온라인(체결) 중심**이고, 배치는 개장 준비와 정산에 쓴다. 배치 작업은 셸 스크립트이고 스크립트가 띄우는 서비스는 C다(자바 일부). **운영 서버는 perf를 쓸 수 있다(확인)** |
 | 업무 지표 | 접수·처리 건수, 대기 건수, 응답시간 같은 처리 현황을 **시스템 지표와 같은 통로**로 받는다. 시연에서는 시연용 C 체결 서비스가 보낸다 |
 | 조직화 | 서버가 수십 대, 플로우가 수십 개라는 전제로 화면을 짠다. 서버는 에이전트 설정의 **그룹 경로**(`매매/체결`), 플로우는 `flows/` 아래 **폴더(배치판)** 로 묶고, 화면은 이 경로로 **트리**를 그린다. 업무 지표 화면은 업무마다 다르므로 **업무 패널**을 YAML로 정의한다(§12.1) |
-| 시연 | 컨테이너 3개 + 모의 서버 40대(`contune fleet`)와 보조 플로우 37개로 서버 43대·플로우 39개 규모를 채운다. 장애 장면은 **주문량 폭주로 체결 처리가 밀리는 상황**이다. 스케줄, 실행, 프로세스 추적, 함수 프로파일, 수집 경로는 실제로 동작한다. 서버 자원은 시뮬레이터이고, 체결 서비스는 합성 주문으로 부하를 만드는 시연용 C 프로그램이다(함수 이름과 수치는 시연용) |
+| 시연 | 컨테이너 3개 + 모의 서버 40대(`eum fleet`)와 보조 플로우 37개로 서버 43대·플로우 39개 규모를 채운다. 장애 장면은 **주문량 폭주로 체결 처리가 밀리는 상황**이다. 스케줄, 실행, 프로세스 추적, 함수 프로파일, 수집 경로는 실제로 동작한다. 서버 자원은 시뮬레이터이고, 체결 서비스는 합성 주문으로 부하를 만드는 시연용 C 프로그램이다(함수 이름과 수치는 시연용) |
+
+**추가 결정 (2026-11-04, 기획서 제출 뒤 구현 준비)** — 근거와 전체 목록은 [04 §1](04-implementation-plan.md)
+
+| 항목 | 결정 |
+|---|---|
+| 이름 | 제품은 **이음(E:UM)**. 실행 파일과 Go 모듈은 `eum`, 환경변수는 `EUM_*`, 설정 경로는 `/etc/eum`. 저장소 이름만 contune으로 둔다 |
+| 개발 환경 | 본선은 외부망과 상용 AI로 개발하고 사내 데이터·소스는 쓰지 않는다. `go mod vendor`는 선택이고, 실행할 때는 외부 서비스·CDN 없이 동작한다(uPlot은 바이너리에 내장) |
+| 상태 기록 | 상태 전이는 **비교 후 교체(CAS)** 로만 한다: 현재 상태가 기대한 값일 때만 바꾸고 같은 트랜잭션에서 `run_events`에 남긴다. `seq`는 매니저가 실행마다 1부터 매긴다(§7, §8) |
+| 명령 전달 | 메모리 명령 큐를 두지 않는다. `GET /agent/commands`가 그 호스트의 `DISPATCHED` 실행을 `state.db`에서 읽어 준다(§6) |
+| 최신 값 | `/hosts`, `/panels`, 리소스 게이트는 매니저 메모리의 최신 값 캐시(`live`)를 읽는다(§7.1) |
+| 조립 계약 | 패키지마다 공개 생성자와 `Mount` 함수를 계약으로 정한다(§7.1). 계약 카드(K1)가 빈 구현까지 만들어 두고, 이후 카드는 자기 패키지만 고친다 |
 
 ## 1. 설계 원칙: 3원칙을 구체 규칙으로 번역
 
@@ -40,13 +51,17 @@
 | 함수 프로파일 | Linux **`perf`** (에이전트가 실행) | 커널 내장 표본 수집(`perf_event`). `--call-graph dwarf`로 프레임 포인터 없이 빌드한 C 프로그램도 호출 경로를 복원합니다. 운영 서버는 perf를 쓸 수 있습니다(확인). |
 | 웹 | `net/http`(Go 1.22 라우팅) + `embed` + vanilla JS + **uPlot** | 빌드 단계가 없습니다. **플로우 그래프(DAG)** 는 스텝 깊이(level)별 열 배치 SVG, **플레임 그래프**는 접힌 스택에서 직접 그리는 SVG로 만들어 외부 라이브러리를 늘리지 않습니다. |
 | 통신 | HTTP/JSON, `Authorization: Bearer <에이전트 토큰>` | curl로 디버깅할 수 있고, 표준 TLS, 프록시, 로드밸런서를 그대로 쓸 수 있습니다. |
-| 사내망 대비 | 당일 첫 커밋에서 `go mod vendor` + uPlot 파일을 저장소에 포함 | 이후 세션들이 외부 다운로드에 막히지 않습니다. 모듈을 받을 수 있는지는 사전에 확인만 합니다. 웹 화면은 외부 CDN을 쓰지 않습니다. |
+| ID | `github.com/oklog/ulid/v2` | 실행 ID(`exec_id`)와 플로우 실행 ID. 시간순으로 정렬되고 발급에 조정이 필요 없습니다. |
+| 시간대 | 표준 `time` + `time/tzdata` 내장 | cron은 매니저 설정 `tz`(기본 `Asia/Seoul`)로 해석합니다. 시간대 파일이 없는 최소 이미지에서도 동작합니다. |
+| 폐쇄망 대비 | uPlot 파일을 저장소에 넣고 `embed`로 바이너리에 내장 | 실행할 때 외부 다운로드나 CDN이 없습니다. 본선 개발은 외부망이라 `go mod vendor`는 선택입니다. |
 
-> 바이너리는 하나이고 서브커맨드로 역할을 나눕니다: `contune manager`, `contune agent`, `contune dev`(매니저 + 에이전트 3개를 한 프로세스로, 노트북 시연용), `contune burn`(시연용 CPU 부하 잡), `contune fleet`(설정 파일에 적은 모의 서버 N대를 한 프로세스의 에이전트로 띄움, 시연 규모용, §13), `contune sql`(두 DB를 읽기 전용으로 여는 SQL 조회, §6.1). 시연용 체결 서비스 `matching_svc`는 제품이 아니라 추적 대상이므로 C로 따로 빌드합니다(§13).
+> 외부 의존성은 위 4개(SQLite 드라이버, YAML, cron 파서, ULID)로 고정합니다. 나머지는 표준 라이브러리로 만듭니다.
+
+> 바이너리는 하나이고 서브커맨드로 역할을 나눕니다: `eum manager`, `eum agent`, `eum dev`(매니저 + 에이전트 3개를 한 프로세스로, 노트북 시연용), `eum burn`(시연용 CPU 부하 잡), `eum fleet`(설정 파일에 적은 모의 서버 N대를 한 프로세스의 에이전트로 띄움, 시연 규모용, §13), `eum sql`(두 DB를 읽기 전용으로 여는 SQL 조회, §6.1). 시연용 체결 서비스 `matching_svc`는 제품이 아니라 추적 대상이므로 C로 따로 빌드합니다(§13).
 
 ## 3. 기능 범위
 
-| 영역 | contune이 하는 일 | 데이터 |
+| 영역 | 이음이 하는 일 | 데이터 |
 |---|---|---|
 | **배치 스케줄·실행** | YAML 플로우를 cron으로 실행하고 선후행(병렬, 합류, 서버 넘기), 재시도, 시간 초과를 판단한다. 서버마다 에이전트가 명령을 받아 실행하고, 스크립트가 띄운 서비스 프로세스까지 실행 ID로 추적한다 | `runs`, `run_events`, `job.*` 지표 |
 | **업무 지표** | 업무 프로세스의 처리 현황(접수·처리 건수, 대기 건수, 응답시간)을 시스템 지표와 **같은 통로**로 받고, 기동한 실행의 `exec_id`로 연결한다 | `biz.*` 지표 |
@@ -61,7 +76,7 @@
 
 ```mermaid
 flowchart TB
-  subgraph AG["contune agent (대상 서버마다 1개)"]
+  subgraph AG["eum agent (대상 서버마다 1개)"]
     P["수집기 Probe<br/>procfs · sim · push"]
     E["Executor<br/>명령 수신 · 프로세스 그룹 실행<br/>이벤트 재전송 큐"]
     T["ProcessTracker<br/>프로세스 그룹 + 실행 ID 표식<br/>→ job.* 지표"]
@@ -73,14 +88,14 @@ flowchart TB
     E -.->|PID 등록| T
     T -.->|실행별 PID 목록| PR
   end
-  subgraph MG["contune manager (1대)"]
+  subgraph MG["eum manager (1대)"]
     I["ingest"]
     MS[("metrics.db<br/>MetricStore<br/>지표 · 함수 프로파일")]
     SS[("state.db<br/>StateStore")]
     SC["scheduler<br/>순수 코어 Decide + 런너"]
-    Q["commands 큐"]
+    Q["명령 조회<br/>state.db의 DISPATCHED"]
     W["web UI / REST API<br/>서버·배치판 트리 · 대시보드 · 플로우 그래프 · 타임머신 · 플레임 그래프"]
-    D["열린 데이터<br/>v_samples · v_profiles · contune sql · 내보내기"]
+    D["열린 데이터<br/>v_samples · v_profiles · eum sql · 내보내기"]
     N["notify (넓히기)"]
     I --> MS
     MS --> W
@@ -89,9 +104,10 @@ flowchart TB
     SS --> D
     MS -.->|"리소스 게이트 (넓히기)"| SC
     SC <--> SS
-    SC --> Q
+    SC -->|디스패치| SS
+    SS --> Q
     SC --> N
-    W -- "수동 실행" --> Q
+    W -- "수동 실행" --> SC
   end
   S -- "POST /agent/metrics · /agent/profiles<br/>유실 허용" --> I
   E -- "POST /agent/events<br/>재시도 · 멱등" --> SC
@@ -137,6 +153,8 @@ flowchart LR
 | `agent.*` | 에이전트 자신 | `agent.profiler.cpu_pct`(프로파일러가 쓴 CPU), `agent.profiler.errors` |
 
 - 값은 모두 **게이지(float64) 하나**입니다. 수집기는 주기마다 **집계된 값**을 냅니다: TPS는 주기 안의 건수 ÷ 초, 응답시간은 p50/p99. 히스토그램 타입은 필요해질 때 추가합니다.
+- **CPU 단위가 둘입니다.** `host.cpu.pct`는 서버 전체 = 100(0~100), `job.cpu.pct`와 `agent.profiler.cpu_pct`는 **코어 1개 = 100**(코어 2개를 다 쓰면 200)입니다. 화면은 두 값을 한 축에 섞지 않습니다(§12.2).
+- `agent.profiler.errors`는 직전 구간에서 실패한 프로파일 수(게이지)입니다.
 - 차원(시장, 채널 등)이 필요해지면 `series`에 `labels` 컬럼을 추가합니다. `samples` 테이블과 API 형태는 바뀌지 않습니다.
 
 ### 5.2 수집기 종류 (`Probe` 구현)
@@ -156,7 +174,7 @@ flowchart LR
 host: match-01
 group: 매매/체결              # 서버 트리 경로. '/'로 단계를 나눔(§12.1)
 manager: http://manager:8080
-token: ${CONTUNE_TOKEN}
+token: ${EUM_TOKEN}
 interval: 1s
 probes:
   - type: sim
@@ -170,6 +188,7 @@ profiler:
   window: 10s                # 이 길이마다 접힌 스택 1묶음
   call_graph: dwarf          # fp | dwarf | none. 프레임 포인터 없이 빌드한 C 프로그램은 dwarf
   min_age: 5s                # 이보다 짧게 산 프로세스(준비 작업 등)는 함수 추적에서 건너뜀
+log_dir: /var/lib/eum/logs   # 실행 로그 logs/<exec_id>.log (기본 ./logs)
 
 # 실서버에서는 host.* 수집기만 procfs로 바꿉니다
 # probes:
@@ -206,9 +225,9 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 | 기준 | 내용 |
 |---|---|
 | 프로세스 그룹 | Executor가 `Setpgid`로 띄운 스텝의 프로세스 그룹. 시간 초과 시 그룹 전체를 종료하는 기준이기도 합니다 |
-| **실행 ID 표식** | Executor가 자식에게 넘긴 환경변수 `CONTUNE_EXEC_ID`, `CONTUNE_FLOW`, `CONTUNE_STEP`은 손자, 데몬화한 프로세스까지 상속됩니다. 추적기는 5초마다 `/proc/<pid>/environ`에서 `CONTUNE_EXEC_ID=<id>`를 찾아 그룹을 벗어난 프로세스도 같은 실행에 붙입니다. 에이전트가 재시작해도 `/proc`만 다시 읽으면 복원됩니다 |
+| **실행 ID 표식** | Executor가 자식에게 넘긴 환경변수 `EUM_EXEC_ID`, `EUM_FLOW`, `EUM_STEP`, `EUM_HOST`, `EUM_PROFILE`(`1`이면 함수 추적 대상)은 손자, 데몬화한 프로세스까지 상속됩니다. 추적기는 5초마다 `/proc/<pid>/environ`에서 `EUM_EXEC_ID=<id>`를 찾아 그룹을 벗어난 프로세스도 같은 실행에 붙입니다. 에이전트가 재시작해도 `/proc`만 다시 읽으면 실행 ID와 함수 추적 여부까지 복원됩니다. 이때 **`EUM_HOST`가 자기 호스트인 프로세스만** 가져갑니다(한 컨테이너에 모의 서버 40대가 함께 도는 `eum fleet`에서 서로의 프로세스를 가져가지 않도록) |
 
-- 프로세스는 `(pid, 시작 시각)`으로 식별해 PID 재사용에 속지 않습니다. 탐색은 5초, `job.*` 측정은 1초 주기입니다.
+- 프로세스는 `(pid, 시작 시각)`으로 식별해 PID 재사용에 속지 않습니다. 탐색은 5초, `job.*` 측정은 1초 주기입니다. 탐색은 **이미 본 `(pid, 시작 시각)`을 건너뛰어** 새 프로세스의 `environ`만 읽습니다.
 - **스텝이 끝나도 그 실행이 띄운 프로세스가 살아 있으면 추적을 계속합니다.** `job.*` 지표와 함수 프로파일이 같은 `exec_id`로 계속 쌓입니다. 스텝 상태(SUCCEEDED)와 프로세스 생존은 별개이고, 화면은 `job.procs` > 0인 실행을 "서비스 실행 중"으로 표시합니다.
 - 업무 지표 연결: 서비스가 `push`로 지표를 보낼 때 자기 환경변수의 `exec_id`를 붙이면, **어느 실행이 띄운 프로세스의 처리량인지** 바로 알 수 있습니다.
 - 실측(설계 검토 중): 비root 사용자가 `setsid`로 띄워 init 아래로 옮겨 간 프로세스를 `/proc/<pid>/environ`의 표식으로 찾았습니다.
@@ -217,7 +236,7 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 
 ### 5.6 함수 단위 추적 (`Profiler`)
 
-`perf top`은 지금 도는 것만 보여 줍니다. 몇 분 만에 지나간 주문 폭주는 담당자가 perf를 걸 때 이미 끝나 있고, 새벽 배치는 아침에 보면 끝나 있습니다. 원인 코드를 찾으려면 같은 부하를 다시 만들어 재현해야 합니다. contune은 스케줄러가 띄운 순간부터 그 실행의 프로세스만 골라 **계속 기록**하므로, 지나간 장애 구간과 끝난 배치도 나중에 구간을 골라 함수 단위로 봅니다.
+`perf top`은 지금 도는 것만 보여 줍니다. 몇 분 만에 지나간 주문 폭주는 담당자가 perf를 걸 때 이미 끝나 있고, 새벽 배치는 아침에 보면 끝나 있습니다. 원인 코드를 찾으려면 같은 부하를 다시 만들어 재현해야 합니다. 이음은 스케줄러가 띄운 순간부터 그 실행의 프로세스만 골라 **계속 기록**하므로, 지나간 장애 구간과 끝난 배치도 나중에 구간을 골라 함수 단위로 봅니다.
 
 **동작**
 
@@ -252,7 +271,7 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 | 준비 작업 등 단명 프로세스 | 제외(`min_age`) | 자원 지표(`job.*`)는 그대로 수집합니다 |
 | 자바 | 제외 → 확장 | `Profiler` 구현 추가: JDK 내장 JFR 또는 async-profiler. 결과는 같은 접힌 스택이라 저장·화면·SQL은 그대로 |
 
-**권한:** 운영 서버는 perf를 쓸 수 있음을 확인했습니다. 에이전트와 같은 사용자로 뜬 프로세스는 커널 기본값(`perf_event_paranoid` = 2)에서 비root로 프로파일합니다. 값이 더 높게 잠긴 서버는 sysctl 한 줄 또는 `CAP_PERFMON`이 필요합니다. 대상은 contune이 띄운 프로세스(실행 ID 표식)뿐이고 다른 프로세스는 보지 않습니다.
+**권한:** 운영 서버는 perf를 쓸 수 있음을 확인했습니다. 에이전트와 같은 사용자로 뜬 프로세스는 커널 기본값(`perf_event_paranoid` = 2)에서 비root로 프로파일합니다. 값이 더 높게 잠긴 서버는 sysctl 한 줄 또는 `CAP_PERFMON`이 필요합니다. 대상은 이음이 띄운 프로세스(실행 ID 표식)뿐이고 다른 프로세스는 보지 않습니다.
 
 **한계:** CPU를 쓴 곳(on-CPU)만 보입니다. 잠금이나 디스크를 기다려 느린 경우는 플레임 그래프에 거의 나오지 않고, 대기 시간 분석(off-CPU)은 root와 eBPF가 필요해 확장입니다. DB 안에서 도는 저장 프로시저는 배치 서버가 아니라 DB 쪽에서 봐야 합니다.
 
@@ -264,8 +283,8 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 |---|---|---|
 | `POST /api/v1/agent/metrics` | **유실 허용** (실패하면 버퍼에 두고 다음에 재시도, 넘치면 버림) | 1초마다 샘플 묶음 전송 |
 | `POST /api/v1/agent/profiles` | **유실 허용** (지표와 같은 버퍼 정책) | 10초 구간마다 실행별 접힌 스택 |
-| `POST /api/v1/agent/events` | **반드시 전달** (성공할 때까지 재시도). 매니저는 `(exec_id, seq)`로 멱등 처리 | 잡 시작, 종료 보고와 요약(peak, 로그 tail) |
-| `GET /api/v1/agent/commands?host=<id>&wait=25s` | 롱폴링. 에이전트는 **이미 받은 `exec_id`를 무시** | `run`, `kill`(넓히기) 명령 수신 |
+| `POST /api/v1/agent/events` | **반드시 전달** (성공할 때까지 재시도, 순서 유지). 매니저는 **상태 비교 후 교체(CAS)** 로 멱등 처리: `started`는 현재 `DISPATCHED`일 때만, `finished`는 `DISPATCHED`·`RUNNING`일 때만 반영. 같은 이벤트가 다시 와도, 모르는 `exec_id`여도 `200 {"applied":false}` | 잡 시작, 종료 보고와 요약(peak, 로그 tail) |
+| `GET /api/v1/agent/commands?host=<id>&wait=25s` | 롱폴링. 매니저는 **그 호스트의 `DISPATCHED` 실행을 `state.db`에서 읽어** 돌려줌(메모리 큐 없음, 매니저가 재시작해도 명령이 남음). 없으면 새 디스패치가 생기거나 `wait`가 끝날 때까지 기다렸다가 빈 목록. 에이전트는 **이미 받은 `exec_id`를 무시** | `run`, `kill`(넓히기) 명령 수신 |
 
 **화면용** (검증판에서는 인증 없음)
 
@@ -274,10 +293,10 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 | `GET /api/v1/hosts` | 호스트 목록: 그룹 경로, 마지막 수신 시각, 최신 `host.*` 값, 상태(정상·주의·위험·무응답, §12.1) |
 | `GET /api/v1/series?host=&group=&name=&exec_id=&from=&to=&step=` | 시계열 조회. `step`(초) 단위 평균으로 다운샘플. `name`은 `biz.order.*`처럼 접두사로도 받음. `host`를 비우고 `group`을 주면 그 그룹(하위 포함) 서버 전부 |
 | `GET /api/v1/profile?exec_id=&from=&to=` | 구간과 겹치는 프로파일을 합친 접힌 스택(표본 수 내림차순) |
-| `GET /api/v1/runs?flow=&host=&limit=` | 실행 이력 |
-| `GET /api/v1/runs/{exec_id}` | 실행 상세 + 상태 전이 이력 |
-| `GET /api/v1/flows?board=` | 플로우 목록, **배치판 경로 `board`**, 스텝 구조(호스트, 선행, **깊이 `level`**), cron 다음 실행 시각, 최근 실행의 스텝별 상태와 attempt |
-| `POST /api/v1/flows/{id}/run` | 플로우 수동 실행 |
+| `GET /api/v1/runs?flow=&host=&status=&limit=` | 실행 이력(최신순, 기본 100) |
+| `GET /api/v1/runs/{exec_id}` | 실행 상세 + 상태 전이 이력 + 지금 살아 있는 프로세스 수(`live.procs`, "서비스 실행 중" 표시용) |
+| `GET /api/v1/flows?board=` | 플로우 목록, **배치판 경로 `board`**(접두사로 거름), 스텝 구조(호스트, 선행, **깊이 `level`**), cron 다음 실행 시각, 최근 플로우 실행의 상태와 스텝별 상태·attempt |
+| `POST /api/v1/flows/{id}/run` | 플로우 수동 실행 → `201 {"flow_run_id":"..."}`. 이전 실행이 아직 진행 중이면 `409` |
 | `GET /api/v1/panels` | 업무 패널 정의(`panels/*.yaml`)와 타일마다 최신 집계 값, 그 값을 보낸 `exec_id` |
 | `GET /api/v1/export/samples?from=&to=&host=&name=&exec_id=` | 지표 CSV 내보내기 (§6.1) |
 | `GET /api/v1/export/runs?from=&to=` | 실행 이력 CSV 내보내기 (§6.1) |
@@ -302,17 +321,64 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
               "command":["/svc/start_matching.sh"],"timeout_sec":600,"profile":true}]}
 
 // POST /api/v1/agent/events — 시작
-{"exec_id":"01JBQ7...","seq":1,"type":"started","ts":1761534000000,"pid":4121}
+{"host":"match-01","exec_id":"01JBQ7...","seq":1,"type":"started","ts":1761534000000,"pid":4121}
 
 // POST /api/v1/agent/events — 종료
-{"exec_id":"01JBQ3...","seq":2,"type":"finished","ts":1761535800000,"status":"FAILED","exit_code":1,
+{"host":"batch-01","exec_id":"01JBQ3...","seq":2,"type":"finished","ts":1761535800000,"status":"FAILED","exit_code":1,
  "usage":{"peak_cpu_pct":187.0,"peak_rss_mb":3120},
  "log_tail":"...마지막 200줄..."}
 
-// GET /api/v1/profile?exec_id=01JBQ7...&from=&to= 응답
-{"exec_id":"01JBQ7...","samples":980,
- "stacks":[{"frames":"matching_svc;main;handle_order;match_order;book_insert","samples":612}, ...]}
+// POST /api/v1/agent/events — 기동 실패(명령을 찾지 못함 등): started 없이 finished만, exit_code 127
+{"host":"batch-01","exec_id":"01JBQ4...","seq":1,"type":"finished","ts":1761535800000,"status":"FAILED","exit_code":127,
+ "log_tail":"exec: \"/batch/x.sh\": no such file or directory"}
 ```
+
+- 에이전트 이벤트의 `seq`는 **에이전트 쪽 전송 순서**일 뿐입니다. `run_events.seq`(§8)는 매니저가 따로 매깁니다.
+
+**화면용 응답 형식** (화면 카드와 화면 mock이 이 형식을 그대로 씁니다. 시각은 모두 unix ms, 값이 없으면 `null`이나 `0`)
+
+```jsonc
+// GET /api/v1/hosts
+{"now":1761534000000,"hosts":[
+  {"id":"match-01","group":"매매/체결","last_seen":1761533999000,"state":"warn",   // ok | warn | crit | silent
+   "cpu":78.2,"mem":61.0,"load1":3.1,"reasons":["host.cpu.pct ≥ 70"]}]}
+
+// GET /api/v1/series?group=매매/체결&name=host.cpu.pct&from=&to=&step=30
+{"from":1761533100000,"to":1761534000000,"step":30,"series":[
+  {"host":"match-01","name":"host.cpu.pct","exec_id":"","points":[[1761533100000,41.2],[1761533130000,43.0]]}]}
+
+// GET /api/v1/panels
+{"panels":[{"id":"matching","title":"체결","group":"매매/체결","tiles":[
+  {"title":"처리 대기","metric":"biz.order.queue","agg":"sum","unit":"건","warn":500,"crit":2000,
+   "value":2240,"state":"crit","exec_id":"01JBQ7...","ts":1761534000000}]}]}   // 값이 없으면 value null, state "none"
+
+// GET /api/v1/flows?board=개장준비
+{"now":1761534000000,"flows":[{"id":"market-open","board":"개장준비","schedule":"30 5 * * 1-5","next_run":1761600600000,
+  "steps":[{"id":"fetch-master","host":"batch-01","depends":[],"level":0,"profile":false},
+           {"id":"start-matching","host":"match-01","depends":["load-equity","load-deriv"],"level":2,"profile":true}],
+  "last":{"flow_run_id":"01JBQ0...","trigger":"manual","status":"RUNNING",          // RUNNING | SUCCEEDED | FAILED (§10)
+          "started_at":1761532200000,"ended_at":0,
+          "steps":{"load-equity":{"exec_id":"01JBQ5...","status":"SUCCEEDED","attempt":2,"started_at":1761532210000,"ended_at":1761532226000,"procs":0},
+                   "start-matching":{"exec_id":"01JBQ7...","status":"SUCCEEDED","attempt":1,"started_at":1761532237000,"ended_at":1761532238000,"procs":1}}}}]}
+
+// GET /api/v1/runs?flow=market-open&limit=50
+{"runs":[{"exec_id":"01JBQ7...","flow_run_id":"01JBQ0...","flow_id":"market-open","step_id":"start-matching","host":"match-01",
+  "trigger":"manual","attempt":1,"status":"SUCCEEDED","scheduled_at":1761532237000,"started_at":1761532237000,
+  "ended_at":1761532238000,"exit_code":0,"peak_cpu_pct":2.0,"peak_rss_mb":3.1}]}
+
+// GET /api/v1/runs/{exec_id}
+{"run":{ /* 위 runs 항목과 같은 필드 + "log_tail" */ },"board":"개장준비",
+ "events":[{"seq":1,"ts":1761532200000,"from":"","to":"WAITING","actor":"scheduler","reason":"manual"},
+           {"seq":2,"ts":1761532237000,"from":"WAITING","to":"DISPATCHED","actor":"scheduler","reason":""}],
+ "live":{"procs":1,"ts":1761534000000}}
+
+// GET /api/v1/profile?exec_id=01JBQ7...&from=&to=
+{"exec_id":"01JBQ7...","from":1761533960000,"to":1761533980000,"samples":980,
+ "stacks":[{"frames":"matching_svc;main;handle_order;match_order;book_insert","samples":612}]}
+```
+
+- `/series`의 `step`을 비우면 구간을 점 600개 안쪽으로 나누는 값을 매니저가 고릅니다. `points`는 `[ts, value]` 배열입니다(uPlot에 바로 넣기 위해).
+- 에러는 `{"error":"메시지"}`와 4xx·5xx 상태 코드로 돌려줍니다.
 
 ### 6.1 열린 데이터 (데이터 주권)
 
@@ -323,12 +389,12 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 | 공개 스키마 | §8의 테이블과 뷰가 곧 공개 스키마입니다. 컬럼을 지우거나 의미를 바꾸지 않고 추가만 합니다 |
 | 분석용 뷰 `v_samples` | `series`와 `samples`를 조인해 `(host, name, exec_id, ts, value)`로 펼친 뷰입니다 |
 | 분석용 뷰 `v_profiles` | 함수 프로파일을 `(host, exec_id, ts, dur_ms, frames, leaf, samples)`로 펼친 뷰입니다. `leaf`는 표본이 잡힌 맨 안쪽 함수입니다 |
-| `contune sql` | `contune sql --data <dir> "<SELECT ...>" [--csv]`. `metrics.db`를 읽기 전용(`mode=ro`)으로 열고 `state.db`를 읽기 전용으로 붙여(ATTACH) 한 질의에서 `runs`와 `v_samples`, `v_profiles`를 조인합니다. 쓰기 질의는 실패합니다 |
+| `eum sql` | `eum sql --data <dir> "<SELECT ...>" [--csv]`. `metrics.db`를 읽기 전용(`mode=ro`)으로 열고 `state.db`를 읽기 전용으로 붙여(ATTACH) 한 질의에서 `runs`와 `v_samples`, `v_profiles`를 조인합니다. 쓰기 질의는 실패합니다 |
 | 내보내기 | `GET /api/v1/export/samples` → `ts,host,name,exec_id,value`, `GET /api/v1/export/runs` → `runs` 컬럼 그대로(둘 다 CSV, 헤더 포함), `GET /api/v1/export/profile` → 접힌 스택 텍스트. 접힌 스택은 speedscope, flamegraph.pl 같은 공개 도구에서 바로 열립니다 |
 | 보존 정책 | 보존 기간과 수집 주기는 설정 파일로 우리가 정합니다(검증판 기본: 지표와 프로파일 7일, 실행 이력 무기한) |
 
 ```sql
--- 접수량 구간별 체결 p99: 초당 몇 건부터 밀리기 시작하나 (contune sql로 실행)
+-- 접수량 구간별 체결 p99: 초당 몇 건부터 밀리기 시작하나 (eum sql로 실행)
 SELECT CAST(i.value / 1500 AS INT) * 1500 AS in_tps,
        COUNT(*)               AS seconds,
        ROUND(AVG(p.value), 1) AS avg_p99_ms,
@@ -370,6 +436,25 @@ LIMIT 5;
 
 - 제품 안에 머신러닝 기능은 넣지 않습니다. 같은 데이터를 SQL이나 내보내기로 꺼내 분석 도구에서 돌립니다(예: 소요 시간 이상 탐지, 배치 소요 시간 예측, 서버 용량 예측, **실행마다 함수 비중을 비교한 성능 회귀 탐지**).
 - 저장소를 MySQL로 바꾸면 분석하는 사람은 읽기 전용 계정으로 같은 테이블과 뷰를 조회합니다.
+- 세 번째 질의 파일 `deploy/queries/deploy-diff.sql`은 **배포 전후 비교**(기획서 12쪽)입니다: 같은 스텝(`start-matching`)의 두 실행을 골라 `leaf`별 비중을 나란히 놓습니다. 실행 두 개만 있으면 되므로 시연에서는 선택입니다.
+
+### 6.2 매니저 설정
+
+```yaml
+# deploy/manager.yaml — 명령줄 플래그(--listen, --data, --flows, --panels)가 있으면 그 값이 우선
+listen: :8080
+data: /data                  # metrics.db, state.db
+flows: /flows                # 배치판 폴더들
+panels: /panels              # 업무 패널 YAML
+token: ${EUM_TOKEN}          # ${VAR}는 환경변수로 바꿈
+tz: Asia/Seoul               # cron 해석 시간대
+store: sqlite                # sqlite | memory (memory는 dev·테스트용)
+host_state: { cpu_warn: 70, cpu_crit: 90, mem_warn: 80, mem_crit: 90, silent_after: 10s }
+retention: 168h              # 지표·프로파일 보존(넓히기: 1시간마다 오래된 행 삭제)
+notify: { webhook: "" }      # 넓히기: 임계치 알림
+```
+
+- 설정 파일이 없어도 위 기본값으로 뜹니다. `eum dev`는 `store: sqlite`, `data: ./data-dev`, 토큰 `dev`를 씁니다.
 
 ## 7. 확장 지점: 인터페이스 6개
 
@@ -384,10 +469,72 @@ type Sample struct {
 }
 
 type Host struct {
-    ID       string
-    Group    string // 그룹 경로 '매매/체결' ('' = 미분류)
-    LastSeen int64  // unix ms
+    ID           string
+    Group        string // 그룹 경로 '매매/체결' ('' = 미분류)
+    LastSeen     int64  // unix ms
+    AgentVersion string
 }
+
+type HostThresholds struct { CPUWarn, CPUCrit, MemWarn, MemCrit float64; SilentAfter time.Duration }
+
+// 실행 상태 (§10)
+type RunStatus string // WAITING DISPATCHED RUNNING SUCCEEDED FAILED TIMEOUT HELD KILLED LOST
+func (s RunStatus) Terminal() bool // SUCCEEDED, FAILED, TIMEOUT, KILLED, LOST
+
+type Run struct {
+    ExecID, FlowRunID, FlowID, StepID, Host string
+    Trigger     string // schedule | manual
+    Attempt     int    // 1부터
+    Status      RunStatus
+    ScheduledAt int64  // 이 시각 이전에는 디스패치하지 않음(재시도 대기에 씀)
+    StartedAt, EndedAt int64 // 0 = 아직 없음
+    ExitCode    *int
+    PeakCPUPct, PeakRSSMB float64
+    LogTail     string
+}
+type RunEvent struct { ExecID string; Seq int; TS int64; From, To RunStatus; Actor, Reason string }
+type RunPatch struct { StartedAt, EndedAt *int64; ExitCode *int; PeakCPUPct, PeakRSSMB *float64; LogTail *string }
+type Transition struct {          // 비교 후 교체: 현재 상태가 From 중 하나일 때만 To로
+    ExecID string
+    From   []RunStatus
+    To     RunStatus
+    TS     int64
+    Actor  string                 // 'scheduler' | 'agent:batch-01' | 'user:<id>'
+    Reason string
+    Patch  RunPatch
+}
+type RunFilter struct { FlowID, FlowRunID, Host string; Status []RunStatus; From, To int64; Limit int } // From/To는 scheduled_at 기준
+type Usage struct { PeakCPUPct, PeakRSSMB float64 }
+
+// 시계열
+type SeriesQuery struct { Hosts []string; Name, ExecID string; From, To int64; StepSec int } // Hosts 비면 전부, Name이 '*'로 끝나면 접두사
+type Point struct { TS int64; Value float64 }
+type Series struct { Host, Name, ExecID string; Points []Point }
+
+// 플로우 정의 (YAML에서 읽음, DB에 넣지 않음)
+type Flow struct { ID, Board, File, Schedule, OnMissed string; Steps []Step }
+type Step struct {
+    ID, Host    string
+    Command     []string
+    Depends     []string
+    Timeout     time.Duration
+    Retry       Retry
+    Profile     bool
+    Gate        []GateCond
+    GateMaxWait time.Duration
+    Level       int // 로더가 계산
+}
+type Retry struct { Count int; Interval time.Duration } // Count 2 = 최대 3번 실행
+type GateCond struct { Host, Metric string; Max, Min *float64 }
+
+// 에이전트 명령
+type Command struct { Type, ExecID, Flow, Step string; Command []string; TimeoutSec int; Profile bool } // Type: run | kill
+
+// 업무 패널 (§12.1)
+type Panel struct { ID, Title, Group string; Tiles []Tile }
+type Tile struct { Title, Metric, Agg, Unit string; Warn, Crit *float64 } // Agg: sum | max | avg
+
+type Alert struct { TS int64; Host, Name, ExecID, Level, Message string; Value float64 }
 
 type Profile struct {
     Host   string
@@ -415,9 +562,13 @@ type ProcessTracker interface {
 // internal/agent/profile — 함수 프로파일 확장 (perf → JFR/async-profiler, eBPF)
 type Profiler interface {
     Name() string
-    // pids의 on-CPU 스택을 window 동안 표본 수집해 접힌 스택별 표본 수를 돌려준다.
-    Profile(ctx context.Context, pids []int, window time.Duration) (map[string]int64, error)
+    // pids의 on-CPU 스택을 window 동안 표본 수집해 접힌 스택별 표본 수와,
+    // 수집에 쓴 CPU 시간(프로파일러 자신의 부하)을 돌려준다.
+    Profile(ctx context.Context, pids []int, window time.Duration) (stacks map[string]int64, cpu time.Duration, err error)
 }
+// 설정 profiler.type으로 고른다. 수집기와 같은 등록 방식(OCP)
+func Register(kind string, f func(cfg map[string]any) (Profiler, error))
+func Build(cfg map[string]any) (Profiler, error) // cfg가 비었거나 type: none이면 (nil, nil)
 
 // internal/manager/store — 저장소 확장 (SQLite → TSDB / MySQL). 지표와 프로파일을 같은 DB에
 type MetricStore interface {
@@ -427,21 +578,59 @@ type MetricStore interface {
     QueryProfile(ctx context.Context, execID string, from, to int64) (model.Profile, error) // 구간 합산
 }
 type StateStore interface {
-    UpsertRun(ctx context.Context, r model.Run) error          // exec_id 기준 멱등
-    AppendEvent(ctx context.Context, e model.RunEvent) error   // 상태 전이 감사 로그, (exec_id, seq) 멱등
-    GetRun(ctx context.Context, execID string) (model.Run, []model.RunEvent, error)
-    ListRuns(ctx context.Context, f model.RunFilter) ([]model.Run, error)
-    UpsertHost(ctx context.Context, h model.Host) error        // 지표를 받을 때마다 그룹 경로, last_seen 갱신
+    // 새 실행 행(WAITING)을 만들고 각 행에 생성 이벤트(seq 1, from '' → WAITING)를 남긴다. 한 트랜잭션.
+    CreateRuns(ctx context.Context, runs []model.Run, actor, reason string) error
+    // 비교 후 교체. 현재 상태가 t.From 중 하나일 때만 t.To와 t.Patch를 반영하고 run_events에 다음 seq로 남긴다.
+    // 반영했으면 true. 상태가 맞지 않거나(중복·늦은 이벤트) exec_id가 없으면 false, 에러 아님.
+    Transition(ctx context.Context, t model.Transition) (bool, error)
+    GetRun(ctx context.Context, execID string) (model.Run, []model.RunEvent, error) // 없으면 ErrNotFound
+    ListRuns(ctx context.Context, f model.RunFilter) ([]model.Run, error)           // scheduled_at 내림차순
+    UpsertHost(ctx context.Context, h model.Host) error // 새 호스트, 그룹 변경, 30초마다만 호출됨(§7.1 live)
     ListHosts(ctx context.Context) ([]model.Host, error)
 }
+var ErrNotFound = errors.New("not found")
 
 // internal/manager/notify — 알림 확장 (webhook, 사내 메신저) · 검증판에서는 넓히기
 type Notifier interface{ Notify(ctx context.Context, a model.Alert) error }
 ```
 
-- 계약(위 타입과 인터페이스, API DTO)은 대회 규칙상 미리 코드로 쓸 수 없습니다. **당일 09:00~09:30에 리드가 이 문서를 AI 세션으로 코드로 옮겨 확정**하고 10:30에 동결합니다. 이후 변경은 리드만 합니다.
-- `Executor`와 스케줄러는 인터페이스로 만들지 않습니다. 구현이 하나뿐이고, OS 의존 부분은 `ProcessTracker`와 `Profiler`가, 시간 의존 부분은 주입하는 시계가 흡수합니다(YAGNI).
-- **스케줄러 코어**는 순수 함수입니다: `Decide(now, flows, runs) []Action`. 부작용(DB 쓰기, 명령 큐잉)은 런너가 처리합니다.
+- 계약(위 타입과 인터페이스, API DTO, §7.1 조립 계약)은 대회 규칙상 미리 코드로 쓸 수 없습니다. **당일 첫 카드(K1)에서 리드가 이 문서를 AI 세션으로 코드로 옮기고** 10:30에 동결합니다. 이후 변경은 리드만 합니다.
+- `Executor`와 스케줄러는 인터페이스로 만들지 않습니다. 구현이 하나뿐이고, OS 의존 부분은 `ProcessTracker`와 `Profiler`가, 시간 의존 부분은 주입하는 `Now func() time.Time`이 흡수합니다(YAGNI). 시계를 위한 별도 인터페이스는 두지 않습니다.
+- **스케줄러 코어**는 순수 함수입니다: `Decide(in Input) []Action`. 입력은 지금 시각, 직전 tick 시각, 플로우 정의, 최근 실행, 실행 ID 생성 함수입니다. 부작용(DB 쓰기, 롱폴링 깨우기)은 런너가 처리합니다(§9, §10).
+- 상태를 바꾸는 길은 `CreateRuns`와 `Transition` 둘뿐입니다. 스케줄러, 이벤트 처리, (넓히기) 운영자 조작이 모두 이 둘을 지나므로 동시에 써도 상태가 꼬이지 않고, 모든 전이가 `run_events`에 남습니다.
+
+### 7.1 조립 계약: 패키지 공개 API
+
+인터페이스 6개 밖의 연결부도 계약입니다. 패키지는 아래 공개 API로만 서로를 부르고, 조립은 `cmd/eum`, `internal/agent`(에이전트), `internal/manager`(매니저) 세 곳에서만 합니다(DIP). 계약 카드 K1이 아래 함수를 **빈 구현(stub)** 까지 만들어 두므로 처음부터 컴파일되고, 이후 카드는 자기 패키지 안만 채웁니다.
+
+| 패키지 | 공개 API | 쓰는 곳 | 채우는 카드 |
+|---|---|---|---|
+| `internal/model` | 위 공용 타입 | 전부 | K1 |
+| `internal/api` | DTO `MetricsBatch{Host, Group, Samples}`, `ProfilesBatch{Host, Profiles}`, `EventReport{Host, ExecID, Seq, Type, TS, PID, Status, ExitCode, Usage, LogTail}`, `CommandsResponse{Commands}`. `NewClient(base, token string) *Client`, `PostMetrics`, `PostProfiles`, `PostEvent`(ctx, dto) `error`, `GetCommands(ctx, host string, wait time.Duration) (CommandsResponse, error)`. 2xx가 아니면 `*StatusError{Code}` | 에이전트 | K1 |
+| `internal/agent` | `Config`(§5.3 + `log_dir`, 시연용 고장 주입 `fault_silent_after`: 그 시간이 지나면 지표 전송을 멈춤), `LoadConfig(path) (Config, error)`, `Run(ctx, Config) error`(아래 부품을 엮고 1초마다 수집기·추적기 → 전송기) | `cmd/eum` agent·dev·fleet | K1, K2 |
+| `internal/agent/probe` | `Probe`, `Env`, `Factory`, `Register`, `Build` | 에이전트 | K1(등록부), C1(종류) |
+| `internal/agent/ship` | `New(c *api.Client, host, group string, o Options) *Shipper`, `Add(model.Sample)`, `AddProfile(model.Profile)`, `SetPaused(bool)`(모의 서버 무응답), `Run(ctx) error` | 에이전트 | K2(최소), C3 |
+| `internal/agent/exec` | `ProcessTracker`, `NewTracker(host string, o TrackerOptions) ProcessTracker`, `Start(cmd model.Command, o StartOptions) (*Job, error)`, `(*Job).PID() int`, `(*Job).Wait() Result{Status, ExitCode, LogTail}`, `NewRunner(c *api.Client, host string, t ProcessTracker, o RunnerOptions) *Runner`, `(*Runner).Run(ctx) error` | 에이전트 | K1(stub), A2, A3, A4 |
+| `internal/agent/profile` | `Profiler`, `Register`, `Build`, `Sink interface{ Add(model.Sample); AddProfile(model.Profile) }`, `NewLoop(p Profiler, host string, targets func(minAge time.Duration) map[string][]int, sink Sink, o LoopOptions) *Loop`, `(*Loop).Run(ctx) error` | 에이전트 | K1(stub), A1(파서), A5 |
+| `internal/manager` | `Config`(§6.2), `LoadConfig(path) (Config, error)`, `New(cfg Config) (*Manager, error)`, `(*Manager).Handler() http.Handler`, `(*Manager).Run(ctx) error`, `(*Manager).Close() error`. 토큰 확인은 `/api/v1/agent/` 경로에만, 여기 한 곳에서 | `cmd/eum` manager·dev | K1, K2 |
+| `internal/manager/store` | `MetricStore`, `StateStore`, `ErrNotFound` | 매니저 패키지들 | K1 |
+| `.../store/memstore` | `NewMetric() store.MetricStore`, `NewState() store.StateStore` | dev(`store: memory`), 테스트 | K2(metric), B3(state) |
+| `.../store/metricsql` | `Open(path string) (*Store, error)`, `(*Store).Close() error` | 매니저 | C2 |
+| `.../store/statesql` | `Open(path string) (*Store, error)`, `(*Store).Close() error` | 매니저 | B3 |
+| `.../store/storetest` | `RunMetric(t *testing.T, open func(t *testing.T) store.MetricStore)`, `RunState(t *testing.T, open func(t *testing.T) store.StateStore)` | 각 구현의 `_test.go` | C2(metric), B3(state) |
+| `internal/manager/live` | 구체 타입(인터페이스 아님). `New() *Cache`, `Put(host, group string, ss []model.Sample, now int64)`, `Latest(host, name, execID string) (model.Sample, bool)`, `Find(hosts []string, name string) []model.Sample`(그 이름의 최신 값 전부, exec_id 무관), `Hosts() []model.Host`(메모리의 last_seen) | ingest, query, sched(게이트·procs) | K1(stub), C3 |
+| `internal/manager/ingest` | `Mount(mux *http.ServeMux, d Deps)`, `Deps{Metrics, State, Live, Now}` → `POST /api/v1/agent/metrics`, `/profiles` | 매니저 | K2(최소), C3 |
+| `internal/manager/query` | `Mount(mux, d Deps)`, `Deps{Metrics, State, Live, Panels []model.Panel, Thresholds model.HostThresholds, Now}`, `LoadPanels(dir) ([]model.Panel, error)`, `JudgeHost(now int64, h model.Host, cpu, mem float64, th model.HostThresholds) (state string, reasons []string)` → `/series`, `/hosts`, `/panels`, `/profile`, `/export/samples`, `/export/profile` | 매니저 | K2(`/series` 최소), C4, C5 |
+| `internal/manager/flowdef` | `Load(dir string) ([]model.Flow, error)` | 매니저 | B1 |
+| `internal/manager/sched` | `Decide(in Input) []Action`, `FlowRunStatus(f model.Flow, runs []model.Run) string`, `NewFlowRun(f model.Flow, trigger string, now int64, newID func() string) []model.Run`, `New(d Deps) *Scheduler`, `Deps{State, Live, Flows, Now, NewID, TZ}`, `(*Scheduler).Run(ctx) error`, `(*Scheduler).Mount(mux)` → `/agent/events`, `/agent/commands`, `/flows`, `/flows/{id}/run`, `/runs`, `/runs/{id}`, `/export/runs` | 매니저 | K1(stub), B2, B4, B5 |
+| `internal/manager/notify` | `Notifier`, `NewWebhook(url string) Notifier` | 매니저 | X1 |
+| `internal/manager/web` | `Mount(mux)`(embed한 정적 파일을 `/`에) | 매니저 | K1(embed 선언), D1~D6 |
+| `internal/sqlcli` | `Run(dataDir, query string, csv bool, w io.Writer) error` | `cmd/eum sql` | C5 |
+| `internal/demo` | `Burn(ctx context.Context, cpus int, d time.Duration)` | `cmd/eum burn` | F1 |
+| `internal/fleet` | `LoadConfig(path) (Config, error)`, `Run(ctx, Config) error` | `cmd/eum fleet` | F1 |
+
+- 매니저 경로는 Go 1.22 `ServeMux` 패턴(`"POST /api/v1/agent/metrics"`)으로 각 패키지의 `Mount`가 등록합니다. 같은 경로를 두 패키지가 등록하면 시작할 때 panic이 나므로 표의 경로 배정을 지킵니다.
+- `Deps`의 `Now func() time.Time`은 테스트에서 고정 시각을 넣는 자리입니다. `NewID func() string`도 같습니다.
 
 ## 8. 데이터 모델
 
@@ -522,9 +711,12 @@ CREATE TABLE runs (                      -- 스텝 실행 1회 = 1행
   log_tail     TEXT
 );
 CREATE INDEX ix_runs_flow ON runs(flow_id, scheduled_at);
+CREATE INDEX ix_runs_status ON runs(status, host);   -- 명령 조회: 이 호스트의 DISPATCHED
 
 CREATE TABLE run_events (                -- 상태 전이 + 운영자 조작 감사 로그
-  exec_id TEXT NOT NULL, seq INTEGER NOT NULL, ts INTEGER NOT NULL,
+  exec_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,                  -- 매니저가 실행마다 1부터 매김(1 = 생성). 에이전트 이벤트의 seq와 무관
+  ts INTEGER NOT NULL,
   from_status TEXT, to_status TEXT NOT NULL,
   actor TEXT NOT NULL,                   -- 'scheduler' | 'agent:batch-01' | 'user:hong'
   reason TEXT,
@@ -533,7 +725,9 @@ CREATE TABLE run_events (                -- 상태 전이 + 운영자 조작 감
 ```
 
 - 플로우와 스텝 **정의**는 YAML 파일에만 있고 DB에 넣지 않습니다. 정의의 기준이 두 군데가 되는 문제를 피하기 위해서입니다.
-- 재시도는 같은 `flow_run_id`, `step_id`에 `attempt`를 1씩 올린 새 행(새 `exec_id`)으로 남습니다. 시도마다 지표가 따로 태깅됩니다.
+- 재시도는 같은 `flow_run_id`, `step_id`에 `attempt`를 1씩 올린 새 행(새 `exec_id`)으로 남습니다. 시도마다 지표가 따로 태깅됩니다. 재시도 행의 `scheduled_at`은 직전 시도의 `ended_at + retry.interval`이고, 스케줄러는 그 시각 전에는 디스패치하지 않습니다.
+- **쓰기 연결:** 두 DB 모두 쓰기 연결은 1개(`SetMaxOpenConns(1)`)에 `busy_timeout` 5000ms, 읽기는 별도 연결 풀을 씁니다. 지표 수신 핸들러가 동시에 들어와도 `SQLITE_BUSY`가 나지 않습니다.
+- `hosts.last_seen`은 재시작 복원과 분석용입니다. 무응답 판정은 매니저 메모리의 `live` 캐시가 기준이고, `hosts` 행은 새 호스트·그룹 변경·30초마다만 갱신합니다.
 
 ## 9. 잡 정의: 플로우 단위 스케줄
 
@@ -547,7 +741,7 @@ flows/
   대외송수신/ext-send-margin.yaml
 ```
 
-잡마다 cron을 두고 선행 잡을 지정하는 방식은 "어느 날의 선행 실행인가"를 맞추는 로직(업무일 기준 매칭)이 필요합니다. contune은 **플로우(DAG) 단위로 스케줄**하고, 한 번의 플로우 실행 안에서만 의존성을 따져 이 문제 자체를 없앱니다.
+잡마다 cron을 두고 선행 잡을 지정하는 방식은 "어느 날의 선행 실행인가"를 맞추는 로직(업무일 기준 매칭)이 필요합니다. 이음은 **플로우(DAG) 단위로 스케줄**하고, 한 번의 플로우 실행 안에서만 의존성을 따져 이 문제 자체를 없앱니다.
 
 ```yaml
 # flows/개장준비/market-open.yaml — 새벽 개장 준비: 기준정보 적재 후 체결 서비스 기동
@@ -609,6 +803,10 @@ steps:
 - **깊이(level):** 로더가 YAML을 읽을 때 순환을 검사하면서 스텝마다 깊이(선행 경로의 최대 길이)를 계산하고 `GET /flows`로 내보냅니다. 플로우 그래프는 깊이별로 열을 나눠 그립니다.
 - 리소스 게이트는 **지표 통로를 그대로 재사용**합니다. 서버 지표든 업무 지표든 같은 조회로 판단하므로, "체결 대기가 남아 있으면 정산을 미룬다" 같은 조건을 추가 개발 없이 씁니다. 로더는 `gate`를 처음부터 읽고, 판단은 넓히기에서 켭니다.
 - 플로우 사이의 의존(업무일 기준)과 휴일 캘린더는 검증판 범위 밖입니다.
+- **cron 발화 판정:** 런너는 1초마다 `Decide`를 부르며 직전 tick 시각을 넘깁니다. `(직전 tick, 지금]` 안에 cron 시각이 있으면 한 번 발화합니다(여러 번 걸쳐도 한 번). cron은 매니저 설정 `tz`로 해석합니다.
+- **놓친 실행(`on_missed: skip`):** 매니저가 시작할 때 직전 tick을 지금으로 둡니다. 내려가 있던 동안의 발화는 실행하지 않고, 시작 로그에 플로우별로 "놓친 발화 N건"만 남깁니다. 검증판은 `skip`만 지원하고 `run_once`(한 번만 따라잡기)는 확장입니다.
+- **중복 실행:** cron 발화 때 그 플로우의 최근 플로우 실행이 `RUNNING`(§10)이면 이번 발화는 건너뛰고 로그에 남깁니다. 수동 실행은 `409`로 거절합니다.
+- **YAML 기본값:** `timeout` 기본 1시간, `retry.count` 기본 0, `on_missed` 기본 `skip`, `schedule`이 비면 수동 실행 전용입니다.
 
 ## 10. 상태 머신
 
@@ -620,6 +818,7 @@ stateDiagram-v2
   HELD --> DISPATCHED: 조건 해소
   HELD --> FAILED: gate_max_wait 초과
   DISPATCHED --> RUNNING: 에이전트 시작 보고
+  DISPATCHED --> FAILED: 기동 실패 (exit 127)
   DISPATCHED --> LOST: 응답 없음 (검증판 제외)
   RUNNING --> SUCCEEDED: exit 0
   RUNNING --> FAILED: exit ≠ 0
@@ -635,8 +834,19 @@ stateDiagram-v2
 | `KILLED` | 넓히기 | 운영자 kill |
 | `LOST` | 제외 | 결과를 알 수 없는 상태. 복구 정책이 필요합니다 |
 
-- **재시도(핵심):** FAILED나 TIMEOUT이고 횟수가 남아 있으면 `retry.interval` 뒤에 **새 attempt(새 `exec_id`)**를 WAITING부터 시작합니다. 시도마다 지표가 따로 태깅됩니다.
-- **선행 실패:** 후행은 WAITING을 유지합니다(화면에 "선행 실패로 대기" 표시). `rerun`, `force-ok` 같은 운영자 조작은 검증판 범위 밖입니다.
+- **전이는 비교 후 교체로만:** 모든 화살표는 `StateStore.Transition`(현재 상태가 기대한 값일 때만 바꿈) 한 번입니다. 같은 이벤트가 두 번 와도 두 번째는 반영되지 않습니다. 누가 바꿨는지는 `actor`로 남습니다.
+- **시간 초과는 에이전트가 판정**합니다(`timeout_sec`이 지나면 프로세스 그룹을 끝내고 TIMEOUT 보고). 에이전트가 응답하지 않아 DISPATCHED·RUNNING에 남는 경우(`LOST`)는 검증판 밖이고, 그 플로우 실행은 RUNNING으로 남습니다(알려진 한계).
+- **재시도(핵심):** FAILED나 TIMEOUT이고 `attempt ≤ retry.count`면 **새 attempt(새 `exec_id`, `scheduled_at` = 종료 시각 + `retry.interval`)**를 WAITING으로 만듭니다. `retry.count: 2`면 최대 3번 실행합니다. 시도마다 지표가 따로 태깅됩니다.
+- **선행 실패:** 후행은 WAITING을 유지합니다(화면에 "선행 실패로 대기" 표시). 갈래가 나뉜 경우 실패하지 않은 갈래는 계속 진행합니다. `rerun`, `force-ok` 같은 운영자 조작은 검증판 범위 밖입니다.
+- **플로우 실행 상태**는 저장하지 않고 스텝 상태에서 계산합니다(`sched.FlowRunStatus`, 순수 함수). 스텝마다 **최신 attempt**만 봅니다.
+
+| 플로우 실행 상태 | 조건 |
+|---|---|
+| `SUCCEEDED` | 모든 스텝의 최신 attempt가 SUCCEEDED |
+| `FAILED` | 재시도가 남지 않은 실패(FAILED·TIMEOUT·KILLED)가 하나 이상 있고, 나머지 스텝은 모두 SUCCEEDED이거나 그 실패 때문에 막힌 WAITING(선행 경로에 그 실패가 있음) |
+| `RUNNING` | 그 밖의 모든 경우(진행 중, 재시도 대기, 게이트 대기 포함) |
+
+- 이 계산이 있어야 **선행 실패로 멈춘 플로우가 다음 cron 발화를 영원히 막지 않습니다**. FAILED인 플로우 실행의 남은 WAITING 스텝은 디스패치하지 않습니다.
 - **실행 상태와 프로세스 생존은 별개:** 서비스를 띄우는 스텝은 스크립트가 끝나면 SUCCEEDED이지만, 띄운 프로세스는 같은 `exec_id`로 계속 추적됩니다(§5.5).
 - **게이트 판단 정책:** 지표가 오래되었으면(에이전트 무응답) 통과시키지 않고 HELD로 둡니다. "모르면 실행하지 않는다"는 원칙입니다.
 
@@ -644,7 +854,7 @@ stateDiagram-v2
 
 | 구분 | 내용 |
 |---|---|
-| 검증판 | **에이전트 토큰**(매니저는 토큰이 맞는 에이전트만 받음) · **명령 출처는 리뷰된 YAML뿐**(UI와 API로 임의 명령을 입력하는 기능은 만들지 않음) · **에이전트는 비root로 실행** · 상태 전이에 `actor` 기록 · `contune sql`은 읽기 전용 연결 · **프로파일 대상은 contune이 띄운 프로세스뿐**(실행 ID 표식). 접힌 스택에는 함수 이름과 표본 수만 있고 메모리 내용이나 인자 값은 없음 |
+| 검증판 | **에이전트 토큰**(매니저는 토큰이 맞는 에이전트만 받음) · **명령 출처는 리뷰된 YAML뿐**(UI와 API로 임의 명령을 입력하는 기능은 만들지 않음) · **에이전트는 비root로 실행** · 상태 전이에 `actor` 기록 · `eum sql`은 읽기 전용 연결 · **프로파일 대상은 이음이 띄운 프로세스뿐**(실행 ID 표식). 접힌 스택에는 함수 이름과 표본 수만 있고 메모리 내용이나 인자 값은 없음 |
 | 운영 조건 | 함수 추적: 운영 서버는 perf 사용 가능(확인). 비root면 `perf_event_paranoid` 2 이하(일반 기본값) 또는 `CAP_PERFMON`, 컨테이너는 `cap_add: [PERFMON]`. 함수 이름은 실행 파일의 심볼로 표시(strip 했다면 디버그 심볼 파일) |
 | 검증판 제외 | 웹 로그인, TLS, 호스트별 토큰, 조작 권한, `run_as_user`(보안 정책 협의 후). 운영에 쓰려면 필요합니다 |
 
@@ -661,8 +871,13 @@ stateDiagram-v2
 | **이상 서버 목록** | 상태가 심한 순서로 서버, 그룹, 넘은 지표와 값, 최근 15분 꺾은선. 나머지는 "N대 정상" 한 줄 | `GET /hosts`, `GET /series?group=&name=host.*&step=30` |
 | **업무 패널** | 업무마다 보는 지표가 달라 화면 코드에 박지 않고 `panels/*.yaml`로 정의합니다. 패널은 트리의 그룹에 붙고, 타일마다 지표·집계·단위·임계치를 적습니다. 타일을 누르면 그 값을 보낸 실행의 타임머신으로 갑니다 | `GET /panels` |
 | **배치판 진행** | 배치판마다 오늘 플로우의 상태 비율(완료·실행 중·예정·조건 대기·실패) 막대. 실패한 플로우는 따로 한 줄로 | `GET /flows` |
+| **서버 목록** `#hosts` | 서버 표(상태가 심한 순, 그룹·CPU·메모리·마지막 수신). 트리에서 고른 그룹으로 거름 | `GET /hosts` |
 | **서버 상세** `#host/<id>` | `host.*` 차트와 그 서버에서 돈 실행 목록 | `GET /series?host=`, `GET /runs?host=` |
 | **배치판** `#board/<경로>` | 그 배치판의 플로우 목록(최근 상태, 다음 실행, 최근 소요 시간). 플로우를 고르면 플로우 그래프(§9) | `GET /flows?board=` |
+| **플로우 그래프** `#board/<경로>/<flow-id>` | 스텝을 깊이별 열로 놓은 그래프, 재시도 배지, 서버 넘기, "서비스 실행 중" 표시, 지금 실행 버튼. 아래에 그 플로우의 최근 실행 | `GET /flows`, `GET /runs?flow=` |
+| **실행 이력** `#runs` | 모든 실행(플로우·호스트·상태로 거름). 줄을 누르면 타임머신 | `GET /runs` |
+
+- 화면 위 메뉴는 **대시보드 · 서버 · 배치판 · 실행 이력** 넷입니다(기획서 8~10쪽 시안). `#board/` 뒤 경로가 배치판 경로와 정확히 같으면 목록, 아니면 마지막 마디를 플로우 ID로 읽습니다.
 
 ```yaml
 # panels/체결.yaml — 업무 패널: 업무마다 보는 지표가 달라 파일로 정의
@@ -685,32 +900,44 @@ tiles:
 
 ### 12.2 원인 추적(타임머신)
 
-실행 하나를 고르면 화면이 **결정론적으로** 근거를 모아 한 시간축에 겹치고, 고른 구간의 함수까지 내려갑니다. LLM은 쓰지 않습니다. 순서는 **업무 지표 → 실행 → 자원 → 함수**입니다.
+실행 하나를 고르면 화면이 **결정론적으로** 근거를 모아 한 시간축에 놓고, 고른 구간의 함수까지 내려갑니다. LLM은 쓰지 않습니다. 순서는 **업무 지표 → 실행 → 자원 → 함수**입니다.
 
 | 표시 항목 | 출처 |
 |---|---|
 | 그 실행이 띄운 서비스가 보낸 업무 지표(접수·처리 건수, 대기 건수, p99) | `GET /series?exec_id=<exec_id>&name=biz.order.*` |
 | 그 실행의 `job.*` (**스텝이 끝난 서비스는 지금까지**) | `GET /series?exec_id=<exec_id>&name=job.*` |
 | 실행 구간(`started_at`~`ended_at`, 앞뒤 5분)의 해당 서버 `host.*` | `GET /series?host=<run.host>&name=host.cpu.pct` |
-| **플레임 그래프**: 차트에서 끌어 고른 구간(기본은 화면 전체)에 그 실행이 CPU를 쓴 함수 | `GET /profile?exec_id=&from=&to=` |
-| 종료 코드, 소요 시간, peak, 로그 tail | `GET /runs/{exec_id}` |
-| 같은 구간의 원자료 | `GET /export/samples`, `GET /export/profile`, `contune sql` |
+| **플레임 그래프 A·B**: 차트에서 끌어 고른 두 구간(A 평시, B 지연)에 그 실행이 CPU를 쓴 함수를 나란히 | `GET /profile?exec_id=&from=&to=` 두 번 |
+| 종료 코드, 소요 시간, peak, 로그 tail, 살아 있는 프로세스 수 | `GET /runs/{exec_id}` |
+| 같은 구간의 원자료 | `GET /export/samples`, `GET /export/profile`, `eum sql` |
 
+**차트 모양 (기획서 10쪽):** 한 차트에 단위가 다른 값을 겹치지 않고, **시간축을 공유하는 띠 차트 5개**를 위아래로 쌓습니다. 커서와 구간 선택은 다섯 띠가 함께 움직입니다(uPlot `cursor.sync`).
+
+| 띠 | 값 | 단위 |
+|---|---|---|
+| 1 처리량 | `biz.order.in_tps`(접수), `biz.order.tps`(처리) | 건/초 |
+| 2 처리 대기 | `biz.order.queue` | 건 |
+| 3 p99 응답 | `biz.order.latency_p99_ms` | ms |
+| 4 서비스 CPU | 그 실행의 `job.cpu.pct` | % (코어 1개 = 100) |
+| 5 서버 CPU | 그 서버의 `host.cpu.pct` | % (서버 전체 = 100) |
+
+- 업무 지표가 없는 실행(배치 스텝)은 띠 1~3을 숨기고 4·5만 그립니다.
+- **구간 비교(흐름 3 "지난 구간을 비교"):** 처음 끈 구간이 A, 다음 끈 구간이 B입니다(버튼으로 바꿀 수 있음). 플레임 그래프 A·B를 나란히 그리고, 맨 안쪽 함수(leaf) 비중이 가장 크게 늘어난 함수 하나를 한 줄로 보여 줍니다(예: "`book_insert` 비중 15% → 63%"). 이 계산은 두 응답으로 브라우저에서 합니다(서버 API 없음).
 - 대시보드의 업무 지표 타일은 그 지표를 보낸 실행의 타임머신으로 바로 갑니다. 지표에 `exec_id`가 붙어 있어 찾을 필요가 없습니다.
-- 시연에서는 폭주 전 구간과 밀린 구간을 차례로 끌어 골라 두 플레임 그래프를 비교합니다(`book_insert` 비중이 크게 늘어남).
+- 구간 끌어 고르기가 늦으면 고정 구간(A = 화면 앞 30초, B = 마지막 30초)으로 줄입니다(03 §2 축소 순서).
 
-> 확장(선택): 직전 같은 길이 구간 대비 비중이 늘어난 함수를 강조하는 **함수 비교**(넓히기), 같은 서버에서 구간이 겹친 다른 실행 표시(`GET /overlaps`), 근거를 요약하는 LLM `Analyzer`, 소요 시간 이상 플래그(과거 N회 평균 대비)를 같은 근거 위에 얹을 수 있습니다.
+> 확장(선택): leaf 비중 변화 상위 5개를 표로 보이는 **함수 비교 표**(넓히기, 브라우저 계산), 같은 서버에서 구간이 겹친 다른 실행 표시(`GET /overlaps`), 근거를 요약하는 LLM `Analyzer`, 소요 시간 이상 플래그(과거 N회 평균 대비)를 같은 근거 위에 얹을 수 있습니다.
 
 ## 13. 시연 환경: 컨테이너 + 시연용 C 서비스
 
 ```yaml
 # deploy/docker-compose.yml (요지)
 services:
-  manager:  { image: contune, command: [manager, --flows, /flows, --data, /data], ports: ["8080:8080"] }
-  match-01: { image: contune, command: [agent, --config, /etc/contune/agent-match-01.yaml], cap_add: [PERFMON] }
-  gw-01:    { image: contune, command: [agent, --config, /etc/contune/agent-gw-01.yaml] }
-  batch-01: { image: contune, command: [agent, --config, /etc/contune/agent-batch-01.yaml], cap_add: [PERFMON] }
-  fleet:    { image: contune, command: [fleet, --config, /etc/contune/fleet.yaml] }   # 모의 서버 40대
+  manager:  { image: eum, command: [manager, --config, /etc/eum/manager.yaml], ports: ["8080:8080"] }
+  match-01: { image: eum, command: [agent, --config, /etc/eum/agent-match-01.yaml], cap_add: [PERFMON] }
+  gw-01:    { image: eum, command: [agent, --config, /etc/eum/agent-gw-01.yaml] }
+  batch-01: { image: eum, command: [agent, --config, /etc/eum/agent-batch-01.yaml], cap_add: [PERFMON] }
+  fleet:    { image: eum, command: [fleet, --config, /etc/eum/fleet.yaml] }   # 모의 서버 40대
 ```
 
 | 호스트 | 역할(가정) | 수집 |
@@ -721,12 +948,12 @@ services:
 | `fleet` | 모의 서버 40대(그룹 8개) | 서버마다 `sim/host`. 함수 추적·서비스 추적 없음 |
 
 - 실제 컨테이너 3대의 그룹: `match-01` = `매매/체결`, `gw-01` = `매매/주문접수`, `batch-01` = `사후처리/배치`.
-- **규모: 모의 서버와 보조 플로우.** 서버 트리와 배치판은 수십 대·수십 개를 전제로 한 화면이라 3대·2개로는 보여 줄 수 없습니다. `contune fleet`은 `contune dev`가 에이전트 여러 개를 한 프로세스에 띄우는 방식을 설정 파일로 넓힌 것으로, 아래 40대를 각각 에이전트로 띄웁니다. 실행 명령은 `fleet` 컨테이너 안에서 돕니다.
+- **규모: 모의 서버와 보조 플로우.** 서버 트리와 배치판은 수십 대·수십 개를 전제로 한 화면이라 3대·2개로는 보여 줄 수 없습니다. `eum fleet`은 `eum dev`가 에이전트 여러 개를 한 프로세스에 띄우는 방식을 설정 파일로 넓힌 것으로, 아래 40대를 각각 에이전트로 띄웁니다. 실행 명령은 `fleet` 컨테이너 안에서 돕니다.
 
 ```yaml
 # deploy/fleet.yaml — 모의 서버 40대. 실제 서버 3대와 같은 매니저에 붙음
 manager: http://manager:8080
-token: ${CONTUNE_TOKEN}
+token: ${EUM_TOKEN}
 hosts:                         # prefix-NN 이름으로 from~to
   - { group: 매매/주문접수,     prefix: gw,     from: 2, to: 6 }
   - { group: 매매/체결,         prefix: match,  from: 2, to: 8 }
@@ -737,30 +964,31 @@ hosts:                         # prefix-NN 이름으로 from~to
   - { group: 대외정보/정보계,   prefix: dw,     from: 1, to: 5 }
   - { group: 공통/관리,         prefix: ops,    from: 1, to: 4 }
 faults:                        # 열지도·이상 서버 목록 장면용
-  - { host: ext-04, kind: silent }           # 지표를 보내지 않음 → 무응답
+  - { host: ext-04, kind: silent, after: 20s } # 20초 보낸 뒤 멈춤 → 매니저가 알던 서버가 무응답
   - { host: dw-02,  kind: mem, value: 93 }   # 메모리 높음 → 위험
 ```
 
-- 보조 플로우 37개는 배치판 6개(개장준비, 장중, 정산, 대외송수신, 정보계적재, 주간월간)에 나눠 두고, 모의 서버에서 `contune burn`으로 몇 초씩 CPU를 쓰고 끝납니다. 시각은 하루에 흩어 둡니다. 하나(`대외송수신/ext-send-margin`)는 일부러 실패해 배치판 트리에 "실패 1"이 올라오게 합니다. 파일은 `deploy/gen_flows.sh`로 만들어 커밋합니다.
+- 보조 플로우 37개는 배치판 6개(개장준비, 장중, 정산, 대외송수신, 정보계적재, 주간월간)에 나눠 두고, 모의 서버에서 `eum burn`으로 몇 초씩 CPU를 쓰고 끝납니다. 시각은 하루에 흩어 둡니다. 하나(`대외송수신/ext-send-margin`)는 일부러 실패해 배치판 트리에 "실패 1"이 올라오게 합니다. 파일은 `deploy/gen_flows.sh`로 만들어 커밋합니다.
 - 컨테이너 안의 `/proc/stat`은 호스트 값이라 서버별로 다르게 보이지 않습니다. 그래서 시연에서는 `host.*`만 `sim`으로 만듭니다.
 - **실제로 동작하는 것:** 스케줄, 잡 실행, 서비스 프로세스 추적, 함수 프로파일, 수집·저장·조회 경로. 체결 서비스의 함수 이름과 부하 모양은 시연용으로 만든 것입니다. 보여 주려는 것은 수치가 아니라 **실행에서 함수까지 이어지는 경로가 실제로 동작한다**는 점입니다.
 - **시연 장애: 주문량 폭주.** 운영 업무는 온라인 중심이고 장중 배치는 드물기 때문에, 장애 장면은 배치가 아니라 접수 주문이 몰려 체결 처리가 밀리는 상황으로 잡습니다.
 - **시연용 체결 서비스 `matching_svc`** (`demo/matching_svc.c`, C 약 150~200줄, 표준 라이브러리만, `gcc -O2`로 빌드, 심볼 유지):
-  - 접수율 파일(`--rate`, 1초마다 다시 읽음, 기본 1500건/초)대로 합성 주문을 접수 대기열에 넣고, 대기열 앞에서 하나씩 처리합니다: `handle_order` → `check_risk` → `match_order` → `book_insert`.
+  - 접수율 파일(`--rate`, 1초마다 다시 읽음, 기본 1500건/초)대로 합성 주문을 접수 대기열에 넣고, 대기열 앞에서 하나씩 처리합니다: `handle_order` → `check_risk`, `match_order` → `price_cross`(상대 호가와 가격 비교), `book_insert`(체결되지 않은 주문을 호가에 넣음). 1초마다 `expire_orders`.
+  - 접힌 스택이 `matching_svc;main;handle_order;match_order;book_insert`처럼 나오도록, 각 함수는 `noinline`이고 **호출 결과를 쓴 뒤 반환**해 꼬리 호출(프레임이 사라짐)이 되지 않게 씁니다. 평시 함수 비중은 기획서 12쪽 표(check_risk > price_cross > book_insert > expire_orders)와 비슷하게 맞춥니다.
   - `book_insert`는 가격순 호가 배열에 선형 탐색으로 끼워 넣으므로 비용이 **호가 깊이에 비례**합니다. 체결되지 않은 주문만 호가에 남고, `expire_orders`가 오래된 주문을 지웁니다.
   - 평시(1500건/초)에는 대부분 바로 체결돼 호가가 얕고, 서비스 CPU는 코어 1개의 약 30%, p99는 수 ms입니다.
   - 폭주(3000 → 4500 → 6000건/초)에는 체결되지 않는 지정가 주문이 늘어 호가가 깊어집니다. `book_insert`가 무거워져 처리가 접수를 따라가지 못하고, **대기 건수와 p99가 실제로 오릅니다**. 서비스 CPU는 코어 1개에 붙고, 플레임 그래프에서 `book_insert` 비중이 평시보다 크게 늘어납니다.
   - 폭주가 끝나면 대기열과 호가가 줄어 30초 안에 평시로 돌아옵니다.
-  - 1초마다 `biz.order.in_tps`, `biz.order.tps`, `biz.order.queue`, `biz.order.latency_p99_ms`(접수부터 처리 완료까지)를 자기 `CONTUNE_EXEC_ID`와 함께 `push`(UDP `127.0.0.1:9101`)로 보냅니다.
-  - `start_matching.sh`가 `setsid nohup`으로 띄우고 바로 끝나므로, 서비스는 스크립트의 프로세스 그룹을 벗어납니다(실행 ID 표식으로 추적, §5.5).
+  - 1초마다 `biz.order.in_tps`, `biz.order.tps`, `biz.order.queue`, `biz.order.latency_p99_ms`(접수부터 처리 완료까지)를 자기 `EUM_EXEC_ID`와 함께 `push`(UDP `127.0.0.1:9101`)로 보냅니다.
+  - `start_matching.sh`가 이전 서비스를 `pkill -x matching_svc`로 끝내고 `setsid nohup`으로 새로 띄운 뒤 바로 끝나므로, 서비스는 스크립트의 프로세스 그룹을 벗어납니다(실행 ID 표식으로 추적, §5.5).
 - 이미지에는 perf 패키지와 `matching_svc`가 들어갑니다(Dockerfile 빌드 단계에서 `gcc -O2`).
 - 이야기를 끌고 가는 시연 플로우는 2개입니다(나머지는 보조 플로우).
-  - `flows/개장준비/market-open.yaml`: §9와 같은 모양. 배치 스텝은 `contune burn`으로 실제 CPU를 쓰고, `load-equity`는 첫 시도만 실패해 재시도를 보여 줍니다. `start-matching`이 체결 서비스를 띄웁니다.
-  - `flows/정산/daily-settle.yaml`: §9와 같은 모양(`settle` → `settle-report`, `contune burn`). 리소스 게이트를 넓히기에서 만들면 "체결 대기가 남아 있는 동안 정산이 HELD로 대기" 장면에 씁니다.
+  - `flows/개장준비/market-open.yaml`: §9와 같은 모양. 배치 스텝은 `eum burn`으로 실제 CPU를 쓰고, `load-equity`는 첫 시도만 실패해 재시도를 보여 줍니다. `start-matching`이 체결 서비스를 띄웁니다.
+  - `flows/정산/daily-settle.yaml`: §9와 같은 모양(`settle` → `settle-report`, `eum burn`). 리소스 게이트를 넓히기에서 만들면 "체결 대기가 남아 있는 동안 정산이 HELD로 대기" 장면에 씁니다.
 - 폭주는 `demo.sh surge`가 `match-01`의 접수율 파일을 20초마다 3000, 4500, 6000으로 바꾼 뒤 1500으로 되돌려 만듭니다.
-- 데이터 주권 장면은 `docker compose exec manager contune sql --data /data "<질의>"`로 실행합니다(§6.1의 질의 2개: 접수량 구간별 p99, 밀린 구간과 평시의 함수 비중).
+- 데이터 주권 장면은 `docker compose exec manager eum sql --data /data "<질의>"`로 실행합니다(§6.1의 질의 2개: 접수량 구간별 p99, 밀린 구간과 평시의 함수 비중. 배포 전후 비교 질의는 선택).
 - **사전 점검(코드 아님):** 시연 노트북의 Docker에서 `docker run --rm --cap-add PERFMON alpine:3.20 sh -c 'apk add -q perf && su -s /bin/sh nobody -c "perf stat -e cpu-clock -- true"'`가 성공하는지 확인합니다.
-- Docker를 쓸 수 없으면 `contune dev`(매니저 + 에이전트 3개를 한 프로세스로)로 같은 시연을 합니다. 이때 함수 추적은 노트북의 perf 권한에 따릅니다.
+- Docker를 쓸 수 없으면 `eum dev`(매니저 + 에이전트 3개를 한 프로세스로)로 같은 시연을 합니다. 이때 함수 추적은 노트북의 perf 권한에 따릅니다.
 
 ## 14. 확장 지점 (인터페이스별)
 
@@ -776,7 +1004,7 @@ faults:                        # 열지도·이상 서버 목록 장면용
 | `Notifier` | (넓히기) webhook | 사내 메신저, SMS 게이트웨이 |
 | 스케줄러 | 플로우 cron, 선후행(병렬·합류), 재시도, (넓히기) 리소스 게이트 | `kind: service`(기동·정지 짝, 살아 있음 기준), 운영자 조작, LOST 복구, 휴일 캘린더, 플로우 간 의존, 매니저 HA |
 | 조직화 | 그룹 경로 1개(에이전트 설정), 배치판 = 폴더, 업무 패널 YAML | 한 서버를 여러 기준(업무·위치·OS)으로 묶는 `labels`, 그룹별 권한과 알림 대상 |
-| 원인 추적·분석 | 타임머신(결정론적), 플레임 그래프, `v_samples`, `v_profiles`, `contune sql`, 내보내기 | 함수 비교(넓히기), 실행 간 함수 비중 회귀 탐지, 소요 시간 이상 플래그, 근거 요약 `Analyzer`(선택) |
+| 원인 추적·분석 | 타임머신(결정론적, 띠 차트 5개), 플레임 그래프 A·B 구간 비교, `v_samples`, `v_profiles`, `eum sql`, 내보내기 | 함수 비교 표(넓히기), 실행 간 함수 비중 회귀 탐지, 소요 시간 이상 플래그, 근거 요약 `Analyzer`(선택) |
 | 에이전트 OS | Linux | AIX/Windows용 `Probe` 구현 |
 
 > **DB 전환 참고:** "ANSI SQL로 쓰면 그대로 재사용"은 현실과 다릅니다. upsert 문법, 플레이스홀더, 시간 함수가 DB마다 다릅니다. 전환이 가능한 근거는 SQL 문법이 아니라 **Store 인터페이스 + 계약 테스트**입니다. 구현체는 DB마다 따로 두고 같은 테스트 스위트로 검증합니다. Go의 `database/sql`이 ODBC 역할을 합니다.
