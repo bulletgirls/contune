@@ -4,9 +4,39 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>이음</title>
+<link rel="stylesheet" href="vendor/uPlot.min.css">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="css/dashboard.css">
+<link rel="stylesheet" href="css/server.css">
+<link rel="stylesheet" href="css/batch.css">
+<link rel="stylesheet" href="css/editor.css">
+<link rel="stylesheet" href="css/biz.css">
+<link rel="stylesheet" href="css/flame.css">
+<link rel="stylesheet" href="css/tm.css">
+<link rel="stylesheet" href="css/alert.css">
 </head>
 <body>
-<h1>이음</h1>
-<p>화면 준비 중 (D1이 바꿈)</p>
+<header id="top">
+  <a class="logo" href="#dashboard">이음</a>
+  <nav id="menu">
+    <a href="#dashboard" data-m="dashboard">관제</a>
+    <a href="#hosts" data-m="hosts">서버</a>
+    <a href="#board/" data-m="board">배치</a>
+    <a href="#biz" data-m="biz">업무</a>
+    <a href="#runs" data-m="runs">실행</a>
+  </nav>
+  <span class="grow"></span>
+  <a id="bell" href="#alerts" title="알림">&#128276; <b id="bell-n">0</b></a>
+  <button id="theme" type="button" title="테마">&#9680;</button>
+  <span id="clock"><span id="clock-t">--:--:--</span> <span id="dot" class="dot ok">&#9679;</span></span>
+</header>
+<div id="warnbar" hidden>응답 실패</div>
+<div id="layout">
+  <aside id="tree"></aside>
+  <main id="page"></main>
+</div>
+<div id="toasts"></div>
+<script src="vendor/uPlot.iife.min.js"></script>
+<script type="module" src="app.js"></script>
 </body>
 </html>
