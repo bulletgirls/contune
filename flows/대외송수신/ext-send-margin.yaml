@@ -1,0 +1,8 @@
+# 보조 플로우(대외송수신): 모의 서버에서 CPU를 몇 초 쓰고 끝난다. deploy/gen_flows.sh로 만든다.
+id: ext-send-margin
+schedule: "*/10 * * * *"
+steps:
+  - id: step-1
+    host: ext-01
+    command: [sh, -c, 'echo "(E) 증거금 파일 전송 실패"; exit 2']
+    retry: { count: 2, interval: 10s }

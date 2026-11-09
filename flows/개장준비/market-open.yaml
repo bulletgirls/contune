@@ -1,0 +1,30 @@
+# 새벽 개장 준비: 기준정보 적재 후 체결 서비스 기동
+id: market-open
+schedule: "30 5 * * 1-5"      # 평일 05:30
+on_missed: skip
+steps:
+  - id: fetch-master
+    host: batch-01
+    command: [eum, burn, --cpu, "1", --duration, 8s]
+
+  - id: load-equity
+    host: batch-01
+    command: ["${DEMO}/scripts/load_equity.sh"]
+    depends: [fetch-master]
+    retry: { count: 2, interval: 10s }
+
+  - id: load-deriv
+    host: batch-01
+    command: [eum, burn, --cpu, "1", --duration, 12s]
+    depends: [fetch-master]
+
+  - id: start-matching
+    host: match-01
+    command: ["${DEMO}/scripts/start_matching.sh"]
+    depends: [load-equity, load-deriv]
+    profile: true
+
+  - id: check-ready
+    host: match-01
+    command: ["${DEMO}/scripts/check_ready.sh"]
+    depends: [start-matching]

@@ -1,0 +1,11 @@
+# 보조 플로우(정보계적재): 모의 서버에서 CPU를 몇 초 쓰고 끝난다. deploy/gen_flows.sh로 만든다.
+id: dw-load-08
+schedule: "0 23 * * 1-5"
+steps:
+  - id: step-1
+    host: dw-03
+    command: [eum, burn, --cpu, "1", --duration, 4s]
+  - id: step-2
+    host: dw-03
+    command: [eum, burn, --cpu, "1", --duration, 6s]
+    depends: [step-1]

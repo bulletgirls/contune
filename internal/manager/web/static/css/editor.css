@@ -1,0 +1,31 @@
+.ed-wrap { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:16px; align-items:start; }
+@media (max-width:900px) { .ed-wrap { grid-template-columns:1fr; } }
+.ed-left, .ed-right { min-width:0; }
+.ed-row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.ed-basic { display:grid; gap:6px; margin:12px 0; }
+.ed-basic label { display:grid; grid-template-columns:80px 1fr; gap:8px; align-items:center; color:var(--t2); }
+.ed-cron { width:140px; font-family:ui-monospace,monospace; }
+.ed-fixed { font-family:ui-monospace,monospace; color:var(--t3); }
+.ed-next, .ed-toks { display:flex; gap:4px; flex-wrap:wrap; }
+.ed-tok { font-size:12px; font-family:ui-monospace,monospace; background:var(--bg); border:1px solid var(--line); border-radius:3px; padding:0 4px; color:var(--t2); }
+.ed-steps { display:grid; gap:6px; margin-bottom:12px; overflow-x:auto; }
+.ed-srow { display:grid; grid-template-columns:90px 90px minmax(220px,1fr) 110px 64px 56px 56px 56px auto; gap:6px; align-items:start; min-width:820px; }
+.ed-shead { color:var(--t3); font-size:12px; }
+.ed-srow input[type=text], .ed-srow input[type=number], .ed-srow select { width:100%; min-width:0; }
+.ed-cmd { font-family:ui-monospace,monospace; }
+input.bad, .ed-cmd.bad { border-color:var(--crit); outline:1px solid var(--crit); }
+.ed-ex { margin-top:2px; }
+.ed-deps { display:flex; flex-direction:column; }
+.ed-dep { font-size:12px; display:flex; gap:3px; align-items:center; }
+.ed-ops { display:flex; gap:2px; }
+.ed-nlbox { border:1px solid var(--line); border-radius:6px; padding:8px 12px; background:var(--surface); }
+.ed-nlbox summary { cursor:pointer; font-weight:600; }
+.ed-nl { width:100%; margin:8px 0; }
+.ed-nlmsg, .ed-explain, .ed-savemsg { color:var(--t2); font-size:13px; }
+.ed-tag { font-size:12px; border:1px solid var(--st-gated); color:var(--st-gated); border-radius:9px; padding:0 8px; }
+.ed-graph { overflow:auto; }
+.ed-yaml { background:var(--surface); border:1px solid var(--line); border-radius:4px; padding:8px; overflow:auto; margin:0; font-size:13px; }
+.ed-errs { margin:0; padding-left:18px; color:var(--crit); }
+.ed-good { color:var(--ok); }
+.ed-off { color:var(--t3); }
+.ed-save { background:var(--accent); color:#fff; border-color:var(--accent); }
