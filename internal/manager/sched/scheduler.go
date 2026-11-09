@@ -159,7 +159,8 @@ func (s *Scheduler) tickLocked(ctx context.Context) {
 		slog.Error("tick: 실행 목록을 읽지 못함", "err", err)
 		return // prev를 그대로 두어 다음 tick에 발화를 놓치지 않는다
 	}
-	acts := Decide(Input{Now: now, Prev: s.prev, Loc: s.d.TZ, Flows: s.d.Flows(), Runs: runs, NewID: s.d.NewID})
+	acts := Decide(Input{Now: now, Prev: s.prev, Loc: s.d.TZ, Flows: s.d.Flows(), Runs: runs, NewID: s.d.NewID,
+		Gate: liveGate(s.d.Live)})
 	s.prev = now
 
 	dispatched := false
@@ -181,6 +182,21 @@ func (s *Scheduler) tickLocked(ctx context.Context) {
 			if ok {
 				dispatched = true
 				slog.Info("tick: 디스패치", "flow", a.FlowID, "exec_id", a.ExecID)
+			}
+		case ActHold, ActFailGate:
+			tr := model.Transition{ExecID: a.ExecID, From: a.From, To: model.StatusHeld,
+				TS: now.UnixMilli(), Actor: "scheduler", Reason: a.Reason}
+			if a.Kind == ActFailGate {
+				ended := now.UnixMilli()
+				tr.To, tr.Patch = model.StatusFailed, model.RunPatch{EndedAt: &ended}
+			}
+			ok, err := s.d.State.Transition(ctx, tr)
+			if err != nil {
+				slog.Error("tick: 게이트 전이 실패", "kind", a.Kind, "flow", a.FlowID, "exec_id", a.ExecID, "err", err)
+				continue
+			}
+			if ok {
+				slog.Info("tick: 게이트", "kind", a.Kind, "flow", a.FlowID, "exec_id", a.ExecID, "reason", a.Reason)
 			}
 		case ActSkipFire:
 			slog.Info("tick: 발화 건너뜀", "flow", a.FlowID, "reason", a.Reason)
