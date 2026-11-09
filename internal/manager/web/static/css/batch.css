@@ -1,0 +1,48 @@
+.bt-head { display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
+.bt-head .sec { margin:0; }
+.bt-sp { flex:1; }
+.bt-headrow { display:flex; align-items:center; gap:8px; width:100%; margin-bottom:4px; }
+.bt-head { flex-direction:column; align-items:stretch; }
+.bt-head:has(> .sec) { flex-direction:row; align-items:center; }
+.bt-crumb { font-size:15px; font-weight:600; }
+.bt-crumb a { text-decoration:none; color:var(--t2); font-weight:400; }
+.bt-crumb a:hover { text-decoration:underline; }
+.bt-meta { display:flex; gap:16px; color:var(--t2); align-items:center; }
+.bt-sub { color:var(--t3); margin-left:6px; font-size:12px; }
+.bt-btn { font:inherit; color:var(--t1); background:var(--surface); border:1px solid var(--line); border-radius:4px; padding:3px 10px; text-decoration:none; cursor:pointer; }
+.bt-btn:hover { border-color:var(--accent); }
+.bt-warn { background:var(--surface); border:1px solid var(--warn); border-left-width:4px; padding:6px 10px; margin-bottom:8px; color:var(--t1); }
+.bt-filters { display:flex; gap:12px; margin-bottom:8px; }
+.bt-filter { display:flex; gap:6px; align-items:center; color:var(--t3); font-size:12px; }
+.bt-filter select { font:inherit; color:var(--t1); background:var(--surface); border:1px solid var(--line); border-radius:4px; padding:2px 6px; }
+.badge.timeout, .badge.lost { color:var(--crit); } .badge.held { color:var(--silent); }
+
+.bt-graph { background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:8px; margin-bottom:16px; overflow-x:auto; }
+.fg-hosts { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; }
+.fg-host { font-family:ui-monospace,Consolas,monospace; font-size:12px; color:var(--t2); background:var(--bg); border:1px solid var(--line); border-radius:3px; padding:0 6px; }
+.fg-canvas { position:relative; }
+.fg-edges { position:absolute; left:0; top:0; pointer-events:none; }
+.fg-edge { fill:none; stroke:var(--t3); stroke-width:1.5; }
+.fg-edge.cross { stroke:var(--s2); stroke-dasharray:6 3; }
+.fg-arrow.norm { fill:var(--t3); } .fg-arrow.cross { fill:var(--s2); }
+.fg-edge-label { font-size:11px; fill:var(--t1); paint-order:stroke; stroke:var(--surface); stroke-width:3px; }
+.fg-colhead { position:absolute; top:0; font-size:12px; color:var(--t3); white-space:nowrap; }
+.fg-node { position:absolute; --c:var(--st-waiting); background:var(--bg); border:1px solid var(--line); border-radius:5px; padding:5px 8px 4px 12px; overflow:hidden; cursor:pointer; font-size:12px; }
+.fg-node:hover, .fg-node.sel { border-color:var(--accent); }
+.fg-bar { position:absolute; left:0; top:0; bottom:0; width:5px; background:var(--c); }
+.fg-node.st-succeeded { --c:var(--st-succeeded); } .fg-node.st-failed, .fg-node.st-timeout, .fg-node.st-killed, .fg-node.st-lost { --c:var(--st-failed); }
+.fg-node.st-running { --c:var(--st-running); animation:fg-blink 1.6s ease-in-out infinite; }
+.fg-node.st-waiting, .fg-node.st-held { --c:var(--st-waiting); } .fg-node.st-gated { --c:var(--st-gated); }
+.fg-node.forced { --c:var(--st-forced); }
+.fg-node.blocked { border:1px dashed var(--silent); background:var(--surface); }
+@keyframes fg-blink { 50% { background:var(--surface); } }
+.fg-l1, .fg-l2 { display:flex; justify-content:space-between; gap:6px; }
+.fg-l1 code { font-family:ui-monospace,Consolas,monospace; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fg-st { color:var(--t1); white-space:nowrap; }
+.fg-l2 { color:var(--t2); }
+.fg-tags { display:flex; flex-wrap:wrap; gap:3px; margin-top:2px; }
+.fg-tag { font-size:11px; color:var(--t2); border:1px solid var(--line); border-radius:8px; padding:0 5px; background:var(--surface); }
+
+.bt-kv { display:flex; gap:8px; padding:2px 0; } .bt-kv .k { width:64px; color:var(--t3); flex:none; }
+.bt-actions { display:flex; gap:6px; flex-wrap:wrap; margin:12px 0; }
+.bt-log { background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:6px 8px; font:12px/1.4 ui-monospace,Consolas,monospace; white-space:pre-wrap; word-break:break-all; max-height:360px; overflow:auto; }

@@ -1,0 +1,18 @@
+.tm-head { margin-bottom: 8px; display: grid; grid-template-columns: 1fr auto; gap: 2px 16px; }
+.tm-path { font-size: 16px; font-weight: 600; grid-column: 1; }
+.tm-meta { grid-column: 1; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; color: var(--t2); }
+.tm-id { color: var(--t3); font-family: ui-monospace, monospace; font-size: 12px; }
+.tm-live { color: var(--st-running); }
+.tm-links { grid-column: 2; grid-row: 1 / span 2; display: flex; gap: 12px; align-items: center; }
+.tm-bar { display: flex; gap: 6px; margin-bottom: 8px; }
+.tm-wrap { position: relative; }
+.tm-band { margin-bottom: 2px; }
+.tm-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; color: var(--t2); font-size: 18px; background: color-mix(in srgb, var(--bg) 55%, transparent); }
+.tm-hint[hidden] { display: none; }
+.tm-verdict { margin: 8px 0; font-size: 15px; }
+.tm-detail { margin-top: 12px; }
+.tm-detail summary { cursor: pointer; font-weight: 600; }
+.tm-kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 16px; margin: 8px 0; }
+.tm-kv dt { color: var(--t3); } .tm-kv dd { margin: 0; }
+.tm-lines { font-family: ui-monospace, monospace; font-size: 12px; margin-bottom: 8px; }
+.tm-pre { background: var(--surface); border: 1px solid var(--line); padding: 8px; overflow: auto; max-height: 280px; font-size: 12px; }
