@@ -1,0 +1,21 @@
+.afilter { display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
+.acked { color:var(--t3); font-variant-numeric:tabular-nums; }
+.tbl a { color:var(--accent); text-decoration:none; } .tbl a:hover { text-decoration:underline; }
+.rtop { display:grid; grid-template-columns:1fr 1.2fr; gap:12px; margin-bottom:12px; }
+.rbox { background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:10px 12px; min-width:0; }
+.ridx { display:flex; align-items:center; gap:10px; }
+.rbig { font-size:44px; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; color:var(--t1); }
+.rnote { margin-top:4px; font-size:13px; color:var(--t2); }
+.cbar { display:flex; align-items:center; gap:8px; margin:4px 0; font-size:13px; }
+.cbar .cn { width:110px; flex:none; } .cbar .cv { width:44px; flex:none; text-align:right; color:var(--t3); font-variant-numeric:tabular-nums; }
+.cbar .bar { flex:1; height:10px; background:var(--bg); border-radius:2px; }
+.cbar .bar i { display:block; height:100%; background:var(--s1); border-radius:2px; }
+.mcard dl { display:grid; grid-template-columns:auto 1fr auto 1fr; gap:2px 12px; margin:0 0 8px; font-size:13px; }
+.mcard dt { color:var(--t3); } .mcard dd { margin:0; font-variant-numeric:tabular-nums; }
+.mres { margin-left:8px; font-size:13px; color:var(--t2); }
+.wtbl { max-width:320px; }
+.iform { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:8px 0; }
+.iform input[type=text] { min-width:140px; }
+.icsv textarea { width:100%; min-height:72px; font-family:monospace; box-sizing:border-box; }
+.irow { display:flex; gap:8px; align-items:center; margin-top:4px; flex-wrap:wrap; }
+@media (max-width:900px) { .rtop { grid-template-columns:1fr; } }
