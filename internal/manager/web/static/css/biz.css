@@ -1,0 +1,16 @@
+.biz-tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; margin-bottom:12px; }
+.biz-tile { background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--line); border-radius:4px; padding:8px 10px; }
+.biz-tile.click { cursor:pointer; } .biz-tile.click:hover { border-color:var(--accent); }
+.biz-tile.ok { border-left-color:var(--ok); } .biz-tile.warn { border-left-color:var(--warn); }
+.biz-tile.crit { border-left-color:var(--crit); } .biz-tile.none { border-left-color:var(--silent); }
+.biz-tile .tt { color:var(--t3); font-size:12px; }
+.biz-tile .tv { font-size:20px; font-weight:600; color:var(--t1); }
+.biz-tile .tv .unit { font-size:12px; font-weight:400; margin-left:3px; color:var(--t3); }
+.biz-charts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 16px; margin-top:8px; }
+.biz-lower { display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:16px; margin-top:8px; }
+.biz-loghead { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
+.biz-loghead .tabs { margin:0; }
+.biz-loghead a.btn { text-decoration:none; color:var(--t1); border:1px solid var(--line); border-radius:4px; padding:3px 10px; }
+.biz .tbl tr.fresh td { animation:biz-fresh 2s ease-out; }
+@keyframes biz-fresh { from { background:var(--line); } to { background:transparent; } }
+@media (max-width:900px) { .biz-charts, .biz-lower { grid-template-columns:1fr; } }
