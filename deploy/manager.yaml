@@ -1,0 +1,21 @@
+# 매니저 설정(컨테이너용). 명령줄 플래그(--listen --data --flows --panels --store)가 있으면 그 값이 우선.
+listen: :8080
+data: /data
+flows: /flows
+panels: /panels
+token: ${EUM_TOKEN}
+tz: Asia/Seoul
+store: sqlite
+host_state: { cpu_warn: 70, cpu_crit: 90, mem_warn: 80, mem_crit: 90, silent_after: 10s }
+retention: 168h
+notify: { webhook: "", min_level: warn }
+editor:
+  enabled: true
+  allow:                       # 05 §8 시연 허용 목록
+    - '^eum burn( |$)'
+    - '^\$\{DEMO\}/scripts/[A-Za-z0-9_-]+\.sh( |$)'
+    - '^sleep [0-9]+$'
+    - '^echo( |$)'
+llm: { type: none }
+risk: { model: logreg, score_every: 10s, train_every: 10m, train_window: 168h, lead: 5m, min_incidents: 3, warn: 30, crit: 60 }
+alerts: { every: 5s, log_levels: [error], incident_after: 30s, incident_clear: 60s, auto_incident: true }

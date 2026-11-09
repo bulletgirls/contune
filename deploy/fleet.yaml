@@ -1,0 +1,16 @@
+# 모의 서버 40대. 실제 컨테이너 3대와 같은 매니저에 붙는다(02 §13, 05 §2).
+manager: http://manager:8080
+token: ${EUM_TOKEN}
+interval: 5s
+hosts:
+  - { group: 매매/주문접수,     prefix: gw,     from: 2, to: 6 }
+  - { group: 매매/체결,         prefix: match,  from: 2, to: 8 }
+  - { group: 매매/시세,         prefix: feed,   from: 1, to: 6 }
+  - { group: 사후처리/청산정산, prefix: settle, from: 1, to: 4 }
+  - { group: 사후처리/배치,     prefix: batch,  from: 2, to: 4 }
+  - { group: 대외정보/대외연계, prefix: ext,    from: 1, to: 6 }
+  - { group: 대외정보/정보계,   prefix: dw,     from: 1, to: 5 }
+  - { group: 공통/관리,         prefix: ops,    from: 1, to: 4 }
+faults:
+  - { host: ext-04, kind: silent, after: 20s }
+  - { host: dw-02,  kind: mem, value: 93 }
