@@ -1,0 +1,8 @@
+cpu  1120 130 460 7650 350 70 70 150 0 0
+cpu0 1120 130 460 7650 350 70 70 150 0 0
+intr 105000 1 2 3
+ctxt 203000
+btime 1700000000
+processes 5040
+procs_running 3
+procs_blocked 0
