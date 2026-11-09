@@ -193,14 +193,17 @@ func TestSeedTrainable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// R1의 공개 형식: {"kind","lead_sec","report":{"auc",…},"model":{…}}
 	var rep struct {
-		Kind string  `json:"kind"`
-		AUC  float64 `json:"auc"`
+		Kind   string `json:"kind"`
+		Report struct {
+			AUC float64 `json:"auc"`
+		} `json:"report"`
 	}
 	if err := json.Unmarshal(b, &rep); err != nil {
 		t.Fatal(err)
 	}
-	if rep.Kind != "logreg" || rep.AUC <= 0.8 {
+	if rep.Kind != "logreg" || rep.Report.AUC <= 0.8 {
 		t.Fatalf("model.json: %+v", rep)
 	}
 }

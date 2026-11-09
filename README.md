@@ -39,8 +39,30 @@
 
 ## 현재 상태
 
-설계, 보충 계약, 작업카드 47장, 자율 파이프라인 준비가 끝났습니다. 코드는 아직 없습니다(저장소 밖의 `eum`·`matching_svc`·`data-dev/`는 이전 Gemini 프로토타입의 산출물이고 git에 넣지 않습니다).
+카드 47장이 모두 끝나 한 브랜치에 모였습니다(Z1 최종 통합, 2026-11-09). `gofmt -l .` 빈 결과, `go vet ./...`, `go test ./...` 27개 패키지 통과, 개념 완결 테스트 `go test -run TestConcept ./internal/e2e/` 통과(이 PC에서 perf 표본 포함).
 
-**진행:** 새 Claude Code 세션을 이 폴더에서 열고 `/orchestrate`(또는 "pipeline/ORCHESTRATOR.md대로 진행해")라고 하면, 오케스트레이터가 `../wt-s1`~`../wt-s4` 워크트리에 워커 서브에이전트를 병렬로 띄워 K0부터 Z1까지 진행합니다. 진척은 `python3 pipeline/dag.py status`.
+**바로 해 보기 (Docker 없이):**
 
-**시연 전 사람이 할 일:** 함수 추적을 보이려면 `sudo sysctl -w kernel.perf_event_paranoid=1`(이 PC는 4). compose 시연을 하려면 Docker 설치(없으면 `eum dev --fleet`로 같은 시연).
+    deploy/demo.sh setup     # 체결 서비스·eum 빌드, eum seed로 7일 이력과 장애 6건
+    deploy/demo.sh up        # eum dev --fleet: 매니저 + 에이전트 3 + 모의 서버 40 = 43대
+    deploy/demo.sh warmup    # 보조 플로우 12개(ext-send-margin은 일부러 실패)
+    deploy/demo.sh run       # market-open: load-equity attempt 2, start-matching이 체결 서비스 기동
+    deploy/demo.sh surge     # 접수율 3000 → 4500 → 6000 → 1500
+    deploy/demo.sh settle    # daily-settle(처리 대기가 남아 있으면 HELD)
+    deploy/demo.sh train; deploy/demo.sh sql; deploy/demo.sh status; deploy/demo.sh down
+
+화면은 `http://localhost:8080/`(실제 API), `http://localhost:8080/?mock=1`(mock).
+
+**되는 것 (dev 모드 리허설로 확인):** 서버 43대·그룹 8개, `ext-04` 무응답·`dw-02` 메모리 위험, 플로우 39개·배치판 6개, 재시도·선후행·서버 넘기·중복 실행 409, `start-matching` 뒤에도 같은 `exec_id`로 `job.*`·`biz.*`·함수 표본 수집, 폭주 전·밀린 구간의 `book_insert` 비중 약 4% → 74%, 리소스 게이트 HELD → 해제, 강제 OK·허용 목록 밖 명령 저장 거절, 업무 로그 `(W)`·알림, 위험 모델 학습(AUC 0.99)·`eum sql` 질의 3개·CSV/접힌 스택/학습 데이터 내보내기, 재시작 뒤 실행 기록 유지(sqlite).
+
+**안 되거나 확인 못 한 것:**
+- compose 모드(`docker compose up`)는 이 PC에서 Docker 데몬이 돌지 않아 확인하지 못했습니다.
+- 브라우저 렌더링(차트·플레임 그래프·다크 모드)과 `node --check`는 브라우저·node가 없어 확인하지 못했습니다. 모든 화면 파일은 200으로 나가고 상대 import는 모두 실제 파일을 가리킵니다.
+- 체결 서비스의 폭주 강도는 CPU 속도에 달려 있습니다. 이 PC에서는 6000건/초에서 p99가 약 25ms, 처리 대기가 약 130건까지만 올라 `(E)` 로그와 위험 지수 주의·위험이 나오지 않았습니다. 시연 PC에서 `deploy/bin/matching_svc --stats`로 `COST_SCAN`을 맞춥니다(demo/README.md).
+- `agent.profiler.cpu_pct`는 평시 약 1~2%, 폭주 중 약 4%(dwarf 호출 그래프의 perf script 비용)로 설계 목표 1% 미만보다 큽니다. 화면에 실제 값을 띄우는 것으로 대신합니다.
+- 함수 스택은 `matching_svc;[unknown];main;handle_order;…`처럼 `main` 앞에 `[unknown]`(libc 시작 프레임)이 하나 끼어 있습니다.
+
+**시연 전 사람이 할 일:**
+- 함수 추적: `sudo sysctl -w kernel.perf_event_paranoid=1`(재부팅하면 되돌아가므로 시연 직전에 확인).
+- compose 시연을 하려면 Docker 데몬을 켜고 `deploy/demo.sh` 앞에 `EUM_MODE=compose`. 데몬이 없으면 dev 모드로 같은 장면을 보입니다.
+- 시연 PC에서 `surge`를 한 번 돌려 p99가 수백 ms까지 오르는지 보고, 모자라면 `COST_SCAN`을 올려 다시 빌드합니다.

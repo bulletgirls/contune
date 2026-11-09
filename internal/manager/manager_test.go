@@ -69,8 +69,13 @@ func TestManagerBadStore(t *testing.T) {
 	if _, err := New(cfg); err == nil {
 		t.Error("모르는 store는 에러")
 	}
+	// sqlite는 B3·C2에서 구현됐으니 임시 폴더에서 열려야 한다.
 	cfg.Store = "sqlite"
-	if _, err := New(cfg); err == nil {
-		t.Error("sqlite stub 단계에서는 Open 실패가 에러로 나와야 함")
+	m, err := New(cfg)
+	if err != nil {
+		t.Fatalf("sqlite store = %v", err)
+	}
+	if err := m.Close(); err != nil {
+		t.Errorf("Close = %v", err)
 	}
 }

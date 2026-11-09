@@ -74,8 +74,10 @@ static void logf_(char lv, const char *cat, const char *fmt, ...) {
     printf("(%c) %s %s %s\n", lv, tb, cat, msg);
 }
 
-/* 의존 사슬이라 컴파일러가 지우지 못하는 고정 비용 */
-static NOINL uint64_t burn(uint64_t seed, int n) {
+/* 의존 사슬이라 컴파일러가 지우지 못하는 고정 비용.
+ * 호출한 함수 안으로 펼쳐 넣는다: 따로 두면 perf 표본의 leaf가 모두 burn이 되어
+ * A·B 비교(leaf 비중)에서 book_insert가 보이지 않는다. */
+static inline __attribute__((always_inline)) uint64_t burn(uint64_t seed, int n) {
     uint64_t x = seed | 1;
     for (int i = 0; i < n; i++) x = x * 6364136223846793005ULL + 1442695040888963407ULL;
     sink = x;                                 /* 부수효과로 남겨 호출이 지워지지 않게 */
