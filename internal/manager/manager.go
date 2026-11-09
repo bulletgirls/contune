@@ -160,9 +160,9 @@ func New(cfg Config) (*Manager, error) {
 	return m, nil
 }
 
-// Handler는 매니저의 HTTP 핸들러다. 토큰 확인(/api/v1/agent/ 경로만)은 K2가 여기서 감싼다.
+// Handler는 매니저의 HTTP 핸들러다. /api/v1/agent/ 경로만 Bearer 토큰을 확인한다(auth.go, 여기 한 곳).
 func (m *Manager) Handler() http.Handler {
-	return m.mux
+	return requireAgentToken(m.cfg.Token, m.mux)
 }
 
 // Run은 HTTP 서버와 레지스트리 감시·스케줄러·위험 엔진·알림 감시자를 함께 돌린다.
