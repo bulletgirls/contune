@@ -21,7 +21,7 @@ func TestRunSubcommands(t *testing.T) {
 		{[]string{"risk"}, 2, "risk train"},
 		{[]string{"incident", "import"}, 2, "--data"},
 		{[]string{"manager", "--bogus"}, 2, "bogus"},
-		{[]string{"dev"}, 1, "not implemented"},
+		{[]string{"dev", "--bogus"}, 2, ""}, // runDev(ctx, args)는 os.Stderr에 쓴다
 	}
 	for _, c := range cases {
 		var out, errb bytes.Buffer

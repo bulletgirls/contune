@@ -1,0 +1,4 @@
+id: f
+steps:
+  - {id: a, host: h, command: [x], depends: [b]}
+  - {id: b, host: h, command: [x], depends: [a]}
