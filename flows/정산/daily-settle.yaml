@@ -1,0 +1,15 @@
+# 장 마감 후 정산
+id: daily-settle
+schedule: "40 15 * * 1-5"     # 평일 15:40
+steps:
+  - id: settle
+    host: batch-01
+    command: ["${DEMO}/scripts/settle.sh"]
+    gate:
+      - { host: match-01, metric: biz.order.queue, max: 0 }
+    gate_max_wait: 30m
+
+  - id: settle-report
+    host: batch-01
+    command: [eum, burn, --cpu, "1", --duration, 3s]
+    depends: [settle]

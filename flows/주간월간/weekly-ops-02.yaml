@@ -1,0 +1,7 @@
+# 보조 플로우(주간월간): 모의 서버에서 CPU를 몇 초 쓰고 끝난다. deploy/gen_flows.sh로 만든다.
+id: weekly-ops-02
+schedule: "30 2 * * 6"
+steps:
+  - id: step-1
+    host: ops-02
+    command: [eum, burn, --cpu, "1", --duration, 4s]

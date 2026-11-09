@@ -23,12 +23,14 @@ type Input struct {
 // ActionKind는 Decide가 내는 할 일의 종류다.
 type ActionKind string
 
-// ActionKind 값. B6가 "hold" | "fail_gate"를 더한다.
+// ActionKind 값. hold·fail_gate는 리소스 게이트(B6)다.
 const (
 	ActCreateFlowRun ActionKind = "create_flow_run"
 	ActDispatch      ActionKind = "dispatch"
 	ActCreateRetry   ActionKind = "create_retry"
 	ActSkipFire      ActionKind = "skip_fire"
+	ActHold          ActionKind = "hold"      // WAITING → HELD(게이트 불충족, reason에 조건)
+	ActFailGate      ActionKind = "fail_gate" // HELD → FAILED(gate_max_wait 초과, Patch EndedAt)
 )
 
 // Action은 할 일 하나다.
@@ -37,7 +39,7 @@ type Action struct {
 	FlowID string
 	Runs   []model.Run       // create_*: 새로 만들 행(WAITING)
 	ExecID string            // dispatch: 대상 실행, create_retry: 실패한 원래 실행
-	From   []model.RunStatus // dispatch: 기대 상태(WAITING, B6는 HELD도)
+	From   []model.RunStatus // dispatch·hold·fail_gate: 기대 상태(WAITING 또는 HELD)
 	Reason string            // 로그·run_events.reason(예: "cron 30 5 * * 1-5", "retry 2/3")
 }
 
@@ -138,7 +140,7 @@ func decideFire(in Input, loc *time.Location, f model.Flow, runs []model.Run, gr
 		Runs: NewFlowRun(f, model.TriggerSchedule, fire.UnixMilli(), in.NewID)}, true
 }
 
-// decideProgress는 RUNNING인 플로우 실행 하나의 스텝별 최신 attempt를 보고 디스패치·재시도를 낸다.
+// decideProgress는 RUNNING인 플로우 실행 하나의 스텝별 최신 attempt를 보고 디스패치·게이트 대기·재시도를 낸다.
 // 정의에서 사라진 스텝의 행은 보지 않는다. 행이 없는 선행(실행 뒤 정의에 더해진 스텝)은 충족으로 본다.
 func decideProgress(in Input, f model.Flow, runs []model.Run) []Action {
 	latest := latestAttempts(f.ID, runs)
@@ -150,13 +152,13 @@ func decideProgress(in Input, f model.Flow, runs []model.Run) []Action {
 			continue
 		}
 		switch r.Status {
-		case model.StatusWaiting:
-			if now < r.ScheduledAt || !depsSucceeded(s, latest) {
+		case model.StatusWaiting, model.StatusHeld:
+			if r.Status == model.StatusWaiting && (now < r.ScheduledAt || !depsSucceeded(s, latest)) {
 				continue
 			}
-			// B6: in.Gate가 있으면 여기서 게이트를 판단한다(hold | fail_gate).
-			out = append(out, Action{Kind: ActDispatch, FlowID: f.ID, ExecID: r.ExecID,
-				From: []model.RunStatus{model.StatusWaiting}, Reason: "선행 모두 성공"})
+			if a, ok := decideGate(in, f, s, r, latest); ok { // 게이트 분기(gate.go)
+				out = append(out, a)
+			}
 		case model.StatusFailed, model.StatusTimeout:
 			if r.Attempt > s.Retry.Count {
 				continue // 죽음

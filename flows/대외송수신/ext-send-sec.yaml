@@ -1,0 +1,7 @@
+# 보조 플로우(대외송수신): 모의 서버에서 CPU를 몇 초 쓰고 끝난다. deploy/gen_flows.sh로 만든다.
+id: ext-send-sec
+schedule: "30 18 * * 1-5"
+steps:
+  - id: step-1
+    host: ext-05
+    command: [eum, burn, --cpu, "1", --duration, 4s]
