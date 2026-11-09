@@ -1,0 +1,77 @@
+package agent
+
+import (
+	"fmt"
+	"os"
+	"regexp"
+	"time"
+
+	"gopkg.in/yaml.v3"
+
+	"eum/internal/agent/logtail"
+)
+
+// Config는 에이전트 설정 파일이다(02 §5.3, 05 §11.1).
+type Config struct {
+	Host     string                 `yaml:"host"`
+	Group    string                 `yaml:"group"`   // 서버 트리 경로 '매매/체결'
+	Manager  string                 `yaml:"manager"` // http://manager:8080
+	Token    string                 `yaml:"token"`
+	Interval time.Duration          `yaml:"interval"` // 기본 1s
+	Probes   []map[string]any       `yaml:"probes"`
+	Profiler map[string]any         `yaml:"profiler"` // type: perf | none, hz, window, call_graph, min_age
+	LogDir   string                 `yaml:"log_dir"`  // 기본 ./logs
+	WorkDir  string                 `yaml:"work_dir"` // 기본 ./work
+	Vars     map[string]string      `yaml:"vars"`
+	Logs     []logtail.SourceConfig `yaml:"logs"` // 없으면 step 출처 하나
+
+	// FaultSilentAfter가 0이 아니면 그 시간 뒤 지표 전송을 멈춘다(시연용 고장 주입). 명령 수신과 실행은 계속.
+	FaultSilentAfter time.Duration `yaml:"fault_silent_after"`
+}
+
+// defaultLogs는 logs를 적지 않았을 때의 출처(스텝 실행 로그의 (E) 줄)다.
+func defaultLogs() []logtail.SourceConfig {
+	return []logtail.SourceConfig{{
+		Name:  "step",
+		Path:  "{log_dir}/{exec_id}.log",
+		Match: []logtail.MatchRule{{Re: `^\(E\)`, Level: "error"}},
+	}}
+}
+
+// LoadConfig는 에이전트 설정 파일을 읽는다. ${VAR}는 환경변수로 바꾼다.
+func LoadConfig(path string) (Config, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return Config{}, err
+	}
+	var c Config
+	if err := yaml.Unmarshal([]byte(expandVars(string(b))), &c); err != nil {
+		return Config{}, fmt.Errorf("%s: %w", path, err)
+	}
+	c.applyDefaults()
+	return c, nil
+}
+
+func (c *Config) applyDefaults() {
+	if c.Interval <= 0 {
+		c.Interval = time.Second
+	}
+	if c.LogDir == "" {
+		c.LogDir = "./logs"
+	}
+	if c.WorkDir == "" {
+		c.WorkDir = "./work"
+	}
+	if len(c.Logs) == 0 {
+		c.Logs = defaultLogs()
+	}
+}
+
+var varRe = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+
+// expandVars는 ${NAME}만 환경변수로 바꾼다($NAME, 정규식 안의 $는 그대로).
+func expandVars(s string) string {
+	return varRe.ReplaceAllStringFunc(s, func(m string) string {
+		return os.Getenv(m[2 : len(m)-1])
+	})
+}
