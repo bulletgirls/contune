@@ -40,10 +40,10 @@ func TestSeriesHandler(t *testing.T) {
 		Points [][2]float64 `json:"points"`
 	}
 	json.Unmarshal(out["series"], &series)
-	if len(series) != 1 || series[0].Host != "a" || len(series[0].Points) != 1 || series[0].Points[0] != [2]float64{float64(now.UnixMilli() - 1000), 1.5} {
+	if len(series) != 1 || series[0].Host != "a" || len(series[0].Points) != 1 || series[0].Points[0] != [2]float64{float64(now.UnixMilli() - 2000), 1.5} {
 		t.Errorf("series %s", out["series"])
 	}
-	if string(out["from"]) != "9100000" || string(out["to"]) != "10000000" || string(out["step"]) != "0" {
+	if string(out["from"]) != "9100000" || string(out["to"]) != "10000000" || string(out["step"]) != "2" {
 		t.Errorf("from/to/step %s %s %s", out["from"], out["to"], out["step"])
 	}
 
