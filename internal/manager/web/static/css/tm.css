@@ -16,3 +16,13 @@
 .tm-kv dt { color: var(--t3); } .tm-kv dd { margin: 0; }
 .tm-lines { font-family: ui-monospace, monospace; font-size: 12px; margin-bottom: 8px; }
 .tm-pre { background: var(--surface); border: 1px solid var(--line); padding: 8px; overflow: auto; max-height: 280px; font-size: 12px; }
+
+.tm-cmp-t { border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+.tm-cmp-t th, .tm-cmp-t td { padding: 3px 12px; text-align: right; border-bottom: 1px solid var(--line); }
+.tm-cmp-t th:first-child, .tm-cmp-t td.fn { text-align: left; font-family: ui-monospace, monospace; }
+.tm-cmp-t tbody tr { cursor: pointer; }
+.tm-cmp-t tbody tr.on { background: var(--surface); font-weight: 600; }
+.tm-cmp-t td:last-child { width: 160px; text-align: left; }
+.tm-cbar { display: inline-block; height: 10px; }
+.tm-cbar.up { background: var(--ab-b, #d6791e); }
+.tm-cbar.down { background: var(--t3); }

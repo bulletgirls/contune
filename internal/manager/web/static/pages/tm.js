@@ -27,6 +27,12 @@ export function fixedAB(view) {
   const span = Math.min(FIXED, Math.floor((view.to - view.from) / 2));
   return { a: { from: view.from, to: view.from + span }, b: { from: view.to - span, to: view.to } };
 }
+// leaf 비중 변화 상위 n개(절댓값 큰 순). 막대 폭은 최대 변화를 100으로 한 비율
+export function topChanges(cmp, n = 5) {
+  const rows = [...(cmp || [])].sort((x, y) => Math.abs(y.diff) - Math.abs(x.diff)).slice(0, n);
+  const max = rows.reduce((m, r) => Math.max(m, Math.abs(r.diff)), 0);
+  return rows.map((r) => ({ ...r, up: r.diff > 0, bar: max ? Math.round((Math.abs(r.diff) / max) * 100) : 0 }));
+}
 // 끌어서 고른 구간을 어느 쪽에 넣을지. pending이 있으면 그쪽, 없으면 빈 쪽 먼저, 둘 다 차 있으면 B.
 export function pickTarget(sel, pending) {
   if (pending) return pending;
@@ -72,9 +78,10 @@ export async function render(host, params) {
   const hint = el('div', { class: 'tm-hint', text: '끌어서 A 선택' });
   const stackWrap = el('div', { class: 'tm-wrap' }, stack, hint);
   const vEl = el('div', { class: 'tm-verdict' });
+  const cmpEl = el('div', { class: 'tm-cmp' });
   const flames = el('div', { class: 'flame-pair' }, el('div', { class: 'fa' }), el('div', { class: 'fb' }));
   const det = el('details', { class: 'tm-detail' }, el('summary', { text: '세부' }));
-  host.append(head, bar, stackWrap, vEl, flames, det);
+  host.append(head, bar, stackWrap, vEl, flames, cmpEl, det);
 
   function drawHead() {
     const r = st.run;
@@ -168,6 +175,17 @@ export async function render(host, params) {
     for (const c of charts) { c.setData(data[c.key]); c.setShades(shades()); }
   }
 
+  function drawCmp(cmp) {
+    const rows = topChanges(cmp, 5);
+    if (!rows.length) return;
+    const f = (v) => v.toFixed(1);
+    const tr = rows.map((r) => `<tr class="${st.hl === r.leaf ? 'on' : ''}" data-leaf="${esc(r.leaf)}"><td class="fn">${esc(r.leaf)}</td><td>${f(r.pctA)}%</td><td>${f(r.pctB)}%</td><td>${r.up ? '+' : ''}${f(r.diff)}%p</td><td><span class="tm-cbar ${r.up ? 'up' : 'down'}" style="width:${r.bar}%"></span></td></tr>`).join('');
+    cmpEl.innerHTML = `<table class="tm-cmp-t"><thead><tr><th>함수</th><th>A %</th><th>B %</th><th>변화(%p)</th><th>변화 막대</th></tr></thead><tbody>${tr}</tbody></table>`;
+    for (const row of cmpEl.querySelectorAll('tbody tr')) {
+      row.addEventListener('click', () => { st.hl = st.hl === row.dataset.leaf ? null : row.dataset.leaf; drawFlames(); });
+    }
+  }
+
   async function drawFlames() {
     const { a, b } = st.sel;
     const ranges = [];
@@ -175,6 +193,7 @@ export async function render(host, params) {
     if (b) ranges.push(['B', b, 'fb']);
     flames.replaceChildren(el('div', { class: 'fa' }), el('div', { class: 'fb' }));
     vEl.innerHTML = '';
+    cmpEl.replaceChildren();
     hint.hidden = !!(a || b);
     if (!ranges.length) {
       const r = { from: Math.max(st.view.from, st.run.started_at || st.view.from), to: Math.min(st.view.to, st.run.ended_at || st.view.to) };
@@ -186,11 +205,12 @@ export async function render(host, params) {
       let p = { stacks: [], samples: 0 };
       try { p = await api(`/profile?exec_id=${q(id)}&from=${Math.round(r.from)}&to=${Math.round(r.to)}`); } catch (e) { /* 빈 그래프 */ }
       got[name] = p;
-      renderFlame(flames.querySelector('.' + cls), { stacks: p.stacks || [], title: name || '전체', subtitle: rangeText(r, p.samples) });
+      renderFlame(flames.querySelector('.' + cls), { stacks: p.stacks || [], title: name || '전체', highlight: st.hl, subtitle: rangeText(r, p.samples) });
     }
     if (got.A && got.B && (got.A.stacks || []).length && (got.B.stacks || []).length) {
       const cmp = compareLeaf(got.A.stacks, got.B.stacks);
       vEl.innerHTML = mdToHTML(verdict(cmp));
+      drawCmp(cmp);
     }
   }
 
