@@ -93,7 +93,7 @@ export async function render(page, params, query = {}) {
   if (flowId) {
     try {
       const d = await api(`/flows/${encodeURIComponent(flowId)}/def`);
-      st = stateFromDef(d.flow, d.board || boardOfFile(d.file), true);
+      st = stateFromDef(d.flow, d.board || (d.flow && d.flow.board) || boardOfFile(d.file), true);
       st.sha = d.sha || '';
       st.isNew = false;
       yamlText = d.yaml || '';
@@ -101,7 +101,7 @@ export async function render(page, params, query = {}) {
   } else if (query.from) {
     try {
       const d = await api(`/flows/${encodeURIComponent(query.from)}/def`);
-      st = stateFromDef(d.flow, d.board || boardOfFile(d.file), false);
+      st = stateFromDef(d.flow, d.board || (d.flow && d.flow.board) || boardOfFile(d.file), false);
       yamlText = d.yaml || '';
     } catch (e) { loadErr = e instanceof ApiError ? e.error || `오류 ${e.status}` : String(e); }
   }

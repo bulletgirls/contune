@@ -208,6 +208,7 @@ export function render(el0, params, query) {
   el0.innerHTML = '';
   const root = el('div', { class: 'dash' });
   el0.append(root);
+  let lastSig = '';
   poll(async () => {
     const [h, f, p, a, r] = await Promise.all([
       api('/hosts'), api('/flows'), api('/panels'), api('/alerts?state=firing'), api('/risk').catch(() => null)]);
@@ -218,6 +219,10 @@ export function render(el0, params, query) {
     const flows = f.flows || [];
     const alerts = alertsInScope(a.alerts || [], g, ids);
     const bsum = summarizeBatch(flows, now);
+    // 바뀐 것이 없으면 다시 그리지 않는다.
+    const sig = JSON.stringify([hs, panels, flows, alerts, r, bsum]);
+    if (sig === lastSig && root.childNodes.length) return;
+    lastSig = sig;
     const cards = el('div', { class: 'cards' }, riskCard(r), serverCard(hs), batchCard(bsum), bizCard(kpiTiles(panels)));
     const mid = el('div', { class: 'mid' }, serverMap(hs), watchList(alerts, panels, hs, flows));
     root.replaceChildren(cards, mid, batchSection(bsum));
