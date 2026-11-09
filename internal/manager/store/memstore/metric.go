@@ -32,7 +32,18 @@ func (m *metricStore) Write(ctx context.Context, batch []model.Sample) error {
 	defer m.mu.Unlock()
 	for _, s := range batch {
 		k := seriesKey{s.Host, s.Name, s.ExecID}
-		m.series[k] = append(m.series[k], model.Point{TS: s.TS, Value: s.Value})
+		pts := m.series[k]
+		replaced := false
+		for i := len(pts) - 1; i >= 0; i-- { // 같은 시각은 마지막 값
+			if pts[i].TS == s.TS {
+				pts[i].Value = s.Value
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			m.series[k] = append(pts, model.Point{TS: s.TS, Value: s.Value})
+		}
 	}
 	return nil
 }
@@ -125,7 +136,21 @@ func (m *metricStore) WriteProfiles(ctx context.Context, ps []model.Profile) err
 	defer m.mu.Unlock()
 	for _, p := range ps {
 		p.Stacks = copyStacks(p.Stacks)
-		m.profiles = append(m.profiles, p)
+		merged := false
+		for i := range m.profiles { // (exec_id, ts, 스택)이 같으면 덮어씀
+			q := &m.profiles[i]
+			if q.ExecID == p.ExecID && q.TS == p.TS {
+				for st, n := range p.Stacks {
+					q.Stacks[st] = n
+				}
+				q.DurMS = p.DurMS
+				merged = true
+				break
+			}
+		}
+		if !merged {
+			m.profiles = append(m.profiles, p)
+		}
 	}
 	return nil
 }

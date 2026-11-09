@@ -1,0 +1,4 @@
+id: f
+schedule: "nope"
+steps:
+  - {id: a, command: [x]}

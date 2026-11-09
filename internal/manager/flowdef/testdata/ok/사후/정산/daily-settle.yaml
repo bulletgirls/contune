@@ -1,0 +1,14 @@
+id: daily-settle
+schedule: "40 15 * * 1-5"
+steps:
+  - id: settle
+    host: batch-01
+    command: ["${DEMO}", burn]
+    timeout: 30m
+    gate:
+      - { host: match-01, metric: biz.order.queue, max: 0 }
+    gate_max_wait: 30m
+  - id: settle-report
+    host: batch-01
+    command: ["${DEMO}", burn]
+    depends: [settle]
