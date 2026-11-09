@@ -1,0 +1,68 @@
+// mock.handle(path, opts) → Promise<{status, body, contentType?}>
+// path는 '/api/v1' 뒤 경로(쿼리 포함), opts는 {method, body, now, search}. DOM 없이 import된다.
+import { parseQuery } from './util.js';
+import { getWorld, reset as resetWorld, tick } from './world.js';
+import * as core from './core.js';
+import * as server from './server.js';
+import * as ops from './ops.js';
+import * as editor from './editor.js';
+import * as biz from './biz.js';
+import * as alert from './alert.js';
+
+const ROUTES = [core, server, ops, editor, biz, alert].flatMap((m) => m.routes);
+
+function pageFlags(opts, q) {
+  const s = new URLSearchParams(opts.search ?? (typeof location !== 'undefined' ? location.search : ''));
+  const get = (k) => (q.get(k) !== null ? q.get(k) : s.get(k));
+  return {
+    surge: get('surge') !== '0',
+    llm: get('llm') === '1',
+    rule: get('rule') === '1',
+    editor: get('editor') !== '0',
+  };
+}
+
+export function reset() {
+  resetWorld();
+}
+
+export async function handle(path, opts = {}) {
+  const method = String(opts.method || 'GET').toUpperCase();
+  const { pathname, q } = parseQuery(path);
+  const now = opts.now || Date.now();
+  const w = getWorld(now);
+  tick(w, now);
+  const flags = pageFlags(opts, q);
+  const raw = opts.body;
+  const c = {
+    w,
+    now,
+    q,
+    flags,
+    method,
+    sig: { now, surge: flags.surge },
+    text: () => (raw === undefined || raw === null ? '' : typeof raw === 'string' ? raw : JSON.stringify(raw)),
+    json: () => {
+      if (raw && typeof raw === 'object') return raw;
+      try {
+        return raw ? JSON.parse(raw) : null;
+      } catch {
+        return null;
+      }
+    },
+  };
+  for (const [m, re, fn] of ROUTES) {
+    if (m !== method) continue;
+    const mm = re.exec(pathname);
+    if (mm) {
+      try {
+        return fn(c, mm);
+      } catch (e) {
+        return { status: 500, body: { error: `mock 오류: ${e.message}` } };
+      }
+    }
+  }
+  return { status: 404, body: { error: 'mock 없음' } };
+}
+
+export default { handle, reset };
