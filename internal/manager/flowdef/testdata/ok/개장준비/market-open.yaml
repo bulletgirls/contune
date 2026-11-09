@@ -1,0 +1,28 @@
+id: market-open
+schedule: "30 5 * * 1-5"
+on_missed: skip
+steps:
+  - id: fetch
+    host: batch-01
+    command: ["${DEMO}", burn, --cpu, 1s]
+    timeout: 10m
+  - id: load-equity
+    host: batch-01
+    command: ["${DEMO}", burn]
+    depends: [fetch]
+    timeout: 20m
+    retry: { count: 2, interval: 1m }
+  - id: deriv
+    host: batch-01
+    command: ["${DEMO}", burn]
+    depends: [fetch]
+    timeout: 20m
+  - id: start-matching
+    host: match-01
+    command: ["${DEMO}", start]
+    depends: [load-equity, deriv]
+    profile: true
+  - id: check
+    host: match-01
+    command: ["${DEMO}", check]
+    depends: [start-matching]

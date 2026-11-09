@@ -1,0 +1,3 @@
+id: f
+steps:
+  - {id: a, host: h, command: [x], timeout: 10분}
