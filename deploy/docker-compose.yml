@@ -1,0 +1,56 @@
+# 이음 시연 환경(2차). 1차는 `eum dev`(deploy/README.md).
+# 사용: docker compose -f deploy/docker-compose.yml up --build
+
+x-eum: &eum
+  image: eum
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+  env_file: .env
+
+services:
+  manager:
+    <<: *eum
+    command: [manager, --config, /etc/eum/manager.yaml]
+    ports: ["8080:8080"]
+    volumes:
+      - eum-data:/data
+      - ../flows:/flows            # 쓰기 가능: 화면 편집기가 파일을 쓴다
+      - ../panels:/panels:ro
+      - ./manager.yaml:/etc/eum/manager.yaml:ro
+
+  match-01:
+    <<: *eum
+    command: [agent, --config, /etc/eum/agent-match-01.yaml]
+    cap_add: [PERFMON]
+    # perf가 컨테이너에서 막히면(기본 seccomp가 perf_event_open을 거절) 시연용으로만 아래를 켠다.
+    # security_opt: [seccomp=unconfined]
+    volumes:
+      - ./agent-match-01.yaml:/etc/eum/agent-match-01.yaml:ro
+    depends_on: [manager]
+
+  gw-01:
+    <<: *eum
+    command: [agent, --config, /etc/eum/agent-gw-01.yaml]
+    volumes:
+      - ./agent-gw-01.yaml:/etc/eum/agent-gw-01.yaml:ro
+    depends_on: [manager]
+
+  batch-01:
+    <<: *eum
+    command: [agent, --config, /etc/eum/agent-batch-01.yaml]
+    cap_add: [PERFMON]
+    # security_opt: [seccomp=unconfined]   # match-01과 같은 이유
+    volumes:
+      - ./agent-batch-01.yaml:/etc/eum/agent-batch-01.yaml:ro
+    depends_on: [manager]
+
+  fleet:
+    <<: *eum
+    command: [fleet, --config, /etc/eum/fleet.yaml]
+    volumes:
+      - ./fleet.yaml:/etc/eum/fleet.yaml:ro
+    depends_on: [manager]
+
+volumes:
+  eum-data:

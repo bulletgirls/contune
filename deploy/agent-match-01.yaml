@@ -1,0 +1,31 @@
+host: match-01
+group: 매매/체결
+manager: http://manager:8080
+token: ${EUM_TOKEN}
+interval: 1s
+probes:
+  - type: sim
+    profile: host
+    seed: 1
+  - type: push
+    listen: 127.0.0.1:9101
+profiler:
+  type: perf
+  hz: 49
+  window: 10s
+  call_graph: dwarf
+  min_age: 5s
+log_dir: /var/lib/eum/logs
+work_dir: /var/lib/eum/work
+vars:
+  DEMO: /opt/eum-demo
+  PUSH: 127.0.0.1:9101
+logs:
+  - name: matching
+    path: "{log_dir}/matching_svc.{exec_id}.log"
+    match:
+      - { re: '^\(E\)', level: error }
+      - { re: '^\(W\)', level: warn }
+  - name: step
+    path: "{log_dir}/{exec_id}.log"
+    match: [{ re: '^\(E\)', level: error }]

@@ -1,0 +1,21 @@
+host: batch-01
+group: 사후처리/배치
+manager: http://manager:8080
+token: ${EUM_TOKEN}
+interval: 1s
+probes:
+  - type: sim
+    profile: host
+    seed: 3
+profiler:
+  type: perf
+  hz: 49
+  window: 10s
+  call_graph: dwarf
+  min_age: 5s
+log_dir: /var/lib/eum/logs
+work_dir: /var/lib/eum/work
+vars:
+  DEMO: /opt/eum-demo
+  PUSH: 127.0.0.1:9101
+
