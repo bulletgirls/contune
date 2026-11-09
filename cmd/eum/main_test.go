@@ -17,7 +17,7 @@ func TestRunSubcommands(t *testing.T) {
 		{[]string{"nope"}, 2, "모르는 서브커맨드"},
 		{[]string{"version"}, 0, "eum"},
 		{[]string{"agent"}, 2, "--config"},
-		{[]string{"sql", "--data", t.TempDir(), "SELECT 1"}, 1, "not implemented"},
+		{[]string{"sql", "--data", t.TempDir(), "SELECT 1"}, 1, "metrics.db"},
 		{[]string{"risk"}, 2, "risk train"},
 		{[]string{"incident", "import"}, 2, "--data"},
 		{[]string{"manager", "--bogus"}, 2, "bogus"},
