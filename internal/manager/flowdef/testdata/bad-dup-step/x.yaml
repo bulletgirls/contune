@@ -1,0 +1,4 @@
+id: f
+steps:
+  - {id: a, host: h, command: [x]}
+  - {id: a, host: h, command: [x]}

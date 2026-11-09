@@ -1,0 +1,4 @@
+id: f
+schedule: "99 * * * *"
+steps:
+  - {id: a, host: h, command: [x]}
