@@ -3,10 +3,294 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"log/slog"
+	"net"
+	"os"
+	osexec "os/exec"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"sync"
+	"time"
+
+	"eum/internal/agent"
+	"eum/internal/agent/logtail"
+	"eum/internal/agent/profile"
+	"eum/internal/fleet"
+	"eum/internal/manager"
+	"eum/internal/manager/editor"
 )
 
-// runDev는 eum dev다: 매니저 + 에이전트 3개(+ 모의 서버)를 한 프로세스에서 띄운다. (stub: K2가 채움)
-// args는 "dev" 뒤의 인자, ctx는 SIGINT·SIGTERM에 끝난다.
+// devToken은 eum dev의 매니저·에이전트 공용 토큰이다.
+const devToken = "dev"
+
+// devAllow는 05 §8의 시연 허용 목록이다.
+var devAllow = []string{
+	`^eum burn( |$)`,
+	`^\$\{DEMO\}/scripts/[A-Za-z0-9_-]+\.sh( |$)`,
+	`^sleep [0-9]+$`,
+	`^echo( |$)`,
+}
+
+// devSetup은 eum dev가 한 프로세스에 띄울 것이다.
+type devSetup struct {
+	Manager manager.Config
+	Agents  []agent.Config
+	Fleet   string // fleet.yaml 경로("" = 없음)
+}
+
+// devHost는 dev 에이전트 하나다.
+type devHost struct {
+	host, group string
+	seed        int
+	push        bool // 체결 서비스의 push 수신(match-01)
+	profile     bool // perf가 있으면 함수 추적
+}
+
+var devHosts = []devHost{
+	{host: "match-01", group: "매매/체결", seed: 1, push: true, profile: true},
+	{host: "gw-01", group: "매매/주문접수", seed: 2},
+	{host: "batch-01", group: "사후처리/배치", seed: 3, profile: true},
+}
+
+// parseDev는 dev 플래그를 해석해 매니저·에이전트 설정을 만든다(순수: 파일은 --config만 읽는다).
+// hasPerf가 true면 match-01·batch-01에 perf 프로파일러를 단다.
+func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
+	fs := newFlags("dev", stderr)
+	listen := fs.String("listen", "127.0.0.1:8080", "매니저 주소")
+	data := fs.String("data", "./data-dev", "데이터 폴더(metrics.db, state.db, logs/<host>, work/<host>, risk/)")
+	storeKind := fs.String("store", "sqlite", "sqlite | memory")
+	flows := fs.String("flows", "./flows", "플로우 폴더")
+	panels := fs.String("panels", "./panels", "업무 패널 폴더")
+	cfgPath := fs.String("config", "", "매니저 설정 파일(있으면 이 파일 위에 플래그가 덮음)")
+	fleetPath := fs.String("fleet", "", "fleet.yaml(있으면 모의 서버를 같은 프로세스에서 띄움)")
+	pushPort := fs.Int("push-port", 9101, "match-01의 push 수신 포트")
+	demoDir := fs.String("demo-dir", "./deploy", "에이전트 vars.DEMO(시연 폴더)")
+	if err := parse(fs, args); err != nil {
+		return devSetup{}, err
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(stderr, "eum dev: 모르는 인자 %q\n", fs.Args())
+		return devSetup{}, errUsage
+	}
+	if *pushPort <= 0 || *pushPort > 65535 {
+		fmt.Fprintf(stderr, "eum dev: --push-port %d는 1~65535여야 합니다\n", *pushPort)
+		return devSetup{}, errUsage
+	}
+
+	// 매니저: 설정 파일이 없으면 기본값 + dev 값, 있으면 그 파일 위에 준 플래그만 덮는다.
+	var cfg manager.Config
+	set := map[string]bool{}
+	if *cfgPath == "" {
+		cfg = manager.DefaultConfig()
+		cfg.Token = devToken
+		cfg.Editor = editor.Config{Enabled: true, Allow: append([]string(nil), devAllow...)}
+		for _, n := range []string{"listen", "data", "store", "flows", "panels"} {
+			set[n] = true
+		}
+	} else {
+		var err error
+		if cfg, err = manager.LoadConfig(*cfgPath); err != nil {
+			return devSetup{}, err
+		}
+		if cfg.Token == "" {
+			cfg.Token = devToken
+		}
+		fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	}
+	override := func(name string, dst *string, v string) {
+		if set[name] {
+			*dst = v
+		}
+	}
+	override("listen", &cfg.Listen, *listen)
+	override("data", &cfg.Data, *data)
+	override("store", &cfg.Store, *storeKind)
+	override("flows", &cfg.Flows, *flows)
+	override("panels", &cfg.Panels, *panels)
+
+	// 에이전트: 자식 프로세스가 작업 폴더에서 돌아도 경로가 맞도록 폴더는 절대 경로로 넘긴다.
+	demoAbs, err := filepath.Abs(*demoDir)
+	if err != nil {
+		return devSetup{}, err
+	}
+	dataAbs, err := filepath.Abs(cfg.Data)
+	if err != nil {
+		return devSetup{}, err
+	}
+	pushAddr := "127.0.0.1:" + strconv.Itoa(*pushPort)
+	mgrURL := "http://" + dialAddr(cfg.Listen)
+	out := devSetup{Manager: cfg, Fleet: *fleetPath}
+	for _, h := range devHosts {
+		a := agent.Config{
+			Host: h.host, Group: h.group, Manager: mgrURL, Token: cfg.Token, Interval: time.Second,
+			Probes:  []map[string]any{{"type": "sim", "profile": "host", "seed": h.seed}},
+			LogDir:  filepath.Join(dataAbs, "logs", h.host),
+			WorkDir: filepath.Join(dataAbs, "work", h.host),
+			Vars:    map[string]string{"DEMO": demoAbs, "PUSH": pushAddr},
+		}
+		if h.push {
+			a.Probes = append(a.Probes, map[string]any{"type": "push", "listen": pushAddr})
+			a.Logs = matchingLogs()
+		}
+		if h.profile && hasPerf {
+			a.Profiler = map[string]any{"type": "perf", "hz": 49, "window": "10s", "call_graph": "dwarf", "min_age": "5s"}
+		}
+		out.Agents = append(out.Agents, a)
+	}
+	return out, nil
+}
+
+// matchingLogs는 match-01의 로그 출처다(05 §4: 체결 서비스 로그 + 스텝 실행 로그).
+func matchingLogs() []logtail.SourceConfig {
+	return []logtail.SourceConfig{
+		{Name: "matching", Path: "{log_dir}/matching_svc.{exec_id}.log", Match: []logtail.MatchRule{
+			{Re: `^\(E\)`, Level: "error"},
+			{Re: `^\(W\)`, Level: "warn"},
+		}},
+		{Name: "step", Path: "{log_dir}/{exec_id}.log", Match: []logtail.MatchRule{
+			{Re: `^\(E\)`, Level: "error"},
+		}},
+	}
+}
+
+// dialAddr는 듣는 주소를 같은 PC에서 접속할 주소로 바꾼다(":8080", "0.0.0.0:8080" → "127.0.0.1:8080").
+func dialAddr(listen string) string {
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		return listen
+	}
+	if ip := net.ParseIP(host); host == "" || (ip != nil && ip.IsUnspecified()) {
+		host = "127.0.0.1"
+	}
+	return net.JoinHostPort(host, port)
+}
+
+// hasPerf는 리눅스이고 perf가 PATH에 있는지 본다.
+func hasPerf() bool {
+	if runtime.GOOS != "linux" {
+		return false
+	}
+	_, err := osexec.LookPath("perf")
+	return err == nil
+}
+
+// runDev는 eum dev다: 매니저 + 에이전트 3개(+ 모의 서버)를 한 프로세스에서 띄운다.
+// args는 "dev" 뒤의 인자, ctx는 SIGINT·SIGTERM에 끝난다. 매니저가 듣기 시작한 뒤 에이전트를 띄운다.
 func runDev(ctx context.Context, args []string) error {
-	return errors.New("eum dev: not implemented")
+	setup, err := parseDev(args, hasPerf(), os.Stderr)
+	if err != nil {
+		return err
+	}
+	if setup.Manager.Listen == "" || dialPort(setup.Manager.Listen) == "0" {
+		return fmt.Errorf("eum dev: --listen %q에는 고정 포트가 필요합니다", setup.Manager.Listen)
+	}
+	for i := range setup.Agents {
+		a := &setup.Agents[i]
+		if a.Profiler == nil {
+			continue
+		}
+		if _, err := profile.Build(a.Profiler); err != nil {
+			slog.Warn("프로파일러 없이 띄움", "host", a.Host, "err", err)
+			a.Profiler = nil
+		}
+	}
+
+	m, err := manager.New(setup.Manager)
+	if err != nil {
+		return err
+	}
+	defer m.Close()
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var mgrErr error
+	mgrDone := make(chan struct{})
+	go func() { mgrErr = m.Run(ctx); close(mgrDone) }()
+
+	addr := dialAddr(setup.Manager.Listen)
+	if err := waitListening(ctx, addr, mgrDone); err != nil {
+		cancel()
+		<-mgrDone
+		if mgrErr != nil {
+			return mgrErr
+		}
+		if ctx.Err() != nil && errors.Is(err, context.Canceled) {
+			return nil // 시작 중 Ctrl-C
+		}
+		return err
+	}
+
+	var wg sync.WaitGroup
+	for _, a := range setup.Agents {
+		wg.Add(1)
+		go func(a agent.Config) {
+			defer wg.Done()
+			if err := agent.Run(ctx, a); err != nil && ctx.Err() == nil {
+				slog.Error("에이전트를 띄우지 못함", "host", a.Host, "err", err)
+			}
+		}(a)
+	}
+	if setup.Fleet != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			fc, err := fleet.LoadConfig(setup.Fleet)
+			if err != nil {
+				slog.Error("fleet 설정을 읽지 못함", "path", setup.Fleet, "err", err)
+				return
+			}
+			fc.Manager, fc.Token = "http://"+addr, setup.Manager.Token
+			if err := fleet.Run(ctx, fc); err != nil && ctx.Err() == nil {
+				slog.Error("fleet이 에러로 끝남", "err", err)
+			}
+		}()
+	}
+	slog.Info("eum dev 시작", "manager", "http://"+addr, "agents", len(setup.Agents),
+		"store", setup.Manager.Store, "data", setup.Manager.Data, "fleet", setup.Fleet)
+
+	select {
+	case <-ctx.Done():
+	case <-mgrDone: // 매니저가 먼저 끝나면(듣기 실패 등) 에이전트도 정리한다
+		cancel()
+	}
+	<-mgrDone
+	wg.Wait()
+	slog.Info("eum dev 종료")
+	return mgrErr
+}
+
+func dialPort(listen string) string {
+	_, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		return ""
+	}
+	return port
+}
+
+// waitListening은 addr에 TCP 접속이 될 때까지 기다린다(최대 10초). 매니저가 먼저 끝나면 에러다.
+func waitListening(ctx context.Context, addr string, mgrDone <-chan struct{}) error {
+	deadline := time.Now().Add(10 * time.Second)
+	tick := time.NewTicker(20 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		c, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+		if err == nil {
+			c.Close()
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("eum dev: 매니저가 %s에서 듣기 시작하지 않음: %w", addr, err)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-mgrDone:
+			return errors.New("eum dev: 매니저가 듣기 전에 끝남")
+		case <-tick.C:
+		}
+	}
 }
