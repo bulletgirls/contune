@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "additionalDirectories": [
+      "/home/han/work/wt-s1",
+      "/home/han/work/wt-s2",
+      "/home/han/work/wt-s3",
+      "/home/han/work/wt-s4"
+    ],
+    "allow": [
+      "Bash(cd /home/han/work/contune*)",
+      "Bash(cd /home/han/work/wt-s*)",
+      "Bash(go *)",
+      "Bash(gofmt *)",
+      "Bash(git *)",
+      "Bash(gcc *)",
+      "Bash(sh demo/*)",
+      "Bash(sh deploy/*)",
+      "Bash(bash deploy/*)",
+      "Bash(bash -n *)",
+      "Bash(sh pipeline/*)",
+      "Bash(python3 pipeline/*)",
+      "Bash(python3 -c *)",
+      "Bash(node *)",
+      "Bash(/home/han/.local/eum-tools/node/bin/node *)",
+      "Bash(sha256sum *)",
+      "Bash(tar *)",
+      "Bash(curl *)",
+      "Bash(pkill -f *)",
+      "Bash(pgrep *)",
+      "Bash(kill *)",
+      "Bash(perf stat *)",
+      "Edit(//home/han/work/wt-s1/**)",
+      "Edit(//home/han/work/wt-s2/**)",
+      "Edit(//home/han/work/wt-s3/**)",
+      "Edit(//home/han/work/wt-s4/**)",
+      "Edit(//home/han/work/contune/pipeline/logs/**)"
+    ],
+    "deny": [
+      "Bash(git push*)"
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+# 파이프라인 진행 상태와 워커 실패 로그(메인 저장소에만 있음)
+/dag_state.json
+/dag_state.json.tmp
+/pipeline/logs/
+# 워커의 수동 확인용 폴더
+.run/
+__pycache__/
+# 이전 실습(Gemini 프로토타입)의 산출물
+/eum
+/matching_svc
+/data-dev/

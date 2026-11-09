@@ -18,7 +18,8 @@
 | 플로우 그래프 | 갈래·합류·서버 넘기·재시도를 그리는 DAG 화면(핵심) |
 | 데이터 주권 | 공개 스키마, 분석용 뷰 `v_samples`·`v_profiles`, `eum sql`(읽기 전용), CSV·접힌 스택 내보내기 |
 | 설계 원칙 | SRP·OCP·LSP·DIP(인터페이스 6개 + 조립 계약), 테스트로 수정을 보호(계약 스위트, 표 테스트), 단순성(외부 의존성 4개, 빌드 단계 없는 화면) |
-| AI | 제품 기능이 아니라 개발 수단(사람 1명당 AI 세션 2개, 카드 34장) |
+| AI | 개발 수단(오케스트레이터 1 + 워커 서브에이전트 4, 카드 47장). 제품 안에는 **장애 위험 지수**(로컬 로지스틱 회귀, 참고 지표)와 LLM 연결 자리만(05 §6, §9) |
+| 보충 (11-09) | 프로토타입 시연 뒤: 서버 탭 5개 서브 탭(CPU·메모리·시스템·프로세스·IO)과 과거 구간, **업무 탭**(APM 정보, `(E)` 로그 수집과 알림), 화면에서 작업 구성(허용 목록 안에서 YAML 파일을 씀)·강제 OK·재실행·강제 종료, 자연어 작업 초안 입력, 간결한 문구 |
 | 운영 환경 | 업무는 온라인(체결) 중심, 배치는 개장 준비와 정산. 배치는 셸 스크립트, 스크립트가 띄우는 서비스는 C(자바 일부). 운영 서버는 perf 사용 가능 |
 | 시연 | Docker Compose: 매니저 1 + 에이전트 3 + 모의 서버 40대, 플로우 39개. 장애 장면은 주문량 폭주로 체결 처리가 밀리는 상황 |
 
@@ -29,14 +30,17 @@
 | [docs/01-design-review.md](docs/01-design-review.md) | 초기 조사 세션(Gemini) 점검: 유지할 것, 과한 것, 틀린 것, 빠진 것 |
 | [docs/02-mvp-architecture.md](docs/02-mvp-architecture.md) | **계약.** 기술 스택, 수집 통로, 서비스 프로세스 추적, 함수 단위 추적(실측 포함), API와 응답 형식, 매니저 설정, 인터페이스 6개, **조립 계약(§7.1)**, 데이터 모델, 상태 머신, 화면, 시연 환경 |
 | [docs/03-roadmap.md](docs/03-roadmap.md) | 당일 계획: 시연 시나리오, 개념 완결 기준과 축소 순서, 일정, 저장소 구조, 테스트 전략, 리스크, 심사 예상 질문 |
-| [docs/04-implementation-plan.md](docs/04-implementation-plan.md) | **구현 지시서:** 설계·기획서 리뷰 결과(바뀐 것, 메운 빈틈), 마일스톤 M0~M4, 카드 34장 목록과 의존 그래프, 세션 배정, 운영 규칙, 통합 점검표 |
-| [docs/cards/](docs/cards/README.md) | **작업카드 = AI 세션 지시문.** 공통 지시문과 소유 경로(README), 카드 파일 7개(K·A·B·C·D·E·X) |
+| [docs/04-implementation-plan.md](docs/04-implementation-plan.md) | **구현 지시서:** 설계·기획서 리뷰 결과(바뀐 것, 메운 빈틈), **§1.4 카드 정리(11-09)**, 마일스톤 M0~M4, 운영 규칙, 통합 점검표 |
+| [docs/05-supplement.md](docs/05-supplement.md) | **보충 계약(11-09, 02보다 우선):** 지표 카탈로그, 업무 로그, 알림, 장애 위험 지수, 운영자 조작, 편집기, 자연어 초안, API·설정·타입·DDL 추가, 화면 보충 |
+| [docs/cards/](docs/cards/README.md) | **작업카드 원본.** 공통 지시문과 소유 경로(README), 카드 파일 8개(K·A·B·C·R·D·E·X) |
+| [pipeline_plan.md](pipeline_plan.md) | **카드 47장의 등급·우선 세션·선행** (파이프라인의 기준) |
+| [pipeline/ORCHESTRATOR.md](pipeline/ORCHESTRATOR.md) | 자율 오케스트레이터 지시문. 도구: `pipeline/dag.py`(상태), `split_cards.py`(카드 → `specs/<ID>.md`), `setup_worktrees.sh` |
 | [docs/submission/eum-proposal.pdf](docs/submission/eum-proposal.pdf) | 서류 심사 기획서 "이음"(외부 심사위원용, A4 가로 15쪽). 원본은 같은 폴더의 `eum-proposal.html` |
 
 ## 현재 상태
 
-설계와 작업카드 준비가 끝났습니다. 대회 규칙상 코드는 당일 처음부터 작성합니다. 당일 첫 작업은 **K0 저장소 초기화 → K1 계약 코드와 패키지 골격 → K2 걷는 뼈대**(`eum dev` → sim 지표 → 저장 → 브라우저 차트)입니다. 각 세션에는 다음 한 줄을 줍니다.
+설계, 보충 계약, 작업카드 47장, 자율 파이프라인 준비가 끝났습니다. 코드는 아직 없습니다(저장소 밖의 `eum`·`matching_svc`·`data-dev/`는 이전 Gemini 프로토타입의 산출물이고 git에 넣지 않습니다).
 
-```text
-docs/cards/README.md를 읽고, 이어서 docs/cards/<파일>.md의 <ID> 절을 읽은 뒤 그 카드대로 작업하라. 카드 범위 밖의 변경이 필요하면 멈추고 제안만 보고하라.
-```
+**진행:** 새 Claude Code 세션을 이 폴더에서 열고 `/orchestrate`(또는 "pipeline/ORCHESTRATOR.md대로 진행해")라고 하면, 오케스트레이터가 `../wt-s1`~`../wt-s4` 워크트리에 워커 서브에이전트를 병렬로 띄워 K0부터 Z1까지 진행합니다. 진척은 `python3 pipeline/dag.py status`.
+
+**시연 전 사람이 할 일:** 함수 추적을 보이려면 `sudo sysctl -w kernel.perf_event_paranoid=1`(이 PC는 4). compose 시연을 하려면 Docker 설치(없으면 `eum dev --fleet`로 같은 시연).
