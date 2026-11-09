@@ -2,17 +2,16 @@
 package editor
 
 import (
-	"errors"
-	"net/http"
+	"fmt"
 	"regexp"
+	"slices"
+	"strings"
 	"time"
 
 	"eum/internal/manager/flowdef"
 	"eum/internal/manager/store"
 	"eum/internal/model"
 )
-
-var errNotImplemented = errors.New("not implemented")
 
 // Config는 매니저 설정 editor다.
 type Config struct {
@@ -31,14 +30,49 @@ type Deps struct {
 	Now      func() time.Time
 }
 
-// Mount는 /editor, /flows/{id}/def, /flows/validate, PUT·DELETE /flows/{id}, /flows/reload를 붙인다. (stub: B8이 채움 — 등록 없음)
-func Mount(mux *http.ServeMux, d Deps) {}
+// Compile은 허용 목록을 정규식으로 만든다. 하나라도 틀리면 에러다.
+func Compile(allow []string) ([]*regexp.Regexp, error) {
+	out := make([]*regexp.Regexp, 0, len(allow))
+	for i, a := range allow {
+		re, err := regexp.Compile(a)
+		if err != nil {
+			return nil, fmt.Errorf("editor.allow[%d] %q: %v", i, a, err)
+		}
+		out = append(out, re)
+	}
+	return out, nil
+}
 
-// Compile은 허용 목록을 정규식으로 만든다. (stub)
-func Compile(allow []string) ([]*regexp.Regexp, error) { return nil, errNotImplemented }
+// CheckCommand는 명령 인자를 공백으로 이은 문자열이 허용 목록 중 하나와 맞는지 본다.
+// 목록이 비면 항상 거절한다.
+func CheckCommand(cmd []string, allow []*regexp.Regexp) error {
+	s := strings.Join(cmd, " ")
+	if len(allow) == 0 {
+		return fmt.Errorf("허용되지 않은 명령: %s (허용 목록이 비어 있음)", s)
+	}
+	for _, re := range allow {
+		if re.MatchString(s) {
+			return nil
+		}
+	}
+	return fmt.Errorf("허용되지 않은 명령: %s", s)
+}
 
-// CheckCommand는 명령 인자를 공백으로 이은 문자열이 허용 목록 중 하나와 맞는지 본다. (stub)
-func CheckCommand(cmd []string, allow []*regexp.Regexp) error { return errNotImplemented }
-
-// CheckFlow는 새로 넣었거나 바뀐 스텝의 명령만 검사해 문제 목록을 돌려준다. (stub: nil)
-func CheckFlow(next, prev model.Flow, allow []*regexp.Regexp) []string { return nil }
+// CheckFlow는 새로 넣었거나 바뀐 스텝의 명령만 검사해 문제 목록을 돌려준다.
+// prev에 같은 id로 같은 명령이 있는 스텝은 파일에서 이미 검토된 것으로 보고 건너뛴다.
+func CheckFlow(next, prev model.Flow, allow []*regexp.Regexp) []string {
+	old := make(map[string][]string, len(prev.Steps))
+	for _, s := range prev.Steps {
+		old[s.ID] = s.Command
+	}
+	var errs []string
+	for _, s := range next.Steps {
+		if c, ok := old[s.ID]; ok && slices.Equal(c, s.Command) {
+			continue
+		}
+		if err := CheckCommand(s.Command, allow); err != nil {
+			errs = append(errs, fmt.Sprintf("스텝 %s: %v", s.ID, err))
+		}
+	}
+	return errs
+}
