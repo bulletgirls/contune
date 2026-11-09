@@ -1,0 +1,7 @@
+# 보조 플로우(장중): 모의 서버에서 CPU를 몇 초 쓰고 끝난다. deploy/gen_flows.sh로 만든다.
+id: intra-feed-01
+schedule: "*/5 * * * *"
+steps:
+  - id: step-1
+    host: feed-03
+    command: [eum, burn, --cpu, "1", --duration, 5s]
