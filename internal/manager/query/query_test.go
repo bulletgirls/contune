@@ -251,9 +251,9 @@ func writePanel(t *testing.T, dir, name, body string) {
 func TestPanelsLoad(t *testing.T) {
 	dir := t.TempDir()
 	writePanel(t, dir, "체결.yaml", matchingYAML)
-	ps, err := LoadPanels(dir)
-	if err != nil || len(ps) != 1 {
-		t.Fatalf("%v %v", ps, err)
+	ps, errs, err := LoadPanels(dir)
+	if err != nil || len(errs) != 0 || len(ps) != 1 {
+		t.Fatalf("%v %v %v", ps, errs, err)
 	}
 	p := ps[0]
 	kpi := 0
@@ -268,8 +268,8 @@ func TestPanelsLoad(t *testing.T) {
 	// 없는 지표 이름은 허용
 	d2 := t.TempDir()
 	writePanel(t, d2, "x.yaml", "id: x\ntitle: X\ngroup: g\ntiles:\n  - {title: t, metric: no.such.metric, agg: sum}\n")
-	if _, err := LoadPanels(d2); err != nil {
-		t.Errorf("없는 지표: %v", err)
+	if ps, errs, err := LoadPanels(d2); err != nil || len(errs) != 0 || len(ps) != 1 {
+		t.Errorf("없는 지표: %v %v", errs, err)
 	}
 	for name, body := range map[string]string{
 		"agg":   "id: x\ntitle: X\ngroup: g\ntiles:\n  - {title: t, metric: m, agg: median}\n",
@@ -281,12 +281,12 @@ func TestPanelsLoad(t *testing.T) {
 	} {
 		d := t.TempDir()
 		writePanel(t, d, "bad.yaml", body)
-		if _, err := LoadPanels(d); err == nil {
-			t.Errorf("%s: 에러여야 함", name)
+		if ps, errs, err := LoadPanels(d); err != nil || len(ps) != 0 || len(errs) != 1 || errs[0].File != "bad.yaml" {
+			t.Errorf("%s: 그 파일만 건너뛰어야 함: %v %v %v", name, ps, errs, err)
 		}
 	}
-	if ps, err := LoadPanels(filepath.Join(dir, "nope")); err != nil || ps != nil {
-		t.Errorf("없는 폴더: %v %v", ps, err)
+	if ps, errs, err := LoadPanels(filepath.Join(dir, "nope")); err != nil || ps != nil || errs != nil {
+		t.Errorf("없는 폴더: %v %v %v", ps, errs, err)
 	}
 }
 
@@ -307,7 +307,11 @@ func TestPanelsAgg(t *testing.T) {
 		model.Sample{TS: nowMS - 1000, Name: "w", Value: 15, ExecID: "EA"})
 	put(lv, "b", "", model.Sample{TS: nowMS - 1000, Name: "q", Value: 800, ExecID: "EB"})
 	put(lv, "c", "", model.Sample{TS: nowMS - 1000, Name: "q", Value: 99999, ExecID: "EC"}) // 그룹 밖
-	ts := EvalPanels(nowMS, panels, hosts, lv)
+	ps := PanelsOf(time.UTC, panels...).Eval(time.UnixMilli(nowMS), hosts, lv)
+	if len(ps) != 1 {
+		t.Fatalf("%d", len(ps))
+	}
+	ts := ps[0].Tiles
 	if len(ts) != 6 {
 		t.Fatalf("%d", len(ts))
 	}
@@ -329,7 +333,7 @@ func TestPanelsAgg(t *testing.T) {
 	}
 
 	// /panels 응답
-	mux := newMux(Deps{Live: lv, Panels: panels, State: fakeState{hosts: hosts}})
+	mux := newMux(Deps{Live: lv, Panels: PanelsOf(time.UTC, panels...), State: fakeState{hosts: hosts}})
 	var out struct {
 		Panels []struct {
 			Tiles []struct {

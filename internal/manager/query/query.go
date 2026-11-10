@@ -15,14 +15,18 @@ type Deps struct {
 	Metrics    store.MetricStore
 	State      store.StateStore
 	Live       *live.Cache
-	Panels     []model.Panel
+	Panels     *PanelBook // 업무 패널(알림 감시자와 같은 것). nil이면 패널 없음
 	Thresholds model.HostThresholds
 	Catalog    []model.MetricGroup
 	Now        func() time.Time
 }
 
-// Mount는 조회(mountQuery, C4)와 내보내기(mountExport, C5) 경로를 붙인다.
+// Mount는 조회(mountQuery, C4)·업무 패널(mountPanels, M1)·내보내기(mountExport, C5) 경로를 붙인다.
 func Mount(mux *http.ServeMux, d Deps) {
+	if d.Panels == nil {
+		d.Panels = PanelsOf(nil)
+	}
 	mountQuery(mux, d)
+	mountPanels(mux, d)
 	mountExport(mux, d)
 }

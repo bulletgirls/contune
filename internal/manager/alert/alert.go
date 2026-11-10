@@ -39,7 +39,7 @@ type Deps struct {
 	State      store.StateStore
 	Live       *live.Cache
 	Flows      func() []model.Flow
-	Panels     []model.Panel
+	Panels     *query.PanelBook // 업무 패널(/panels와 같은 것: 값 끊김 기억을 함께 씀). nil이면 패널 없음
 	Thresholds model.HostThresholds
 	Notifiers  []notify.Notifier
 	Risk       func() (open, index float64, accepted int, ok bool) // 미확인 지수(용인 뺀 값)·원래 지수·용인 수(05 §6.4)
@@ -60,6 +60,7 @@ var levelRank = map[string]int{"info": 0, "warn": 1, "crit": 2}
 type fired struct {
 	id       int64
 	level    string
+	why      string // 타일 알림의 까닭(high|low|stale). 저장소에서 이어받은 알림은 "" (모름)
 	openedAt int64
 	lastSeen int64 // log: 마지막 새 줄 시각, run: 연 시각
 }
@@ -93,6 +94,9 @@ func New(d Deps) *Watcher {
 	}
 	if d.Now == nil {
 		d.Now = time.Now
+	}
+	if d.Panels == nil {
+		d.Panels = query.PanelsOf(nil)
 	}
 	w := &Watcher{d: d, fire: map[string]*fired{}, seenRun: map[string]int64{}}
 	w.lastLog = d.Now().UnixMilli()
@@ -182,12 +186,22 @@ func (w *Watcher) closeKey(ctx context.Context, now int64, key string) {
 
 // reconcile은 상태 기반 알림(host·tile·risk)을 조건(want)에 맞춘다. 수준이 바뀌면 해제 후 새로 연다.
 func (w *Watcher) reconcile(ctx context.Context, now int64, a model.Alert, want bool) {
+	w.reconcileWhy(ctx, now, a, want, "")
+}
+
+// reconcileWhy는 reconcile에 까닭(why)을 더 본다: 수준이나 까닭이 바뀌면(하한 위험 → 값 끊김 위험) 해제 후 새로 연다.
+// 이어받은 알림은 까닭을 모르므로 수준만 보고 이번 까닭을 기억한다(재시작마다 다시 알리지 않게).
+func (w *Watcher) reconcileWhy(ctx context.Context, now int64, a model.Alert, want bool, why string) {
 	f := w.fire[a.DedupKey]
 	switch {
-	case want && f != nil && f.level == a.Level:
+	case want && f != nil && f.level == a.Level && (f.why == "" || f.why == why):
+		f.why = why
 	case want:
 		w.closeKey(ctx, now, a.DedupKey)
 		w.open(ctx, now, a)
+		if f := w.fire[a.DedupKey]; f != nil {
+			f.why = why
+		}
 	default:
 		w.closeKey(ctx, now, a.DedupKey)
 	}
@@ -203,7 +217,7 @@ func (w *Watcher) step(t time.Time) {
 		group[h.ID] = h.Group
 	}
 
-	crit := w.stepTiles(ctx, now, hosts)
+	crit := w.stepTiles(ctx, t, hosts)
 	if hc := w.stepHosts(ctx, now, hosts); len(hc) >= 2 {
 		crit = append(crit, hc...)
 	}
@@ -271,34 +285,88 @@ func (w *Watcher) stepHosts(ctx context.Context, now int64, hosts []model.Host) 
 	return crits
 }
 
-func (w *Watcher) stepTiles(ctx context.Context, now int64, hosts []model.Host) []cause {
+// stepTiles는 타일 알림을 판정(/panels와 같은 함수)에 맞춘다. 감시 시간 밖(off)은 알림 없음이라 열린 것은 풀린다.
+func (w *Watcher) stepTiles(ctx context.Context, t time.Time, hosts []model.Host) []cause {
+	now := t.UnixMilli()
 	var crits []cause
-	panels := map[string]model.Panel{}
-	for _, p := range w.d.Panels {
-		panels[p.ID] = p
-	}
-	for _, ts := range query.EvalPanels(now, w.d.Panels, hosts, w.d.Live) {
-		p := panels[ts.Panel]
-		var tile model.Tile
-		for _, t := range p.Tiles {
-			if t.Title == ts.Title {
-				tile = t
+	for _, ps := range w.d.Panels.Eval(t, hosts, w.d.Live) {
+		p := ps.Panel
+		for i, ts := range ps.Tiles {
+			a := model.Alert{Kind: "tile", DedupKey: "tile:" + p.ID + "/" + ts.Title, Group: p.Group, Name: ts.Metric,
+				ExecID: ts.ExecID, Host: ts.Host}
+			want := ts.State == "warn" || ts.State == "crit"
+			if want {
+				a.Level = ts.State
+				if ts.Value != nil {
+					a.Value = *ts.Value
+				}
+				a.Message = tileMessage(p.Title, p.Tiles[i], ts, now)
+				if ts.Reason == "stale" {
+					a.ExecID = "" // 값(있으면)은 다른 서버의 실행이다
+				}
+				if ts.State == "crit" {
+					crits = append(crits, cause{p.Group, p.Title + " · " + ts.Title})
+				}
 			}
+			w.reconcileWhy(ctx, now, a, want, ts.Reason)
 		}
-		a := model.Alert{Kind: "tile", DedupKey: "tile:" + ts.Panel + "/" + ts.Title, Group: p.Group, Name: ts.Metric, ExecID: ts.ExecID}
-		want := ts.State == "warn" || ts.State == "crit"
-		if want {
-			a.Level, a.Value = ts.State, *ts.Value
-			limit, label := tile.Warn, "경고"
-			if ts.State == "crit" {
-				limit, label = tile.Crit, "위험"
-				crits = append(crits, cause{p.Group, p.Title + " · " + ts.Title})
-			}
-			a.Message = fmt.Sprintf("%s · %s %s%s (%s %s)", p.Title, ts.Title, fmtNum(*ts.Value), tile.Unit, label, fmtNum(*limit))
-		}
-		w.reconcile(ctx, now, a, want)
 	}
 	return crits
+}
+
+// tileMessage는 타일 알림 문구다(05 §18 계약 1의 표).
+//
+//	high  "시세 · 시세 수신량 5,200건/초 (위험 5,000)"
+//	low   "시세 · 1분 시세량 0건/분 · feed-03 (위험 하한 10,000)"   (서버는 있을 때만)
+//	stale "시세 · 1분 시세량 값 끊김 45초 · feed-01 (기준 30초)"
+func tileMessage(panel string, tile model.Tile, ts query.TileState, now int64) string {
+	label := "경고"
+	if ts.State == "crit" {
+		label = "위험"
+	}
+	switch ts.Reason {
+	case "stale":
+		stale, _ := model.ParseTileStale(tile.Stale)
+		return fmt.Sprintf("%s · %s 값 끊김 %s · %s (기준 %s)", panel, ts.Title, fmtGap(now-ts.StaleSince), ts.Host, fmtGap(stale.Milliseconds()))
+	case "low":
+		limit := tile.WarnBelow
+		if ts.State == "crit" {
+			limit = tile.CritBelow
+		}
+		host := ""
+		if ts.Host != "" {
+			host = " · " + ts.Host
+		}
+		return fmt.Sprintf("%s · %s %s%s%s (%s 하한 %s)", panel, ts.Title, fmtNum(*ts.Value), tile.Unit, host, label, fmtNum(*limit))
+	default:
+		limit := tile.Warn
+		if ts.State == "crit" {
+			limit = tile.Crit
+		}
+		return fmt.Sprintf("%s · %s %s%s (%s %s)", panel, ts.Title, fmtNum(*ts.Value), tile.Unit, label, fmtNum(*limit))
+	}
+}
+
+// fmtGap은 기간(ms)을 "45초", "1분 15초", "2시간"처럼 쓴다.
+func fmtGap(ms int64) string {
+	s := ms / 1000
+	if s < 0 {
+		s = 0
+	}
+	switch {
+	case s < 60:
+		return fmt.Sprintf("%d초", s)
+	case s < 3600:
+		if s%60 == 0 {
+			return fmt.Sprintf("%d분", s/60)
+		}
+		return fmt.Sprintf("%d분 %d초", s/60, s%60)
+	default:
+		if m := s % 3600 / 60; m != 0 {
+			return fmt.Sprintf("%d시간 %d분", s/3600, m)
+		}
+		return fmt.Sprintf("%d시간", s/3600)
+	}
 }
 
 func (w *Watcher) stepLogs(ctx context.Context, now int64, group map[string]string) {

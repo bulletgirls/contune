@@ -11,7 +11,7 @@ import (
 	"eum/internal/model"
 )
 
-// mountQuery는 /series, /hosts, /panels, /profile, /catalog, /logs, /hosts/{id}/procs를 붙인다.
+// mountQuery는 /series, /hosts, /profile, /catalog, /logs, /hosts/{id}/procs를 붙인다(/panels는 mountPanels).
 func mountQuery(mux *http.ServeMux, d Deps) {
 	mux.HandleFunc("GET /api/v1/series", func(w http.ResponseWriter, r *http.Request) { handleSeries(w, r, d) })
 	mux.HandleFunc("GET /api/v1/hosts", func(w http.ResponseWriter, r *http.Request) { handleHosts(w, r, d) })
@@ -20,7 +20,6 @@ func mountQuery(mux *http.ServeMux, d Deps) {
 		writeJSON(w, http.StatusOK, map[string]any{"groups": d.Catalog})
 	})
 	mux.HandleFunc("GET /api/v1/logs", func(w http.ResponseWriter, r *http.Request) { handleLogs(w, r, d) })
-	mux.HandleFunc("GET /api/v1/panels", func(w http.ResponseWriter, r *http.Request) { handlePanels(w, r, d) })
 	mux.HandleFunc("GET /api/v1/profile", func(w http.ResponseWriter, r *http.Request) { handleProfile(w, r, d) })
 }
 
@@ -66,7 +65,7 @@ func handleSeries(w http.ResponseWriter, r *http.Request, d Deps) {
 	}
 	agg := q.Get("agg")
 	if agg != "" && !validAgg(agg) {
-		writeErr(w, http.StatusBadRequest, "agg: sum, max, avg 중 하나여야 합니다")
+		writeErr(w, http.StatusBadRequest, "agg: sum, max, avg, min 중 하나여야 합니다")
 		return
 	}
 	if step == 0 {
@@ -126,14 +125,14 @@ func autoStep(from, to int64) int {
 	return s
 }
 
-func validAgg(a string) bool { return a == "sum" || a == "max" || a == "avg" }
+func validAgg(a string) bool { return a == "sum" || a == "max" || a == "avg" || a == "min" }
 
 // aggregateSeries는 같은 (name, exec_id)의 서버별 계열을 시각마다 하나로 묶는다(host "").
 func aggregateSeries(ss []model.Series, agg string) []model.Series {
 	type key struct{ name, exec string }
 	type acc struct {
-		sum, max float64
-		n        int
+		sum, max, min float64
+		n             int
 	}
 	groups := map[key]map[int64]*acc{}
 	for _, s := range ss {
@@ -145,12 +144,15 @@ func aggregateSeries(ss []model.Series, agg string) []model.Series {
 		for _, p := range s.Points {
 			a := g[p.TS]
 			if a == nil {
-				a = &acc{max: p.Value}
+				a = &acc{max: p.Value, min: p.Value}
 				g[p.TS] = a
 			}
 			a.sum += p.Value
 			if p.Value > a.max {
 				a.max = p.Value
+			}
+			if p.Value < a.min {
+				a.min = p.Value
 			}
 			a.n++
 		}
@@ -163,6 +165,8 @@ func aggregateSeries(ss []model.Series, agg string) []model.Series {
 			switch agg {
 			case "max":
 				v = a.max
+			case "min":
+				v = a.min
 			case "avg":
 				v = a.sum / float64(a.n)
 			}

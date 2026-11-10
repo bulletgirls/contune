@@ -228,3 +228,13 @@ func TestKindCollect(t *testing.T) {
 		t.Fatalf("kind=collect: %q", got)
 	}
 }
+
+func TestKindPanels(t *testing.T) {
+	e := newEnv(t)
+	seed(e)
+	e.add(50*time.Minute, "user:admin", "panels.reload", "panels", "패널 3개, 읽지 못한 파일 1개")
+	e.add(40*time.Minute, "user:b", "panelsx", "nope", "")
+	if got := targets(e.list("/api/v1/audit?kind=panels").Entries); got != "panels" {
+		t.Fatalf("kind=panels: %q", got)
+	}
+}

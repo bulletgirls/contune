@@ -15,6 +15,7 @@ import (
 	"eum/internal/manager/actor"
 	"eum/internal/manager/live"
 	"eum/internal/manager/notify"
+	"eum/internal/manager/query"
 	"eum/internal/manager/store"
 	"eum/internal/manager/store/memstore"
 	"eum/internal/model"
@@ -55,9 +56,9 @@ func newEnv(t *testing.T, status int, st store.StateStore) *env {
 	e.d = Deps{
 		Metrics: e.mt, State: e.st, Live: e.lv,
 		Flows: func() []model.Flow { return flows },
-		Panels: []model.Panel{{ID: "matching", Title: "체결", Group: "매매", Tiles: []model.Tile{
+		Panels: query.PanelsOf(time.UTC, model.Panel{ID: "matching", Title: "체결", Group: "매매", Tiles: []model.Tile{
 			{Title: "처리 대기", Metric: "biz.order.queue", Agg: "sum", Unit: "건", Warn: f64(1000), Crit: f64(2000)},
-		}}},
+		}}),
 		Thresholds: model.HostThresholds{CPUWarn: 70, CPUCrit: 90, MemWarn: 80, MemCrit: 90, SilentAfter: 10 * time.Second},
 		Notifiers:  []notify.Notifier{notify.NewWebhook(e.srv.URL)},
 		Risk:       func() (float64, float64, int, bool) { return e.risk, e.risk, 0, true },
@@ -128,7 +129,8 @@ func TestTileTransition(t *testing.T) {
 	e.put("m1", t0, model.Sample{Name: "biz.order.queue", Value: 2240})
 	e.step(t0)
 	as := e.alerts("firing")
-	if len(as) != 1 || as[0].DedupKey != "tile:matching/처리 대기" || as[0].Kind != "tile" || as[0].Level != "crit" {
+	if len(as) != 1 || as[0].DedupKey != "tile:matching/처리 대기" || as[0].Kind != "tile" || as[0].Level != "crit" ||
+		as[0].Message != "체결 · 처리 대기 2,240건 (위험 2,000)" || as[0].Host != "" {
 		t.Fatalf("%+v", as)
 	}
 	e.put("m1", t0+5000, model.Sample{Name: "biz.order.queue", Value: 100})
@@ -411,5 +413,116 @@ func TestAckAudit(t *testing.T) {
 	if len(l) != 1 || l[0].Action != "alert.ack" || l[0].Actor != "user:op1" ||
 		l[0].Target != strconv.FormatInt(id, 10) || l[0].Detail != "cpu @m1" {
 		t.Fatalf("%+v", l)
+	}
+}
+
+// quoteEnv는 시세 패널(1분 시세량: min, 하한, 값 끊김 30초)을 보는 감시자다.
+func quoteEnv(t *testing.T) *env {
+	e := newEnv(t, 200, nil)
+	e.d.Panels = query.PanelsOf(time.UTC, model.Panel{ID: "quote", Title: "시세", Group: "매매", Tiles: []model.Tile{
+		{Title: "1분 시세량", Metric: "biz.quote.count_1m", Agg: "min", Unit: "건/분",
+			WarnBelow: f64(60000), CritBelow: f64(10000), Stale: "30s"},
+	}})
+	e.w = New(e.d)
+	return e
+}
+
+func quote(v float64) model.Sample {
+	return model.Sample{Name: "biz.quote.count_1m", Value: v, ExecID: "Q"}
+}
+
+func (e *env) tileAlerts(state string) []model.Alert {
+	var out []model.Alert
+	for _, a := range e.alerts(state) {
+		if a.Kind == "tile" {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+func TestTileLowAlert(t *testing.T) {
+	e := quoteEnv(t)
+	e.put("feed-01", t0, quote(70000))
+	e.put("feed-03", t0, quote(0))
+	e.step(t0)
+	as := e.tileAlerts("firing")
+	if len(as) != 1 || as[0].Level != "crit" || as[0].Host != "feed-03" || as[0].DedupKey != "tile:quote/1분 시세량" ||
+		as[0].Message != "시세 · 1분 시세량 0건/분 · feed-03 (위험 하한 10,000)" {
+		t.Fatalf("하한 위험: %+v", as)
+	}
+	// 경고 하한(위험 → 경고는 해제 후 새로 연다)
+	e.put("feed-01", t0+5000, quote(70000))
+	e.put("feed-03", t0+5000, quote(30000))
+	e.step(t0 + 5000)
+	as = e.tileAlerts("firing")
+	if len(as) != 1 || as[0].Level != "warn" || as[0].Message != "시세 · 1분 시세량 30,000건/분 · feed-03 (경고 하한 60,000)" {
+		t.Fatalf("하한 경고: %+v", as)
+	}
+	e.put("feed-01", t0+10000, quote(70000))
+	e.put("feed-03", t0+10000, quote(65000))
+	e.step(t0 + 10000)
+	if len(e.tileAlerts("firing")) != 0 || len(e.tileAlerts("resolved")) != 2 {
+		t.Fatalf("풀리면 resolved: %+v", e.tileAlerts(""))
+	}
+}
+
+func TestTileStaleAlert(t *testing.T) {
+	e := quoteEnv(t)
+	for ms := t0; ms <= t0+60_000; ms += 5000 {
+		if ms <= t0+5000 {
+			e.put("feed-01", ms, quote(70000))
+		}
+		e.put("feed-02", ms, quote(70000))
+		e.step(ms)
+	}
+	// feed-01은 t0+5s 뒤 조용: t0+35s에 끊김(30초), 그 뒤로도 스스로 풀리지 않는다.
+	as := e.tileAlerts("")
+	if len(as) != 1 || as[0].State != "firing" || as[0].Level != "crit" || as[0].Host != "feed-01" || as[0].TS != t0+35_000 ||
+		as[0].Message != "시세 · 1분 시세량 값 끊김 30초 · feed-01 (기준 30초)" || as[0].ExecID != "" {
+		t.Fatalf("값 끊김: %+v", as)
+	}
+	// 끊김 시간 문구: 45초 · 1분 15초
+	if got := fmtGap(45_000); got != "45초" {
+		t.Errorf("45초: %q", got)
+	}
+	if got := fmtGap(75_000); got != "1분 15초" {
+		t.Errorf("75초: %q", got)
+	}
+	if got := fmtGap(2 * 60 * 60_000); got != "2시간" {
+		t.Errorf("2시간: %q", got)
+	}
+	// 끊김(위험) 중 남은 서버가 0을 보내도 이유는 끊김 그대로(같은 알림).
+	e.put("feed-02", t0+65_000, quote(0))
+	e.step(t0 + 65_000)
+	if as := e.tileAlerts(""); len(as) != 1 {
+		t.Fatalf("끊김이 먼저: %+v", as)
+	}
+	// 끊긴 서버가 돌아오면 끊김은 풀리고, 남은 하한 위험은 새 알림(같은 수준이어도 까닭이 바뀜).
+	e.put("feed-01", t0+70_000, quote(70000))
+	e.put("feed-02", t0+70_000, quote(0))
+	e.step(t0 + 70_000)
+	as = e.tileAlerts("")
+	if len(as) != 2 || len(e.tileAlerts("firing")) != 1 || !strings.Contains(e.tileAlerts("firing")[0].Message, "위험 하한") {
+		t.Fatalf("까닭이 바뀌면 새로 연다: %+v", as)
+	}
+	e.put("feed-01", t0+75_000, quote(70000))
+	e.put("feed-02", t0+75_000, quote(70000))
+	e.step(t0 + 75_000)
+	if len(e.tileAlerts("firing")) != 0 {
+		t.Fatalf("모두 풀림: %+v", e.tileAlerts(""))
+	}
+}
+
+func TestTileReasonResume(t *testing.T) {
+	// 이어받은 알림(까닭 모름)은 같은 수준이면 다시 열지 않는다(재시작마다 알림이 또 가지 않게).
+	e := quoteEnv(t)
+	e.put("feed-01", t0, quote(0))
+	e.step(t0)
+	w2 := New(e.d)
+	e.put("feed-01", t0+5000, quote(0))
+	w2.step(time.UnixMilli(t0 + 5000))
+	if as := e.tileAlerts(""); len(as) != 1 || as[0].State != "firing" {
+		t.Fatalf("이어받기: %+v", as)
 	}
 }
