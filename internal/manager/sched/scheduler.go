@@ -23,6 +23,9 @@ type Deps struct {
 	Now   func() time.Time
 	NewID func() string
 	TZ    *time.Location
+	// CollectPoll은 롱폴링이 부르는 수집 설정 쪽(05 §17): 에이전트가 본 판(rev, 없으면 "")과 시각을 기록하고
+	// 그 호스트의 지금 판(config_rev)과 대기 요청(한 번 주면 큐에서 빠짐)을 돌려준다. nil이면 지금과 같다.
+	CollectPoll func(host, rev string) (configRev string, reqs []model.CollectRequest)
 }
 
 // window는 tick·수동 실행이 읽는 최근 실행 범위(scheduled_at 기준)다.
@@ -80,6 +83,9 @@ func (s *Scheduler) wake() {
 	s.wakeCh = make(chan struct{})
 	s.wakeMu.Unlock()
 }
+
+// Wake는 기다리는 롱폴링 요청을 모두 깨운다. 수집 설정 저장·다시 읽기·요청이 생길 때 부른다(05 §17).
+func (s *Scheduler) Wake() { s.wake() }
 
 // wakeChan은 지금의 깨우기 채널이다. 저장소를 읽기 전에 잡아야 깨우기를 놓치지 않는다.
 func (s *Scheduler) wakeChan() <-chan struct{} {

@@ -217,3 +217,14 @@ func TestFlowHistory(t *testing.T) {
 		t.Fatalf("빈 이력: %d %s", rec.Code, rec.Body)
 	}
 }
+
+func TestKindCollect(t *testing.T) {
+	e := newEnv(t)
+	seed(e)
+	e.add(50*time.Minute, "user:a", "collect.save", "group:매매", "group-매매.yaml - → 0123abcd 출처 1개")
+	e.add(40*time.Minute, "user:a", "collect.peek", "host:h1", "/var/log/syslog 200줄")
+	e.add(30*time.Minute, "user:b", "collectx", "nope", "")
+	if got := targets(e.list("/api/v1/audit?kind=collect").Entries); got != "host:h1,group:매매" {
+		t.Fatalf("kind=collect: %q", got)
+	}
+}

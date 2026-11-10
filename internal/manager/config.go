@@ -13,6 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"eum/internal/manager/alert"
+	"eum/internal/manager/collect"
 	"eum/internal/manager/editor"
 	"eum/internal/manager/risk"
 	"eum/internal/manager/webauth"
@@ -46,6 +47,8 @@ type Config struct {
 	LLM    map[string]any `yaml:"llm"` // type: none | openai, base_url, model, api_key, timeout
 	Risk   risk.Config    `yaml:"risk"`
 	Alerts alert.Config   `yaml:"alerts"`
+	// Collect는 수집 설정 폴더(05 §17): 파일 하나 = 범위 하나. enabled가 꺼지면 화면에서 조회만 된다.
+	Collect collect.Config `yaml:"collect"`
 }
 
 // DefaultConfig는 설정 파일이 없을 때의 기본값이다.
@@ -69,6 +72,7 @@ func DefaultConfig() Config {
 			Every: 5 * time.Second, LogLevels: []string{"error"},
 			IncidentAfter: 30 * time.Second, IncidentClear: 60 * time.Second, AutoIncident: true,
 		},
+		Collect: collect.Config{Dir: "/collect", Enabled: false},
 	}
 	c.Notify.MinLevel = "warn"
 	return c

@@ -46,8 +46,11 @@ func parseWait(v string) time.Duration {
 }
 
 // handleCommands는 그 호스트의 DISPATCHED 실행을 명령으로 돌려준다(롱폴링). 명령 큐는 state.db다.
+// CollectPoll이 있으면 수집 설정 판(config_rev)과 화면이 시킨 요청(requests)을 붙인다(05 §17).
+// 기다리지 않고 바로 답하는 경우: 명령이 있거나, 요청이 있거나, rev를 보냈고 지금 판과 다를 때.
 func (s *Scheduler) handleCommands(w http.ResponseWriter, r *http.Request) {
-	host := r.URL.Query().Get("host")
+	q := r.URL.Query()
+	host := q.Get("host")
 	if host == "" {
 		writeError(w, http.StatusBadRequest, "host가 필요합니다")
 		return
@@ -55,16 +58,18 @@ func (s *Scheduler) handleCommands(w http.ResponseWriter, r *http.Request) {
 	if !agentHostOK(w, r, host) {
 		return
 	}
-	wait := parseWait(r.URL.Query().Get("wait"))
+	wait := parseWait(q.Get("wait"))
+	rev := q.Get("rev")
 
-	woken := s.wakeChan() // 읽기 전에 잡아야 그사이의 디스패치를 놓치지 않는다
+	woken := s.wakeChan() // 읽기 전에 잡아야 그사이의 디스패치·저장·요청을 놓치지 않는다
 	cmds, err := s.commandsFor(r.Context(), host)
 	if err != nil {
 		slog.Error("명령 조회 실패", "host", host, "err", err)
 		writeError(w, http.StatusInternalServerError, "명령을 읽지 못했습니다")
 		return
 	}
-	if len(cmds) == 0 && wait > 0 {
+	cfgRev, reqs := s.collectPoll(host, rev) // 명령 조회가 실패하면 요청을 꺼내지 않도록 뒤에 부른다
+	if !s.answerNow(cmds, reqs, rev, cfgRev) && wait > 0 {
 		timer := time.NewTimer(wait)
 		s.waiters.Add(1)
 		select {
@@ -82,8 +87,26 @@ func (s *Scheduler) handleCommands(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "명령을 읽지 못했습니다")
 			return
 		}
+		cfgRev, reqs = s.collectPoll(host, rev)
 	}
-	writeJSON(w, http.StatusOK, api.CommandsResponse{Commands: cmds})
+	writeJSON(w, http.StatusOK, api.CommandsResponse{Commands: cmds, ConfigRev: cfgRev, Requests: reqs})
+}
+
+// collectPoll은 Deps.CollectPoll을 부른다(없으면 판·요청 없음).
+func (s *Scheduler) collectPoll(host, rev string) (string, []model.CollectRequest) {
+	if s.d.CollectPoll == nil {
+		return "", nil
+	}
+	return s.d.CollectPoll(host, rev)
+}
+
+// answerNow는 롱폴링을 기다리지 않고 바로 답할지다. rev 비교는 수집 설정이 붙어 있을 때만 한다
+// (붙어 있지 않은 매니저가 rev를 보내는 에이전트에 매번 바로 답하면 헛돈다).
+func (s *Scheduler) answerNow(cmds []model.Command, reqs []model.CollectRequest, rev, cfgRev string) bool {
+	if len(cmds) > 0 || len(reqs) > 0 {
+		return true
+	}
+	return s.d.CollectPoll != nil && rev != "" && rev != cfgRev
 }
 
 // commandsFor는 host의 DISPATCHED 실행(오래된 것부터)으로 run 명령을 만들고 kill 명령(B7)을 붙인다.

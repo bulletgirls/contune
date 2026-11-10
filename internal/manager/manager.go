@@ -21,6 +21,7 @@ import (
 
 	"eum/internal/manager/alert"
 	"eum/internal/manager/assist"
+	"eum/internal/manager/collect"
 	"eum/internal/manager/editor"
 	"eum/internal/manager/flowdef"
 	"eum/internal/manager/ingest"
@@ -110,10 +111,18 @@ func New(cfg Config) (*Manager, error) {
 	}
 	lv := live.New()
 
-	// 스케줄러 → 편집기 → LLM → 초안 → 위험 엔진 → 알림
+	// 스케줄러 ↔ 수집 설정 → 편집기 → LLM → 초안 → 위험 엔진 → 알림
+	// 롱폴링은 수집 설정의 판·요청을 묻고(CollectPoll), 수집 설정은 저장·요청 때 롱폴링을 깨운다(Wake). 서로 필요해 클로저로 잇는다.
+	var col *collect.Collect
 	m.sched = sched.New(sched.Deps{
 		State: m.state, Live: lv, Flows: reg.List, Now: now, NewID: newID, TZ: loc,
+		CollectPoll: func(host, rev string) (string, []model.CollectRequest) { return col.Poll(host, rev) },
 	})
+	if col, err = collect.New(collect.Deps{
+		Cfg: cfg.Collect, State: m.state, Hosts: lv.Hosts, Wake: m.sched.Wake, Now: now, NewID: newID,
+	}); err != nil {
+		return nil, fmt.Errorf("collect: %w", err)
+	}
 	edDeps := editor.Deps{
 		State: m.state, Registry: reg, Cfg: cfg.Editor,
 		Running: m.sched.FlowRunning, Hosts: lv.Hosts, TZ: loc, Now: now,
@@ -163,6 +172,7 @@ func New(cfg Config) (*Manager, error) {
 		Thresholds: cfg.HostState, Catalog: model.Catalog(), Now: now,
 	})
 	m.sched.Mount(m.mux)
+	col.Mount(m.mux)
 	editor.Mount(m.mux, edDeps)
 	assist.Mount(m.mux, asDeps)
 	m.engine.Mount(m.mux)
