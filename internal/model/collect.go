@@ -4,16 +4,33 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // 수집 설정(05 §17, 카드 docs/cards/L-collect.md): 무엇을 수집할지는 매니저 화면에서 정하고,
 // 어디까지 읽어도 되는지(remote.read_roots)·실행 허용 목록은 에이전트 YAML에 남긴다.
 
 // LogSource는 로그 출처 하나다. 에이전트 YAML의 logs 항목과 같은 모양이다.
+// Match(줄 고르기)와 Metrics(숫자 뽑기) 가운데 하나 이상이 있어야 한다.
 type LogSource struct {
-	Name  string     `json:"name" yaml:"name"`
-	Path  string     `json:"path" yaml:"path"`
-	Match []LogMatch `json:"match" yaml:"match"`
+	Name    string      `json:"name" yaml:"name"`
+	Path    string      `json:"path" yaml:"path"`
+	Match   []LogMatch  `json:"match" yaml:"match"`
+	Metrics []LogMetric `json:"metrics,omitempty" yaml:"metrics,omitempty"`
+}
+
+// LogMetric은 로그 줄에서 업무 지표를 만드는 규칙이다(05 §18). 에이전트가 주기(tick)마다
+// 활동 중인 (출처, exec_id)별로 Name 지표 하나를 낸다.
+//
+//	count: Re에 맞은 줄 수(0 포함)          sum: 맞은 줄의 첫 번째 묶음 숫자의 합(0 포함)
+//	max:   그 숫자의 가장 큰 값(맞은 줄이 없으면 내지 않음)   last: 마지막 숫자(맞은 줄이 없으면 내지 않음)
+//
+// Window(비면 한 주기)를 주면 최근 그 기간의 값을 합치거나(count·sum) 고른다(max·last): 이동 창.
+type LogMetric struct {
+	Name   string `json:"name" yaml:"name"`                         // biz.로 시작(MetricNameOK)
+	Re     string `json:"re" yaml:"re"`                             // Go RE2. sum·max·last는 묶음 ( ) 하나 이상
+	Agg    string `json:"agg" yaml:"agg"`                           // count | sum | max | last
+	Window string `json:"window,omitempty" yaml:"window,omitempty"` // Go 기간 1s~10m(ParseMetricWindow), 비면 한 주기
 }
 
 // LogMatch는 줄 하나를 고르는 규칙이다. 위에서부터 처음 맞은 규칙의 Level이 그 줄의 수준이다.
@@ -80,14 +97,15 @@ type AgentConfigStatus struct {
 
 // AgentSourceStatus는 에이전트에서 도는(또는 건너뛴) 출처 하나다.
 type AgentSourceStatus struct {
-	Name    string     `json:"name"`
-	Path    string     `json:"path"`
-	Match   []LogMatch `json:"match"`
-	Origin  string     `json:"origin"`            // local | remote
-	Files   int        `json:"files"`             // 지금 따라가는 파일 수
-	Skipped string     `json:"skipped,omitempty"` // 적용하지 않은 이유(비면 도는 중)
-	Why     string     `json:"why,omitempty"`     // 건너뛴 까닭 코드: SkipOutside | SkipLocal | SkipInvalid
-	Dir     string     `json:"dir,omitempty"`     // SkipOutside: read_roots로 본 폴더({log_dir}를 펼친 것)
+	Name    string      `json:"name"`
+	Path    string      `json:"path"`
+	Match   []LogMatch  `json:"match"`
+	Metrics []LogMetric `json:"metrics,omitempty"` // 숫자 뽑기 규칙(05 §18)
+	Origin  string      `json:"origin"`            // local | remote
+	Files   int         `json:"files"`             // 지금 따라가는 파일 수
+	Skipped string      `json:"skipped,omitempty"` // 적용하지 않은 이유(비면 도는 중)
+	Why     string      `json:"why,omitempty"`     // 건너뛴 까닭 코드: SkipOutside | SkipLocal | SkipInvalid
+	Dir     string      `json:"dir,omitempty"`     // SkipOutside: read_roots로 본 폴더({log_dir}를 펼친 것)
 }
 
 // CollectRequest는 매니저가 롱폴링 응답(requests)으로 에이전트에 시키는 읽기 전용 요청이다.
@@ -126,17 +144,20 @@ type CollectFile struct {
 }
 
 // Problem은 수집 설정 검사에서 나온 문제 하나다. Index는 logs 안 순서(0부터, -1이면 목록 전체),
-// Rule은 match 안 순서(-1이면 출처 전체).
+// Rule은 match 안 순서(-1이면 출처 전체). Field가 metric.으로 시작하면 Rule은 metrics 안 순서다.
 type Problem struct {
 	Index int    `json:"index"`
 	Rule  int    `json:"rule"`
-	Field string `json:"field"` // logs | name | path | match | re | level
+	Field string `json:"field"` // logs | name | path | match | re | level | metrics | metric.name | metric.re | metric.agg | metric.window
 	Msg   string `json:"msg"`
 }
 
 func (p Problem) String() string {
 	if p.Index < 0 {
 		return fmt.Sprintf("logs: %s", p.Msg)
+	}
+	if f, ok := strings.CutPrefix(p.Field, "metric."); ok && p.Rule >= 0 {
+		return fmt.Sprintf("logs[%d].metrics[%d].%s: %s", p.Index, p.Rule, f, p.Msg)
 	}
 	if p.Rule >= 0 {
 		return fmt.Sprintf("logs[%d].match[%d].%s: %s", p.Index, p.Rule, p.Field, p.Msg)
@@ -152,6 +173,9 @@ func (p Problem) Text(logs []LogSource) string {
 	at := fmt.Sprintf("로그 파일 %d번째", p.Index+1)
 	if n := logs[p.Index].Name; n != "" {
 		at = fmt.Sprintf("로그 파일 '%s'(%d번째)", n, p.Index+1)
+	}
+	if strings.HasPrefix(p.Field, "metric.") && p.Rule >= 0 {
+		return fmt.Sprintf("%s 지표 %d %s: %s", at, p.Rule+1, FieldText(p.Field), p.Msg)
 	}
 	if p.Rule >= 0 {
 		return fmt.Sprintf("%s 규칙 %d %s: %s", at, p.Rule+1, FieldText(p.Field), p.Msg)
@@ -172,6 +196,16 @@ func FieldText(f string) string {
 		return "정규식"
 	case "level":
 		return "수준"
+	case "metrics":
+		return "지표"
+	case "metric.name":
+		return "지표 이름"
+	case "metric.re":
+		return "정규식"
+	case "metric.agg":
+		return "계산"
+	case "metric.window":
+		return "창"
 	}
 	return f
 }
@@ -180,6 +214,7 @@ func FieldText(f string) string {
 const (
 	MaxLogSources = 50  // 범위 하나의 출처 수
 	MaxLogMatches = 20  // 출처 하나의 규칙 수
+	MaxLogMetrics = 10  // 출처 하나의 숫자 뽑기 규칙 수
 	maxLogPath    = 512 // 경로 길이
 	maxLogRe      = 512 // 정규식 길이
 )
@@ -200,6 +235,7 @@ func ValidateLogSources(logs []LogSource) []Problem {
 		add(-1, -1, "logs", fmt.Sprintf("로그 파일은 %d개까지입니다", MaxLogSources))
 	}
 	seen := map[string]int{}
+	metricSeen := map[string]int{}
 	for i, s := range logs {
 		switch {
 		case !logNameRe.MatchString(s.Name):
@@ -214,8 +250,8 @@ func ValidateLogSources(logs []LogSource) []Problem {
 		if msg := CheckLogPath(s.Path); msg != "" {
 			add(i, -1, "path", msg)
 		}
-		if len(s.Match) == 0 {
-			add(i, -1, "match", "규칙이 하나 이상 있어야 합니다")
+		if len(s.Match) == 0 && len(s.Metrics) == 0 {
+			add(i, -1, "match", "줄 규칙이나 지표가 하나 이상 있어야 합니다")
 		}
 		if len(s.Match) > MaxLogMatches {
 			add(i, -1, "match", fmt.Sprintf("규칙은 %d개까지입니다", MaxLogMatches))
@@ -235,8 +271,66 @@ func ValidateLogSources(logs []LogSource) []Problem {
 				}
 			}
 		}
+		if len(s.Metrics) > MaxLogMetrics {
+			add(i, -1, "metrics", fmt.Sprintf("지표는 %d개까지입니다", MaxLogMetrics))
+		}
+		for r, m := range s.Metrics {
+			switch {
+			case !MetricNameOK(m.Name):
+				add(i, r, "metric.name", "지표 이름은 biz.로 시작하고 영문 소문자·숫자·_를 .로 이어 80자까지입니다(예 biz.quote.count_1m)")
+			default:
+				if at, dup := metricSeen[m.Name]; dup {
+					add(i, r, "metric.name", fmt.Sprintf("지표 %s를 logs[%d]에서 이미 냅니다", m.Name, at))
+				} else {
+					metricSeen[m.Name] = i
+				}
+			}
+			if m.Agg != "count" && m.Agg != "sum" && m.Agg != "max" && m.Agg != "last" {
+				add(i, r, "metric.agg", "계산은 count·sum·max·last 가운데 하나입니다")
+			}
+			switch {
+			case m.Re == "":
+				add(i, r, "metric.re", "정규식이 비어 있습니다")
+			case len(m.Re) > maxLogRe:
+				add(i, r, "metric.re", fmt.Sprintf("정규식은 %d자까지입니다", maxLogRe))
+			default:
+				re, err := regexp.Compile(m.Re)
+				switch {
+				case err != nil:
+					add(i, r, "metric.re", "정규식(RE2)을 해석하지 못함: "+err.Error())
+				case m.Agg != "count" && re.NumSubexp() == 0:
+					add(i, r, "metric.re", "숫자를 담을 묶음 ( )이 있어야 합니다(예 recv=(\\d+))")
+				}
+			}
+			if _, err := ParseMetricWindow(m.Window); err != nil {
+				add(i, r, "metric.window", err.Error())
+			}
+		}
 	}
 	return ps
+}
+
+var metricNameRe = regexp.MustCompile(`^biz(\.[a-z0-9_]+)+$`)
+
+// MetricNameOK는 로그에서 뽑는 지표의 이름 규칙이다: biz.로 시작, 점으로 이은 영문 소문자·숫자·_, 80자까지.
+// host.*·job.*·log.*·agent.*는 에이전트가 직접 내는 이름이라 로그 규칙으로 흉내 낼 수 없게 막는다.
+func MetricNameOK(name string) bool {
+	return len(name) <= 80 && metricNameRe.MatchString(name)
+}
+
+// ParseMetricWindow는 숫자 뽑기 규칙의 창이다. 비면 0(한 주기), 아니면 1s~10m의 초 단위 Go 기간.
+func ParseMetricWindow(s string) (time.Duration, error) {
+	if s == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, fmt.Errorf("창은 1s·60s·5m 같은 기간입니다")
+	}
+	if d < time.Second || d > 10*time.Minute || d%time.Second != 0 {
+		return 0, fmt.Errorf("창은 1초~10분, 초 단위입니다")
+	}
+	return d, nil
 }
 
 // CheckLogPath는 출처 경로 문법을 본다(peek 요청 경로도 이것으로 본다). 괜찮으면 "".

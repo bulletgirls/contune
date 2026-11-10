@@ -214,17 +214,24 @@ type Panel struct {
 	LogLevels []string `json:"log_levels" yaml:"log_levels,omitempty"`
 }
 
-// Tile은 패널 타일이다. Agg: sum | max | avg. KPI면 관제 화면에도 올림.
+// Tile은 패널 타일이다. Agg: sum | max | avg | min(05 §18, 그룹 서버 중 가장 낮은 값). KPI면 관제 화면에도 올림.
 // Signal은 골든 시그널 묶음(traffic | latency | errors | saturation, 비면 기타)으로 업무 탭이 타일을 묶는 데 쓴다(05 §14.10).
+// Warn·Crit은 값이 그 이상이면, WarnBelow·CritBelow는 그 이하이면 경고·위험이다(둘 다 써도 된다).
+// Stale은 값 끊김 기준(Go 기간 "30s", ParseTileStale), Active는 감시 시간("mon-fri 09:00-15:30", ParseActive):
+// 감시 시간 밖에서는 기준을 보지 않는다(05 §18, 카드 docs/cards/M-biz-metric.md).
 type Tile struct {
-	Title  string   `json:"title" yaml:"title"`
-	Signal string   `json:"signal,omitempty" yaml:"signal,omitempty"`
-	Metric string   `json:"metric" yaml:"metric"`
-	Agg    string   `json:"agg" yaml:"agg"`
-	Unit   string   `json:"unit" yaml:"unit"`
-	Warn   *float64 `json:"warn" yaml:"warn,omitempty"`
-	Crit   *float64 `json:"crit" yaml:"crit,omitempty"`
-	KPI    bool     `json:"kpi" yaml:"kpi,omitempty"`
+	Title     string   `json:"title" yaml:"title"`
+	Signal    string   `json:"signal,omitempty" yaml:"signal,omitempty"`
+	Metric    string   `json:"metric" yaml:"metric"`
+	Agg       string   `json:"agg" yaml:"agg"`
+	Unit      string   `json:"unit" yaml:"unit"`
+	Warn      *float64 `json:"warn" yaml:"warn,omitempty"`
+	Crit      *float64 `json:"crit" yaml:"crit,omitempty"`
+	WarnBelow *float64 `json:"warn_below" yaml:"warn_below,omitempty"`
+	CritBelow *float64 `json:"crit_below" yaml:"crit_below,omitempty"`
+	Stale     string   `json:"stale,omitempty" yaml:"stale,omitempty"`
+	Active    string   `json:"active,omitempty" yaml:"active,omitempty"`
+	KPI       bool     `json:"kpi" yaml:"kpi,omitempty"`
 }
 
 // Chart는 패널 차트다.
