@@ -273,6 +273,23 @@ type Incident struct {
 	Note   string `json:"note"`
 }
 
+// RiskHold는 위험 요인 하나에 사람이 단 확인 표시다(05 §6.4).
+// Kind ack = 확인 중(지수 그대로), accept = 용인(미확인 지수에서 그 요인을 뺀다).
+type RiskHold struct {
+	ID      int64   `json:"id"`
+	Feature string  `json:"feature"` // 특징 이름(risk.DefaultFeatures)
+	Kind    string  `json:"kind"`    // ack | accept
+	Reason  string  `json:"reason"`
+	Value   float64 `json:"value"`    // 걸 때의 값
+	Limit   float64 `json:"limit"`    // 이 값을 넘으면 풀림
+	At      int64   `json:"at"`       // 건 시각(ms)
+	By      string  `json:"by"`       // actor
+	Until   int64   `json:"until"`    // 만료 시각(ms)
+	EndedAt int64   `json:"ended_at"` // 0 = 살아 있음
+	EndedBy string  `json:"ended_by"`
+	EndNote string  `json:"end_note"` // 해제 | 만료 | 한도 초과 <값> | 바꿈
+}
+
 // AuditEntry는 감사 기록이다.
 type AuditEntry struct {
 	ID     int64  `json:"id"`
