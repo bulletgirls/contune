@@ -135,3 +135,20 @@ table.tbl { border-collapse:collapse; width:100%; }
 .trange input[type=datetime-local] { padding:1px 4px; }
 .trange .trlabel { margin-left:auto; display:flex; gap:8px; align-items:center; font-size:12px; color:var(--t2); font-variant-numeric:tabular-nums; }
 .trange .trlive { color:var(--ok); font-weight:600; }
+
+/* 로그인 화면 · 사용자 칸 · 역할 잠금 */
+body.logged-out #top, body.logged-out #layout, body.logged-out #warnbar { display:none; }
+#login { position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center; background:var(--bg); padding:16px; }
+.lg-card { width:320px; max-width:100%; background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:28px 24px 24px; display:flex; flex-direction:column; gap:10px; }
+.lg-logo { margin:0; text-align:center; font-size:28px; letter-spacing:2px; color:var(--t1); }
+.lg-sub { text-align:center; color:var(--t3); font-size:13px; margin-bottom:6px; }
+.lg-card input { width:100%; box-sizing:border-box; padding:8px 10px; font:inherit; color:var(--t1); background:var(--bg); border:1px solid var(--line); border-radius:4px; }
+.lg-card input:focus { outline:2px solid var(--accent); outline-offset:-1px; border-color:var(--accent); }
+.lg-card button { padding:8px 10px; margin-top:4px; background:var(--accent); color:var(--on-accent); border-color:var(--accent); font-weight:600; }
+.lg-msg { min-height:18px; font-size:12px; color:var(--crit); }
+#user { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--t2); }
+#user[hidden] { display:none; }
+#user .who { padding:2px 8px; border:1px solid var(--line); border-radius:10px; background:var(--bg); }
+#user button { padding:2px 8px; font-size:12px; }
+.locked { opacity:.45; cursor:not-allowed; }
+a.locked { text-decoration:none; }

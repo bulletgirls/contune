@@ -3,6 +3,7 @@ import { api, poll } from '../api.js';
 import { el, esc, fmtNum, fmtClock, badgeHTML, table, toast, DASH } from '../ui.js';
 import { lineChart } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
+import { gate } from '../auth.js';
 
 // ---- 순수 함수 (DOM 없이 호출) ----
 export const WARN_LINE = 30, CRIT_LINE = 60;
@@ -69,11 +70,11 @@ function topBox(risk, onTrained) {
     right.append(dl);
   }
   const res = el('span', { class: 'mres' });
-  const btn = el('button', { type: 'button', text: '지금 학습', onclick: async () => {
+  const btn = gate(el('button', { type: 'button', text: '지금 학습', onclick: async () => {
     btn.disabled = true;
     try { const r = await api('/risk/train', { method: 'POST' }); res.textContent = trainLine(r); onTrained(); } catch (e) { res.textContent = '학습하지 못함'; }
     btn.disabled = false;
-  } });
+  } }), 'admin');
   right.append(el('div', {}, btn, res));
   const w = m.weights;
   if (w) {
@@ -90,11 +91,11 @@ function incidentBox(incidents, reload) {
   const endCell = (i) => {
     if (i.end) return fmtDateTime(i.end);
     const inp = el('input', { type: 'datetime-local', 'aria-label': '끝 시각' });
-    return el('span', {}, '진행 중 ', inp, el('button', { type: 'button', text: '끝내기', onclick: async () => {
+    return el('span', {}, '진행 중 ', inp, gate(el('button', { type: 'button', text: '끝내기', onclick: async () => {
       const t = parseLocal(inp.value);
       if (!t) return;
       try { await api(`/incidents/${i.id}`, { method: 'PATCH', body: { end: t } }); reload(); } catch (e) { toast('고치지 못함'); }
-    } }));
+    } }), 'operator'));
   };
   box.append(table({ rows: sortIncidents(incidents), columns: [
     { label: '시작', render: (i) => fmtDateTime(i.start) }, { label: '끝', render: endCell },
@@ -106,7 +107,7 @@ function incidentBox(incidents, reload) {
   const e = el('input', { type: 'datetime-local', name: 'end', 'aria-label': '끝' });
   const sc = el('input', { type: 'text', name: 'scope', placeholder: '범위' });
   const ti = el('input', { type: 'text', name: 'title', placeholder: '제목', required: true });
-  f.append(s, e, sc, ti, el('button', { type: 'submit', text: '추가' }));
+  f.append(s, e, sc, ti, gate(el('button', { type: 'submit', text: '추가' }), 'operator'));
   f.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     try {
@@ -119,17 +120,17 @@ function incidentBox(incidents, reload) {
   const csv = el('div', { class: 'icsv' });
   const ta = el('textarea', { placeholder: 'start,end,scope,title', 'aria-label': 'CSV' });
   const out = el('span', { class: 'mres' });
-  const imp = el('button', { type: 'button', text: '가져오기', onclick: async () => {
+  const imp = gate(el('button', { type: 'button', text: '가져오기', onclick: async () => {
     if (!ta.value.trim()) return;
     try { const r = await api('/incidents/import', { method: 'POST', body: ta.value }); out.textContent = `${r.imported}건 가져옴`; ta.value = ''; reload(); } catch (err) { out.textContent = `가져오지 못함 · ${err.error || ''}`; }
-  } });
-  const dl = el('button', { type: 'button', text: '학습 데이터', onclick: async () => {
+  } }), 'admin');
+  const dl = gate(el('button', { type: 'button', text: '학습 데이터', onclick: async () => {
     try {
       const text = await api('/export/risk-dataset');
       const a = el('a', { href: URL.createObjectURL(new Blob([typeof text === 'string' ? text : JSON.stringify(text)], { type: 'text/csv' })), download: 'risk-dataset.csv' });
       a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     } catch (err) { toast('내려받지 못함'); }
-  } });
+  } }), 'operator');
   csv.append(ta, el('div', { class: 'irow' }, imp, dl, out));
   box.append(csv);
   return box;

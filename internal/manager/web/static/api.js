@@ -24,7 +24,16 @@ function setHealth(ok) {
 }
 
 export class ApiError extends Error {
-  constructor(status, error) { super(`${status} ${error}`); this.status = status; this.error = error; }
+  constructor(status, error, need) { super(`${status} ${error}`); this.status = status; this.error = error; this.need = need || ''; }
+}
+
+// 401(세션 없음·만료)과 403(역할 부족)을 앱에 알린다. 로그인 요청 자체의 401은 제외.
+const authListeners = new Set(), forbidListeners = new Set();
+export function onAuthRequired(fn) { authListeners.add(fn); return () => authListeners.delete(fn); }
+export function onForbidden(fn) { forbidListeners.add(fn); return () => forbidListeners.delete(fn); }
+function notifyStatus(path, status, need) {
+  if (status === 401 && path !== '/login') for (const fn of authListeners) { try { fn(); } catch (e) { /* 무시 */ } }
+  if (status === 403 && need) for (const fn of forbidListeners) { try { fn(need); } catch (e) { /* 무시 */ } }
 }
 
 // api('/hosts') → 본문 객체. opts: {method, body}
@@ -38,7 +47,8 @@ export async function api(path, opts = {}) {
       if (res.contentType && typeof res.body === 'string') { setHealth(true); return res.body; }
       if (res.status < 200 || res.status >= 300) {
         setHealth(true);
-        throw new ApiError(res.status, (res.body && res.body.error) || '');
+        notifyStatus(path, res.status, res.body && res.body.need);
+        throw new ApiError(res.status, (res.body && res.body.error) || '', res.body && res.body.need);
       }
       setHealth(true);
       return res.body;
@@ -53,7 +63,10 @@ export async function api(path, opts = {}) {
     let body = null;
     try { body = text ? JSON.parse(text) : null; } catch (e) { body = text; }
     setHealth(true);
-    if (!r.ok) throw new ApiError(r.status, (body && body.error) || String(text).slice(0, 200));
+    if (!r.ok) {
+      notifyStatus(path, r.status, body && body.need);
+      throw new ApiError(r.status, (body && body.error) || String(text).slice(0, 200), body && body.need);
+    }
     return body;
   } catch (e) {
     if (e instanceof ApiError) throw e;
