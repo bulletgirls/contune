@@ -49,7 +49,7 @@ export function bizAt(ts, ctx) {
   };
 }
 
-// 5초 단위 (E)·(W) 줄 수 (queue·p99·이력 버퍼의 기준 초과)
+// 5초 단위 (E)·(W) 줄 수 (queue·p99·히스토리 버퍼의 기준 초과)
 export function logLevelsAt(ts, ctx) {
   if (!ctx.surge) return { e: 0, w: 0 };
   const tick = Math.floor(ts / (5 * SEC)) * 5 * SEC;

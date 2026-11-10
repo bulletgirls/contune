@@ -152,7 +152,7 @@ func TestPanelYAML(t *testing.T) {
 	}
 	q := p.Tiles[5]
 	if q.Metric != "biz.order.queue" || q.Signal != "saturation" || q.Agg != "sum" || q.Unit != "건" || q.Warn == nil || *q.Warn != 500 || q.Crit == nil || *q.Crit != 2000 {
-		t.Errorf("큐 깊이 타일 %+v", q)
+		t.Errorf("대기 큐 타일 %+v", q)
 	}
 	if p.Tiles[0].Signal != "traffic" || p.Tiles[7].Signal != "" {
 		t.Errorf("signal %q %q", p.Tiles[0].Signal, p.Tiles[7].Signal)

@@ -3,17 +3,17 @@ title: 체결
 group: 매매/체결
 # signal: 골든 시그널 묶음(traffic 트래픽 · latency 지연 시간 · errors 오류 · saturation 포화도). 없으면 기타(05 §14.10).
 tiles:
-  - { title: 주문 유입량,         signal: traffic,    metric: biz.order.in_tps,         agg: sum, unit: TPS, kpi: true }
-  - { title: 체결 처리량,         signal: traffic,    metric: biz.order.tps,            agg: sum, unit: TPS }
-  - { title: 평균 응답 시간,      signal: latency,    metric: biz.order.latency_avg_ms, agg: max, unit: ms, warn: 20, crit: 100 }
-  - { title: p99 응답 시간,       signal: latency,    metric: biz.order.latency_p99_ms, agg: max, unit: ms, warn: 50, crit: 200, kpi: true }
-  - { title: 오류 로그 발생률,    signal: errors,     metric: log.error.count,          agg: sum, unit: 건/초, warn: 1, crit: 5 }
-  - { title: 큐 깊이,             signal: saturation, metric: biz.order.queue,          agg: sum, unit: 건, warn: 500, crit: 2000, kpi: true }
-  - { title: 이력 버퍼 사용률,    signal: saturation, metric: biz.order.histbuf_pct,    agg: max, unit: "%", warn: 70, crit: 90 }
-  - { title: 프로파일링 오버헤드,                     metric: agent.profiler.cpu_pct,   agg: max, unit: "%", warn: 1 }
+  - { title: 주문 유입량,          signal: traffic,    metric: biz.order.in_tps,         agg: sum, unit: TPS, kpi: true }
+  - { title: 체결 처리량,          signal: traffic,    metric: biz.order.tps,            agg: sum, unit: TPS }
+  - { title: 평균 응답 시간,       signal: latency,    metric: biz.order.latency_avg_ms, agg: max, unit: ms, warn: 20, crit: 100 }
+  - { title: p99 응답 시간,        signal: latency,    metric: biz.order.latency_p99_ms, agg: max, unit: ms, warn: 50, crit: 200, kpi: true }
+  - { title: 오류 로그 발생률,     signal: errors,     metric: log.error.count,          agg: sum, unit: 건/초, warn: 1, crit: 5 }
+  - { title: 대기 큐,              signal: saturation, metric: biz.order.queue,          agg: sum, unit: 건, warn: 500, crit: 2000, kpi: true }
+  - { title: 히스토리 버퍼 사용률, signal: saturation, metric: biz.order.histbuf_pct,    agg: max, unit: "%", warn: 70, crit: 90 }
+  - { title: 프로파일링 오버헤드,                      metric: agent.profiler.cpu_pct,   agg: max, unit: "%", warn: 1 }
 charts:
-  - { title: 처리량,          unit: TPS, agg: sum, metrics: [biz.order.in_tps, biz.order.tps] }
-  - { title: 응답 시간,       unit: ms,  agg: max, metrics: [biz.order.latency_avg_ms, biz.order.latency_p99_ms] }
-  - { title: 큐 깊이,         unit: 건,  agg: sum, metrics: [biz.order.queue] }
-  - { title: 이력 버퍼 사용률, unit: "%", agg: max, metrics: [biz.order.histbuf_pct] }
+  - { title: 처리량,               unit: TPS, agg: sum, metrics: [biz.order.in_tps, biz.order.tps] }
+  - { title: 응답 시간,            unit: ms,  agg: max, metrics: [biz.order.latency_avg_ms, biz.order.latency_p99_ms] }
+  - { title: 대기 큐,              unit: 건,  agg: sum, metrics: [biz.order.queue] }
+  - { title: 히스토리 버퍼 사용률, unit: "%", agg: max, metrics: [biz.order.histbuf_pct] }
 log_levels: [error, warn]

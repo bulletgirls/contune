@@ -10,7 +10,7 @@
 | 관제 | 중복 정보·번역체 단어를 빼고 간결하게. **장애 위험 지수**: 과거 장애 기록과 수집 데이터의 관계를 주기적으로 학습해 지수로. 시연 때 정확하지 않아도 메커니즘(로컬 ML 또는 사내 LLM)은 갖춤 | §5 알림, §6 위험 지수, §14 화면 |
 | 서버 | 서브 탭 **개요 · CPU · 메모리 · 디스크 · 네트워크 · 프로세스**와 지정 항목(2026-11-10 개편, §14.8). 과거 구간을 골라 봄. 실수집은 미뤄도 항목은 있고 확장 가능 | §2 지표 카탈로그, §3 실행 프로세스 지표, §14.8 |
 | 배치 | 화면에서 작업 구성, 노드 조작(강제 OK 등), **자연어 입력 통로**(LLM 연동은 확장, 입력 화면은 지금) | §7 운영자 조작, §8 편집기, §9 자연어 초안 |
-| 업무(신설) | APM이 보던 정보: 이력 버퍼, 초당 주문 건수, 평균 응답시간, **업무 로그 이벤트**. 테스트 프로그램 로그의 `(E)` 줄을 주기 수집해 알림 | §4 업무 로그, §5 알림, §14.5 |
+| 업무(신설) | APM이 보던 정보: 히스토리 버퍼, 초당 주문 건수, 평균 응답시간, **업무 로그 이벤트**. 테스트 프로그램 로그의 `(E)` 줄을 주기 수집해 알림 | §4 업무 로그, §5 알림, §14.5 |
 
 | 원칙 | 02의 규칙 | 바뀐 규칙 |
 |---|---|---|
@@ -172,7 +172,7 @@ logs:
 | `cpu_max` | 최대 서버 CPU 사용률 | `host.cpu.pct` 최대 → 평균 | 70~95 |
 | `mem_max` | 최대 메모리 사용률 | `host.mem.used_pct` 최대 → 평균 | 80~95 |
 | `hosts_hot` | CPU 70% 초과 서버 수 | `host.cpu.pct ≥ 70`인 서버 수 → 최대 | 1~5 |
-| `queue` | 큐 깊이 | `biz.order.queue` 합 → 최대 | 500~2000 |
+| `queue` | 대기 큐 | `biz.order.queue` 합 → 최대 | 500~2000 |
 | `p99` | p99 응답 시간 | `biz.order.latency_p99_ms` 최대 → 최대 | 50~200 |
 | `lag` | 처리량 부족(유입 − 처리) | `biz.order.in_tps − biz.order.tps` 합 → 평균 | 0~1000 |
 | `log_errors` | 오류 로그 수 | `log.error.count` 합 → 합 | 0~10 |
@@ -266,17 +266,17 @@ logs:
 
 // GET /api/v1/logs?group=매매/체결&level=error
 {"events":[{"id":981,"ts":1761534000000,"host":"match-01","source":"matching","exec_id":"01JBQ7...",
-  "level":"error","message":"(E) 10:42:31 QUEUE 큐 깊이 2,240건 (위험 2,000)"}]}
+  "level":"error","message":"(E) 10:42:31 QUEUE 대기 큐 2,240건 (위험 2,000)"}]}
 
 // GET /api/v1/alerts?state=firing
-{"alerts":[{"id":12,"ts":1761534000000,"kind":"tile","dedup_key":"tile:matching/큐 깊이","level":"crit","state":"firing",
+{"alerts":[{"id":12,"ts":1761534000000,"kind":"tile","dedup_key":"tile:matching/대기 큐","level":"crit","state":"firing",
   "host":"","group":"매매/체결","name":"biz.order.queue","exec_id":"01JBQ7...","value":2240,
-  "message":"체결 · 큐 깊이 2,240건 (위험 2,000)","resolved_at":0,"acked_at":0,"acked_by":""}]}
+  "message":"체결 · 대기 큐 2,240건 (위험 2,000)","resolved_at":0,"acked_at":0,"acked_by":""}]}
 
 // GET /api/v1/risk
 {"now":1761534000000,"index":72,"level":"crit","mode":"model",            // mode: model | rule
  "model":{"kind":"logreg","trained_at":1761533400000,"windows":10080,"positives":61,"incidents":6,"auc":0.93,"lead_sec":300},
- "factors":[{"feature":"queue","title":"큐 깊이","value":2240,"contrib":1.9},
+ "factors":[{"feature":"queue","title":"대기 큐","value":2240,"contrib":1.9},
             {"feature":"p99","title":"p99 응답 시간","value":385,"contrib":1.2}],
  "note":"",                                                              // 예: "규칙 기반 · 학습 사례 부족(장애 2건)"
  "history":[[1761530400000,8],[1761530410000,9]]}
@@ -478,7 +478,7 @@ CREATE VIEW IF NOT EXISTS v_logs AS SELECT ts, host, source, exec_id, level, mes
 | 같은 화면에서 같은 사실 두 번(이상 서버 목록 + 실패 배너 + 열지도 표시) | 이상은 **실시간 이벤트** 한 목록에만. 맵은 전체 모양만 |
 | 하드코딩 값(`실패 1`, `종료 코드 2`, `10:12`, 스텝 설명 사전) | 전부 API 값. 없으면 `—` |
 
-용어: 실행 ID(exec_id), 시도(attempt), 강제 OK, 재실행, 강제 종료, 큐 깊이, 응답 시간, 상주 프로세스 실행 중, 서비스 미기동, 미수집, 선행 실패, 장애 위험도, 장애 기록, 주요 요인. 배치 화면 용어는 §14.9 표, 지표·로그·실행 용어는 §14.10 표를 따른다. **등급**(서버 상태·알림): 정상 · 경고 · 위험 · 무응답(`ok · warn · crit · silent`). **배치 상태**: 성공 · 실행 중 · 예정 · 조건 대기 · 실패. 등급 이름은 `ui.js`의 `LEVEL_TEXT` 한 곳에서 가져다 쓴다. 숫자는 `tabular-nums`와 천 단위 쉼표, 단위는 값 뒤 작은 글자.
+용어: 실행 ID(exec_id), 시도(attempt), 강제 OK, 재실행, 강제 종료, 대기 큐, 응답 시간, 상주 프로세스 실행 중, 서비스 미기동, 미수집, 선행 실패, 장애 위험도, 장애 기록, 주요 요인. 배치 화면 용어는 §14.9 표, 지표·로그·실행 용어는 §14.10 표를 따른다. **등급**(서버 상태·알림): 정상 · 경고 · 위험 · 무응답(`ok · warn · crit · silent`). **배치 상태**: 성공 · 실행 중 · 예정 · 조건 대기 · 실패. 등급 이름은 `ui.js`의 `LEVEL_TEXT` 한 곳에서 가져다 쓴다. 숫자는 `tabular-nums`와 천 단위 쉼표, 단위는 값 뒤 작은 글자.
 
 ### 14.3 관제 (`#dashboard`)
 
@@ -513,23 +513,23 @@ title: 체결
 group: 매매/체결
 # signal: 골든 시그널 묶음(traffic 트래픽 · latency 지연 시간 · errors 오류 · saturation 포화도). 없으면 기타(05 §14.10).
 tiles:
-  - { title: 주문 유입량,         signal: traffic,    metric: biz.order.in_tps,         agg: sum, unit: TPS, kpi: true }
-  - { title: 체결 처리량,         signal: traffic,    metric: biz.order.tps,            agg: sum, unit: TPS }
-  - { title: 평균 응답 시간,      signal: latency,    metric: biz.order.latency_avg_ms, agg: max, unit: ms, warn: 20, crit: 100 }
-  - { title: p99 응답 시간,       signal: latency,    metric: biz.order.latency_p99_ms, agg: max, unit: ms, warn: 50, crit: 200, kpi: true }
-  - { title: 오류 로그 발생률,    signal: errors,     metric: log.error.count,          agg: sum, unit: 건/초, warn: 1, crit: 5 }
-  - { title: 큐 깊이,             signal: saturation, metric: biz.order.queue,          agg: sum, unit: 건, warn: 500, crit: 2000, kpi: true }
-  - { title: 이력 버퍼 사용률,    signal: saturation, metric: biz.order.histbuf_pct,    agg: max, unit: "%", warn: 70, crit: 90 }
-  - { title: 프로파일링 오버헤드,                     metric: agent.profiler.cpu_pct,   agg: max, unit: "%", warn: 1 }
+  - { title: 주문 유입량,          signal: traffic,    metric: biz.order.in_tps,         agg: sum, unit: TPS, kpi: true }
+  - { title: 체결 처리량,          signal: traffic,    metric: biz.order.tps,            agg: sum, unit: TPS }
+  - { title: 평균 응답 시간,       signal: latency,    metric: biz.order.latency_avg_ms, agg: max, unit: ms, warn: 20, crit: 100 }
+  - { title: p99 응답 시간,        signal: latency,    metric: biz.order.latency_p99_ms, agg: max, unit: ms, warn: 50, crit: 200, kpi: true }
+  - { title: 오류 로그 발생률,     signal: errors,     metric: log.error.count,          agg: sum, unit: 건/초, warn: 1, crit: 5 }
+  - { title: 대기 큐,              signal: saturation, metric: biz.order.queue,          agg: sum, unit: 건, warn: 500, crit: 2000, kpi: true }
+  - { title: 히스토리 버퍼 사용률, signal: saturation, metric: biz.order.histbuf_pct,    agg: max, unit: "%", warn: 70, crit: 90 }
+  - { title: 프로파일링 오버헤드,                      metric: agent.profiler.cpu_pct,   agg: max, unit: "%", warn: 1 }
 charts:
-  - { title: 처리량,          unit: TPS, agg: sum, metrics: [biz.order.in_tps, biz.order.tps] }
-  - { title: 응답 시간,       unit: ms,  agg: max, metrics: [biz.order.latency_avg_ms, biz.order.latency_p99_ms] }
-  - { title: 큐 깊이,         unit: 건,  agg: sum, metrics: [biz.order.queue] }
-  - { title: 이력 버퍼 사용률, unit: "%", agg: max, metrics: [biz.order.histbuf_pct] }
+  - { title: 처리량,               unit: TPS, agg: sum, metrics: [biz.order.in_tps, biz.order.tps] }
+  - { title: 응답 시간,            unit: ms,  agg: max, metrics: [biz.order.latency_avg_ms, biz.order.latency_p99_ms] }
+  - { title: 대기 큐,              unit: 건,  agg: sum, metrics: [biz.order.queue] }
+  - { title: 히스토리 버퍼 사용률, unit: "%", agg: max, metrics: [biz.order.histbuf_pct] }
 log_levels: [error, warn]
 ```
 
-- **이력 버퍼 사용률**: 시연 체결 서비스가 처리한 주문 이력을 체결 통보 전까지 담아 두는 고리 버퍼의 사용률이다(E1). 업무마다 의미가 다른 항목이라 패널 YAML의 타일·차트 한 줄로만 정의한다.
+- **히스토리 버퍼 사용률**: 시연 체결 서비스가 처리한 주문 이력을 체결 통보 전까지 담아 두는 고리 버퍼의 사용률이다(E1). 업무마다 의미가 다른 항목이라 패널 YAML의 타일·차트 한 줄로만 정의한다.
 - 차트 임계선은 따로 적지 않는다. 차트 지표를 쓰는 타일(여럿이면 `kpi` 타일)의 `warn`·`crit`을 그린다.
 
 ### 14.6 알림 · 장애 위험
@@ -616,7 +616,7 @@ log_levels: [error, warn]
 | 서버를 넘어 실행(선 위 글자) | 점선 + 범례 **서버 간 의존** | |
 | 서비스 실행 중 · 01M6SB… | **상주 프로세스 실행 중** | daemon |
 | 선행 실패로 대기 · 재시도 N회차 | **선행 실패 · 시도 N** | upstream_failed · try number |
-| 처리량 · 처리 대기 · 응답시간 · 서비스 CPU · 서버 CPU | **처리량(TPS) · 대기 큐 · 응답 시간 · 프로세스 CPU 사용률 · 서버 CPU 사용률** | 타임머신 띠. 체결 패널 타일·차트와 위험 지수 요인도 `대기 큐`·`응답 시간`·`프로파일러 부하`로 맞춤(→ §14.10에서 `큐 깊이`·`프로파일링 오버헤드`로 다시 바꿈) |
+| 처리량 · 처리 대기 · 응답시간 · 서비스 CPU · 서버 CPU | **처리량(TPS) · 대기 큐 · 응답 시간 · 프로세스 CPU 사용률 · 서버 CPU 사용률** | 타임머신 띠. 체결 패널 타일·차트와 위험 지수 요인도 `대기 큐`·`응답 시간`·`프로파일러 부하`로 맞춤(→ §14.10에서 `프로파일러 부하`는 `프로파일링 오버헤드`로 바꿈. `대기 큐`는 유지) |
 | 표본 · 세부 · 상태 전이 · 로그 끝 | **샘플 · 실행 상세 · 상태 변경 이력 · 로그(마지막 n줄)** | |
 | A 다시 · B 다시 · 지우기 · 고정 구간 | **A 구간 다시 선택 · B 구간 다시 선택 · 선택 해제 · 자동 선택(처음·끝 30초)** | |
 | 예시 · 검증 n · 자연어로 만들기 | **템플릿 · 문제 n · AI 초안** | |
@@ -650,7 +650,7 @@ mock(`?mock=1`)은 플로우마다 지난 실행 7~10회를 더 만든다(가끔
 |---|---|
 | Google SRE 4대 골든 시그널 | 서비스 지표를 **트래픽 · 지연 시간 · 오류 · 포화도**로 묶는다. 지연 시간은 평균만 보지 않고 p99를 함께 |
 | New Relic APM Summary · 와탭 애플리케이션 대시보드 | 처리량은 **TPS**, 응답 시간은 평균·백분위. 한국 APM에서 그대로 통용되는 말 |
-| IBM MQ 모니터링(현재 큐 깊이 `CURDEPTH`) | 큐에 쌓인 건수는 **큐 깊이(Queue Depth)**. 금융권 MQ 운영에서 쓰는 말 |
+| IBM MQ 모니터링(현재 큐 깊이 `CURDEPTH`) | 측정량은 큐에 쌓인 건수(Queue Depth). 화면 이름은 운영자에게 익숙한 **대기 큐**로 둔다(2026-11-10 결정) |
 | Grafana Stat 패널 · Stephen Few 불릿 그래프 | 타일 = 이름 + 큰 값 + 추이선 + 임계 막대. 상태는 색 + 기호 + 글자 |
 | Grafana Explore 로그 | 맨 위 **레벨별 로그량 막대**(누르면 그 구간으로 좁힘), 목록은 한 줄로 자르고 눌러 펼침, 숫자를 뺀 중복 묶기 |
 | Datadog Log Explorer | **패턴** 보기(숫자를 `∗`로 바꿔 같은 문장끼리 묶고 건수), **Live Tail**(실시간 추적) |
@@ -660,7 +660,7 @@ mock(`?mock=1`)은 플로우마다 지난 실행 7~10회를 더 만든다(가끔
 | Chrome DevTools Performance · Datadog 트레이스 | 세로로 쌓은 **트랙**: 왼쪽 이름 열 + 같은 시간축, 시간축은 맨 아래 한 번 |
 | Airflow 3 태스크 인스턴스 | 요약 위, 로그·상세는 아래 탭 |
 
-**지표 이름 규칙**: `대상 + 측정량`(+ 통계는 앞에: `평균 응답 시간`·`p99 응답 시간`·`최대 메모리 사용률`). 비율은 `~사용률`, 초당 건수는 `~량`과 단위 `TPS`, 쌓인 건수는 `큐 깊이`, 한 번 걸린 시간은 `~시간`. 화면 표기만 바꾸고 지표 이름(`biz.order.*`)과 API 필드는 그대로다.
+**지표 이름 규칙**: `대상 + 측정량`(+ 통계는 앞에: `평균 응답 시간`·`p99 응답 시간`·`최대 메모리 사용률`). 비율은 `~사용률`, 초당 건수는 `~량`과 단위 `TPS`, 큐에 쌓인 건수는 `대기 큐`, 한 번 걸린 시간은 `~시간`. 화면 표기만 바꾸고 지표 이름(`biz.order.*`)과 API 필드는 그대로다.
 
 **용어**(화면 표기):
 
@@ -669,8 +669,8 @@ mock(`?mock=1`)은 플로우마다 지난 실행 7~10회를 더 만든다(가끔
 | 주문 접수 · 체결 처리 (`건/초`) | **주문 유입량 · 체결 처리량** (`TPS`) | 골든 시그널 Traffic, APM의 TPS |
 | 차트 `주문 건수` | **처리량** (`TPS`, 계열: 주문 유입량 · 체결 처리량) | 초당 값을 `건수`로 부르지 않음 |
 | 평균 응답 · p99 응답 | **평균 응답 시간 · p99 응답 시간** | Latency, 응답 시간(response time) |
-| 대기 큐 · 처리 대기 | **큐 깊이** (`건`) | Queue Depth(IBM MQ `CURDEPTH`) |
-| 이력 버퍼 (`%`) | **이력 버퍼 사용률** | 사용률(utilization) |
+| 처리 대기 | **대기 큐** (`건`) | 측정량은 Queue Depth(IBM MQ `CURDEPTH`). 화면 이름은 2026-11-10 결정으로 `대기 큐` 유지(`큐 깊이` 안 씀) |
+| 이력 버퍼 (`%`) | **히스토리 버퍼 사용률** | 사용률(utilization). 버퍼 이름은 2026-11-10 결정으로 `히스토리 버퍼` |
 | 오류 로그 (`건/초`) | **오류 로그 발생률** | Errors(rate) |
 | 프로파일러 부하 · 함수 추적 부하 | **프로파일링 오버헤드** | profiling overhead |
 | 업무 로그 · 수준 · 출처 · 실행 · 글자 찾기 · 실시간(체크) | **로그 · 레벨 · 소스 · 실행 ID · 메시지 검색 · 실시간 추적** | log level, source, Live Tail |
@@ -679,7 +679,7 @@ mock(`?mock=1`)은 플로우마다 지난 실행 7~10회를 더 만든다(가끔
 | A 구간 다시 선택 · B 구간 다시 선택 · 선택 해제 | **기준 구간(A) · 비교 구간(B) 칩**(눌러서 다시 고름) · **초기화** | Pyroscope Baseline · Comparison |
 | 함수 · A 구간 비중 · B 구간 비중 · 차이(%p) | **함수 · 기준(A) Self 비중 · 비교(B) Self 비중 · 변화** | Self(그 함수 자체에서 머문 샘플) |
 | 표본 · 실행 상세(접힘) · 로그(마지막 200줄) · 업무 로그 | **샘플 · 실행 요약 카드 · 실행 로그(stdout · stderr) · 애플리케이션 로그** | |
-| 체결 서비스 로그 `처리 대기 … (주의 500)` | `QUEUE 큐 깊이 2,240건 (경고 500)`, `HISTBUF 이력 버퍼 사용률 78% (경고 70)` | 등급 이름 `경고`와 맞춤(demo/matching_svc.c · seed · mock) |
+| 체결 서비스 로그 `처리 대기 … (주의 500)` | `QUEUE 대기 큐 2,240건 (경고 500)`, `HISTBUF 히스토리 버퍼 사용률 78% (경고 70)` | 등급 이름 `경고`와 맞춤(demo/matching_svc.c · seed · mock) |
 
 화면:
 
@@ -693,7 +693,7 @@ mock(`?mock=1`)은 플로우마다 지난 실행 7~10회를 더 만든다(가끔
 | 실행 이력 `#runs` | 시간 구간 막대(기본 24시간, `/runs?from=&to=`) · 거르기(플로우 · 실행 서버 · 실행 유형 · 검색) · **요약 카드 5장**(스텝 실행 수와 플로우 실행 수 · 성공률(끝난 실행 중, 막대) · 실패 · 실행 중과 대기 · 소요 시간 p50·p95) · **시간대별 실행**(칸 48개 이하: 1·5·15·30분, 1·3·6·12시간, 1일. 상태 색 쌓기, 누르면 그 시간대만) · 표 카드(상태 분할 단추와 수, 고정 높이 스크롤, 머리 붙박이). 표: 상태 · 시작 시각 · 플로우 › 스텝(플로우를 누르면 그 플로우로 거름) · 실행 서버 · 시도(2 이상 주황) · **소요 시간 막대**(표 안 최대 대비, 실행 중은 파랑, 같은 스텝 중앙값의 2배 넘으면 주황 + `9.0×`) · 종료 코드(0 아니면 빨강) · 실행 유형 · 실행 ID. 실패·실행 중 줄은 왼쪽 색 막대. 주소 `?status=failed|running|waiting|succeeded`(예전 `FAILED`도 받음) |
 | 타임머신 머리 | `실행 이력 › 배치판 › 플로우` 경로, 스텝 이름 + 상태 배지 + `● 상주 프로세스 실행 중`, 오른쪽 내려받기(`⤓ 지표 CSV · 프로파일 · 로그`). 아래 실행 ID(눌러 복사) · 실행 서버(그룹) · 시도 · 실행 유형 |
 | 실행 요약 카드 6장 | 종료 코드(정상·비정상 종료) · 시작 시각(예정보다 늦은 시간) · 종료 시각 · 소요 시간 · 최대 CPU 사용률(100% 넘으면 `코어 여러 개 사용`) · 최대 메모리(RSS) |
-| 지표 트랙 | 보는 구간 = 실행 앞뒤로 **실행 길이만큼(30초 ~ 5분)**. 구간 도구: 기준(A) · 비교(B) 칩(구간과 길이, 누르면 다음 끌기가 그쪽) · 자동 선택(처음·끝 30초) · 초기화. 트랙마다 왼쪽 이름 열(이름 · 단위 · 구간 최대 · 계열 범례) + 차트(제목 줄 없음, 시간축은 맨 아래 트랙에만). **실행 시작·종료 세로 점선**(가까우면 `시작 · 종료` 하나), A·B 음영은 테두리와 `A`·`B` 글자. 큐 깊이·응답 시간 트랙에 패널 임계선 |
+| 지표 트랙 | 보는 구간 = 실행 앞뒤로 **실행 길이만큼(30초 ~ 5분)**. 구간 도구: 기준(A) · 비교(B) 칩(구간과 길이, 누르면 다음 끌기가 그쪽) · 자동 선택(처음·끝 30초) · 초기화. 트랙마다 왼쪽 이름 열(이름 · 단위 · 구간 최대 · 계열 범례) + 차트(제목 줄 없음, 시간축은 맨 아래 트랙에만). **실행 시작·종료 세로 점선**(가까우면 `시작 · 종료` 하나), A·B 음영은 테두리와 `A`·`B` 글자. 대기 큐·응답 시간 트랙에 패널 임계선 |
 | 프로파일 | 선택 없으면 `실행 전체` 하나를 전체 폭, A·B면 둘. `가장 늘어난 함수` 한 줄과 Self 비중 변화 표(늘면 빨강, 줄면 초록) |
 | 로그·이력 탭 | **실행 로그**(stdout·stderr 마지막 200줄, 줄 번호, `(E)`·`(W)` 색) · **애플리케이션 로그**(그 실행의 오류·경고, 수) · **상태 변경 이력**(시각 · 상태 배지 → 상태 배지 · 사유). 높이 320px 안에서 스크롤 |
 

@@ -1,11 +1,5 @@
 {
   "permissions": {
-    "additionalDirectories": [
-      "/home/han/work/wt-s1",
-      "/home/han/work/wt-s2",
-      "/home/han/work/wt-s3",
-      "/home/han/work/wt-s4"
-    ],
     "allow": [
       "Bash(cd /home/han/work/contune*)",
       "Bash(cd /home/han/work/wt-s*)",
@@ -35,8 +29,12 @@
       "Edit(//home/han/work/wt-s4/**)",
       "Edit(//home/han/work/contune/pipeline/logs/**)"
     ],
-    "deny": [
-      "Bash(git push*)"
+    "deny": [],
+    "additionalDirectories": [
+      "/home/han/work/wt-s1",
+      "/home/han/work/wt-s2",
+      "/home/han/work/wt-s3",
+      "/home/han/work/wt-s4"
     ]
   }
 }

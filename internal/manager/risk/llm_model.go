@@ -39,7 +39,7 @@ func (m *llmModel) Score(ctx context.Context, v Vector) (Score, error) {
 			fmt.Fprintf(&sb, "%s|%g\n", n, v.Values[i])
 		}
 	}
-	sb.WriteString("\n장애 위험을 0~100 정수 점수와 근거 한 줄로 `점수|근거` 형식으로만 답하세요. 예: 72|큐 깊이 급증")
+	sb.WriteString("\n장애 위험을 0~100 정수 점수와 근거 한 줄로 `점수|근거` 형식으로만 답하세요. 예: 72|대기 큐 급증")
 	out, err := m.llm.Complete(ctx, llm.Request{
 		System: "당신은 서버 운영 위험을 평가하는 도우미입니다.", Prompt: sb.String(), MaxTokens: 100, Temperature: 0,
 	})

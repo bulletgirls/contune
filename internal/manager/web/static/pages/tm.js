@@ -92,7 +92,7 @@ export function peakOf(points, from, to) {
 // 트랙 정의. ref: 임계선을 가져올 패널 지표
 export const BANDS = [
   { key: 'tps', title: '처리량', unit: 'TPS', biz: true },
-  { key: 'queue', title: '큐 깊이', unit: '건', biz: true, ref: 'biz.order.queue' },
+  { key: 'queue', title: '대기 큐', unit: '건', biz: true, ref: 'biz.order.queue' },
   { key: 'lat', title: '응답 시간', unit: 'ms', biz: true, ref: 'biz.order.latency_p99_ms' },
   { key: 'cpu', title: '프로세스 CPU 사용률', unit: '%', desc: '이 실행의 프로세스(자식 포함) CPU. 코어 여러 개를 쓰면 100%를 넘는다' },
   { key: 'host', title: '서버 CPU 사용률', unit: '%', max: 100 },
@@ -200,7 +200,7 @@ export async function render(host, params) {
     const p = (r, n) => pointsOf(r, n);
     return {
       tps: [{ label: '주문 유입량', data: p(biz, 'biz.order.in_tps'), dash: true }, { label: '체결 처리량', data: p(biz, 'biz.order.tps') }],
-      queue: [{ label: '큐 깊이', data: p(biz, 'biz.order.queue') }],
+      queue: [{ label: '대기 큐', data: p(biz, 'biz.order.queue') }],
       lat: [{ label: '평균', data: p(biz, 'biz.order.latency_avg_ms') }, { label: 'p99', data: p(biz, 'biz.order.latency_p99_ms') }],
       cpu: [{ label: '프로세스', data: p(cpu, 'job.cpu.pct') }],
       host: [{ label: '서버', data: p(hcpu, 'host.cpu.pct') }],
