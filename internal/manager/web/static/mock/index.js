@@ -23,6 +23,7 @@ function pageFlags(opts, q) {
     editor: get('editor') !== '0',
     role: get('role'),
     login: get('login') === '1',
+    hold: get('hold') || '', // 미리보기: 처음부터 용인해 둘 요인(쉼표 목록)
   };
 }
 

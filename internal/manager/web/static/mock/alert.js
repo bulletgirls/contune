@@ -1,5 +1,6 @@
 // 알림 · 장애 위험 · 장애 기록
-import { MIN, SEC, KST, fmtN } from './util.js';
+import { MIN, SEC, KST, fmtN, fmtKst } from './util.js';
+import { FEATURE_TITLE, CHECK, BASELINE, holdsOf, liveHolds, autoRelease, openIndex, openAt, makeHold, stats as holdStats } from './riskhold.js';
 import { hostsView, isDead } from './world.js';
 import { bizAt, riskAt } from './signal.js';
 import { logEvents } from './biz.js';
@@ -98,34 +99,64 @@ function riskView(c) {
   const idx = riskAt(now, { ...c.sig, exact: true });
   const rule = c.flags.rule;
   const incidents = rule ? 2 : w.incidents.filter((i) => i.source !== 'auto').length;
+  const hv = hostsView(w, c.sig);
+  const hostVal = (id, k) => { const h = hv.find((x) => x.id === id); return h ? h[k] : 0; };
   let factors;
   if (c.sig.surge) {
     const nErr = logEvents(c, { levels: ['error'], host: 'match-01', from: now - MIN, limit: 2000 }).length;
     const b = bizAt(now, { ...c.sig, exact: true });
+    const q = b['biz.order.queue'], p99 = b['biz.order.latency_p99_ms'], cpu = Math.round(hostVal('match-01', 'cpu'));
     factors = [
-      { feature: 'queue', title: '대기 큐', value: b['biz.order.queue'], contrib: 1.9 },
-      { feature: 'p99', title: 'p99 응답 시간', value: b['biz.order.latency_p99_ms'], contrib: 1.2 },
-      { feature: 'log_errors', title: '오류 로그 수', value: nErr, contrib: 0.9 },
+      { feature: 'queue', value: q, contrib: 1.9, where: [{ kind: 'host', id: 'match-01', label: '', value: q }] },
+      { feature: 'p99', value: p99, contrib: 1.2, where: [{ kind: 'host', id: 'match-01', label: '', value: p99 }] },
+      { feature: 'log_errors', value: nErr, contrib: 0.9, where: [{ kind: 'log', id: 'match-01', label: 'matching', value: nErr }] },
+      { feature: 'cpu_max', value: cpu, contrib: 0.4, where: [{ kind: 'host', id: 'match-01', label: '', value: cpu }, { kind: 'host', id: 'match-03', label: '', value: Math.round(hostVal('match-03', 'cpu')) }] },
+      { feature: 'mem_max', value: 93, contrib: 0.3, where: [{ kind: 'host', id: 'dw-02', label: '', value: 93 }] },
     ];
   } else {
     factors = [
-      { feature: 'mem_max', title: '최대 메모리 사용률', value: 93, contrib: 0.6 },
-      { feature: 'cpu_max', title: '최대 서버 CPU 사용률', value: 31, contrib: 0.2 },
+      { feature: 'mem_max', value: 93, contrib: 0.6, where: [{ kind: 'host', id: 'dw-02', label: '', value: 93 }] },
+      { feature: 'cpu_max', value: 31, contrib: 0.2, where: [{ kind: 'host', id: 'match-01', label: '', value: 31 }] },
     ];
   }
+  const incs = incidentList(c);
+  holdsOf(w, incs);
+  if (c.flags.hold && !w.holdFlagDone) {
+    w.holdFlagDone = true;
+    for (const name of c.flags.hold.split(',')) {
+      const f = factors.find((x) => x.feature === name.trim());
+      if (f) w.holds.unshift({ id: w.holdSeq++, feature: f.feature, kind: 'accept', reason: '장 마감 직전 주문 몰림 — 처리 정상 확인', value: f.value, limit: Math.round(f.value * 120) / 100,
+        at: now - 6 * MIN, by: 'user:operator', until: now + 4 * 3600000 - 6 * MIN, ended_at: 0, ended_by: '', end_note: '' });
+    }
+  }
+  autoRelease(c, factors);
+  const live = liveHolds(w);
+  const holdOf = new Map(live.map((h) => [h.feature, h]));
+  factors = factors.map((f) => ({
+    feature: f.feature, title: FEATURE_TITLE[f.feature], value: f.value, contrib: f.contrib,
+    baseline: BASELINE[f.feature], check: CHECK[f.feature], where: f.where, hold: holdOf.get(f.feature) || null,
+  }));
+  const open = openIndex(idx, factors, live);
+  const accepts = live.filter((h) => h.kind === 'accept');
+  w.openRatio = accepts.length && idx > 0 ? { since: Math.min(...accepts.map((h) => h.at)), ratio: open / idx } : null;
   const history = [];
   for (let t = Math.floor((now - 3600000) / 10000) * 10000; t <= now; t += 10000) history.push([t, riskAt(t, c.sig)]);
   return {
     now,
     index: idx,
     level: levelOf(idx),
+    open_index: open,
+    open_level: levelOf(open),
     mode: rule ? 'rule' : 'model',
     model: rule
-      ? { kind: 'rule', trained_at: 0, windows: 0, positives: 0, incidents, auc: 0, lead_sec: 300, weights: weights(RULE_W) }
-      : { kind: 'logreg', trained_at: w.trainedAt, windows: 10080, positives: 61, incidents, auc: 0.93, lead_sec: 300, weights: weights(LOGREG_W) },
+      ? { kind: 'rule', trained_at: 0, windows: 0, positives: 0, incidents, auc: 0, lead_sec: 300, weights: weights(RULE_W), prior_offset: 0, false_warn: 0.18, hit_warn: 0.64 }
+      : { kind: 'logreg', trained_at: w.trainedAt, windows: 10080, positives: 61, incidents, auc: 0.93, lead_sec: 300, weights: weights(LOGREG_W), prior_offset: 5.1, false_warn: 0.012, hit_warn: 0.71 },
     factors,
+    holds: live,
+    incidents: incs.filter((i) => !i.end).sort((a, b) => b.start - a.start),
     note: rule ? `규칙 기반 · 학습 사례 부족(장애 ${incidents}건)` : '',
     history,
+    history_open: history.map(([t, v]) => [t, openAt(w, t, v)]),
   };
 }
 
@@ -138,6 +169,43 @@ function train(c) {
   if (!c.flags.rule) c.w.trainedAt = c.now;
   const m = v.model;
   return ok({ kind: m.kind, trained_at: c.flags.rule ? c.now : c.w.trainedAt, windows: m.windows, positives: m.positives, incidents: m.incidents, auc: m.auc, weights: m.weights, mode: v.mode, note: v.note });
+}
+
+// ---- 위험 요인 확인 표시 ----
+
+const hhmm = (ts) => fmtKst(ts).slice(0, 5);
+
+function listHolds(c) {
+  const to = num(c.q.get('to')) || c.now;
+  const from = num(c.q.get('from')) || to - 7 * 86400000;
+  if (from >= to) return err(400, 'from은 to보다 앞이어야 함');
+  const incs = incidentList(c);
+  const holds = holdsOf(c.w, incs).filter((h) => h.at < to && (h.ended_at || to) >= from).sort((a, b) => b.at - a.at);
+  return ok({ holds, stats: holdStats(c.w, from, to, incs), from, to });
+}
+
+function addHold(c) {
+  const v = riskView(c);
+  const r = makeHold(c, c.json(), v.factors, actor);
+  if (r.error) return err(400, r.error);
+  const h = r.hold;
+  for (const x of liveHolds(c.w)) {
+    if (x.feature === h.feature) Object.assign(x, { ended_at: c.now, ended_by: actor, end_note: '바꿈' });
+  }
+  c.w.holds.unshift(h);
+  const t = FEATURE_TITLE[h.feature];
+  c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor, action: `risk.${h.kind}`, target: `risk:${h.feature}`,
+    detail: `${t} ${fmtN(h.value)} · 한도 ${fmtN(h.limit)} · ~${hhmm(h.until)}${h.reason ? ` · 사유: ${h.reason}` : ''}` });
+  return ok(h, 201);
+}
+
+function releaseHold(c, m) {
+  const id = Number(m[1]);
+  const h = holdsOf(c.w).find((x) => x.id === id && !x.ended_at);
+  if (!h) return err(404, '확인 표시를 찾을 수 없음');
+  Object.assign(h, { ended_at: c.now, ended_by: actor, end_note: '해제' });
+  c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor, action: 'risk.release', target: `risk:${h.feature}`, detail: `${FEATURE_TITLE[h.feature]} #${h.id}` });
+  return { status: 204, body: null };
 }
 
 // ---- 장애 기록 ----
@@ -229,6 +297,9 @@ export const routes = [
   ['POST', /^\/alerts\/(\d+)\/ack$/, ack],
   ['GET', /^\/risk$/, risk],
   ['POST', /^\/risk\/train$/, train],
+  ['GET', /^\/risk\/holds$/, listHolds],
+  ['POST', /^\/risk\/holds$/, addHold],
+  ['DELETE', /^\/risk\/holds\/(\d+)$/, releaseHold],
   ['GET', /^\/incidents$/, incidents],
   ['POST', /^\/incidents$/, addIncident],
   ['POST', /^\/incidents\/import$/, importIncidents],

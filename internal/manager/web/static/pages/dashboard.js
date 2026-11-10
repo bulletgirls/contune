@@ -2,6 +2,7 @@
 import { api, poll } from '../api.js';
 import { el, esc, fmtNum, fmtClock, relTime, numUnit, badgeHTML, info, EMPTY, DASH, LEVEL_TEXT } from '../ui.js';
 import { flowState } from '../tree.js';
+import { openValue, openLevel, acceptsOf, todoFactors, baselineText, placeText, factorHref, incidentText } from '../riskfmt.js';
 
 // ---- 순수 함수 (DOM 없이 호출) ----
 const inGroup = (group, g) => !g || group === g || String(group || '').startsWith(g + '/');
@@ -115,8 +116,6 @@ export function modelText(risk) {
   const kind = { logreg: '로지스틱 회귀' }[risk.model.kind] || risk.model.kind;
   return `${kind} · ${fmtClock(risk.model.trained_at).slice(0, 5)} 학습`;
 }
-export function factorText(f) { return `${f.title} ${fmtNum(f.value)}`; }
-export function riskLevel(risk) { return risk && risk.level === 'crit' ? 'crit' : risk && risk.level === 'warn' ? 'warn' : 'ok'; }
 
 export function sparkPoints(history, w = 120, h = 28) {
   if (!history || history.length < 2) return '';
@@ -137,9 +136,10 @@ export function arcPath(cx, cy, r, f0, f1) {
   return `M${f2(x0)} ${f2(y0)}A${r} ${r} 0 0 1 ${f2(x1)} ${f2(y1)}`;
 }
 
-// 장애 위험 지수 게이지: 바깥 얇은 띠 = 정상·경고·위험 구간, 안쪽 굵은 호 = 지금 값
+// 장애 위험 지수 게이지: 바깥 얇은 띠 = 정상·경고·위험 구간, 안쪽 굵은 호 = 지금 값(미확인 지수).
+// total(원래 지수)이 value보다 크면 그 차이(용인된 몫)를 빗금 호로 잇는다.
 export const RISK_WARN = 30, RISK_CRIT = 60;
-export function gaugeSVG(value, level, warn = RISK_WARN, crit = RISK_CRIT, max = 100) {
+export function gaugeSVG(value, level, warn = RISK_WARN, crit = RISK_CRIT, max = 100, total = null) {
   const cx = 60, cy = 62, r = 46;
   const f = (v) => clamp01(v / max);
   const v = Number(value);
@@ -147,8 +147,11 @@ export function gaugeSVG(value, level, warn = RISK_WARN, crit = RISK_CRIT, max =
   const zones = [['ok', 0, warn], ['warn', warn, crit], ['crit', crit, max]]
     .map(([k, a, b]) => `<path class="gz ${k}" d="${arcPath(cx, cy, r + 9, f(a), f(b))}"/>`).join('');
   const val = has && v > 0 ? `<path class="gv ${esc(level)}" d="${arcPath(cx, cy, r, 0, f(v))}"/>` : '';
-  return `<svg class="gauge" viewBox="0 0 120 66" role="img" aria-label="장애 위험 지수 ${has ? fmtNum(v, 0) : DASH}">` +
-    `<path class="gt" d="${arcPath(cx, cy, r, 0, 1)}"/>${zones}${val}` +
+  const t = Number(total);
+  const held = has && total != null && t > v ? `<path class="gh" d="${arcPath(cx, cy, r, f(v), f(t))}"/>` : '';
+  const label = `장애 위험 지수 ${has ? fmtNum(v, 0) : DASH}${held ? ` (전체 ${fmtNum(t, 0)})` : ''}`;
+  return `<svg class="gauge" viewBox="0 0 120 66" role="img" aria-label="${label}">` +
+    `<path class="gt" d="${arcPath(cx, cy, r, 0, 1)}"/>${zones}${held}${val}` +
     `<text class="gnum ${esc(level)}" x="${cx}" y="${cy - 3}" text-anchor="middle">${has ? fmtNum(v, 0) : DASH}</text></svg>`;
 }
 
@@ -197,16 +200,35 @@ function card(cls, title, href, inner) {
   return c;
 }
 
-function riskCard(risk) {
+// 확인할 것 한 줄: 순위 · 요인 값 / 평소 · 어디. 누르면 그 요인을 볼 곳으로 간다(카드 나머지는 #risk).
+export function todoHTML(f, i, ctx) {
+  const href = factorHref(f, ctx);
+  const sub = [baselineText(f), placeText((f.where || [])[0])].filter(Boolean).join(' · ');
+  const ack = f.hold ? ' <i class="rk-ack">확인 중</i>' : '';
+  return `<span class="rk-item${href ? ' go' : ''}"${href ? ` data-go="${esc(href)}" title="${esc(f.check || '')}"` : ''}>` +
+    `<b>${i + 1}</b><span class="rk-t">${esc(f.title)} <span class="rk-v">${esc(fmtNum(f.value))}</span>${ack}</span>` +
+    (sub ? `<span class="rk-s">${esc(sub)}</span>` : '') + '</span>';
+}
+
+function riskCard(risk, ctx, now) {
   if (!risk) return card('risk', '장애 위험도', '#risk', `<div class="dc-body">${gaugeSVG(null, 'ok')}<div class="dc-side"><span class="empty">${DASH}</span></div></div>`);
-  const lv = riskLevel(risk);
-  const f = (risk.factors || []).slice(0, 2).map((x) => `<span class="fac">↑ ${esc(factorText(x))}</span>`).join('');
+  const lv = openLevel(risk), ov = openValue(risk);
+  const acc = acceptsOf(risk).length;
+  const todo = todoFactors(risk, 2);
+  const total = acc && risk.index > ov ? `<span class="rk-total">전체 ${esc(fmtNum(risk.index, 0))} · 용인 ${acc}</span>` : '';
+  const items = todo.map((f, i) => todoHTML(f, i, ctx)).join('') ||
+    `<span class="rk-none">${acc ? '남은 확인 요인 없음' : '두드러진 요인 없음'}</span>`;
   const note = risk.note ? ` <span class="tipwrap" data-note="${esc(risk.note)}"></span>` : '';
+  const inc = (risk.incidents || [])[0];
+  const foot = inc
+    ? `<div class="dc-foot rk-inc"><span>■ 장애 진행 중 · ${esc(incidentText(inc, now, false))}</span></div>`
+    : `<div class="dc-foot"><svg class="spark" viewBox="0 0 120 28" preserveAspectRatio="none"><polyline points="${sparkPoints(risk.history_open || risk.history)}"/></svg>` +
+      `<span class="dc-small">${esc(modelText(risk))}${note}</span></div>`;
   const c = card('risk', '장애 위험도', '#risk',
-    `<div class="dc-body">${gaugeSVG(risk.index, lv)}<div class="dc-side">${badgeHTML(lv)}<div class="facs">${f}</div></div></div>` +
-    `<div class="dc-foot"><svg class="spark" viewBox="0 0 120 28" preserveAspectRatio="none"><polyline points="${sparkPoints(risk.history)}"/></svg>` +
-    `<span class="dc-small">${esc(modelText(risk))}${note}</span></div>`);
+    `<div class="dc-body">${gaugeSVG(ov, lv, RISK_WARN, RISK_CRIT, 100, risk.index)}` +
+    `<div class="dc-side"><span class="rk-head">${badgeHTML(lv)}${total}</span><div class="facs">${items}</div></div></div>${foot}`);
   c.querySelectorAll('.tipwrap').forEach((w) => w.replaceWith(info(w.dataset.note)));
+  c.querySelectorAll('.rk-item.go').forEach((k) => k.addEventListener('click', (e) => { e.preventDefault(); go(k.dataset.go); }));
   return c;
 }
 
@@ -331,7 +353,7 @@ export function render(el0, params, query) {
     const sig = JSON.stringify([hs, panels, flows, alerts, r, bsum, Math.floor(now / 60000)]);
     if (sig === lastSig && root.childNodes.length) return;
     lastSig = sig;
-    const cards = el('div', { class: 'cards' }, riskCard(r), serverCard(hs), batchCard(bsum), bizCard(kpiTiles(panels)));
+    const cards = el('div', { class: 'cards' }, riskCard(r, { hosts: h.hosts || [], panels: p.panels || [] }, now), serverCard(hs), batchCard(bsum), bizCard(kpiTiles(panels)));
     const mid = el('div', { class: 'mid' }, serverMap(hs), eventList(alerts, panels, hs, flows));
     root.replaceChildren(cards, mid, timeline(flows, now));
   }, 2000);

@@ -24,6 +24,21 @@
 .gauge .gnum.warn { fill:var(--warn); } .gauge .gnum.crit { fill:var(--crit); }
 .facs { display:flex; flex-direction:column; gap:1px; min-width:0; }
 .fac { display:block; font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; color:var(--t2); }
+.gauge .gh { stroke:var(--t3); stroke-width:10; stroke-dasharray:2 2.5; opacity:.6; }
+/* 장애 위험도 카드: 미확인 수준 배지 + 전체·용인, 확인할 것 2줄, 진행 중 장애 */
+.rk-head { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.rk-total { font-size:12px; color:var(--t3); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.facs .rk-item { display:grid; grid-template-columns:14px minmax(0,1fr); column-gap:4px; font-size:12px; line-height:1.35; min-width:0; max-width:100%; color:var(--t2); }
+.rk-item b { grid-row:span 2; font-size:11px; font-weight:600; color:var(--t3); text-align:center; padding-top:1px; }
+.rk-item .rk-t, .rk-item .rk-s { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rk-item .rk-t { color:var(--t1); } .rk-item .rk-v { font-variant-numeric:tabular-nums; font-weight:600; }
+.rk-item .rk-s { font-size:11px; color:var(--t3); }
+.rk-item.go:hover .rk-t { color:var(--accent); text-decoration:underline; }
+.rk-item + .rk-item { margin-top:3px; }
+.rk-ack { font-style:normal; font-size:11px; color:var(--accent); }
+.rk-none { font-size:12px; color:var(--t3); }
+.rk-inc { font-size:12px; font-weight:600; color:var(--crit); }
+.rk-inc span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .spark { width:72px; height:20px; flex:none; }
 .spark polyline { fill:none; stroke:var(--s1); stroke-width:1.5; vector-effect:non-scaling-stroke; }
 

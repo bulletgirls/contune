@@ -18,4 +18,59 @@
 .iform input[type=text] { min-width:140px; }
 .icsv textarea { width:100%; min-height:72px; font-family:monospace; box-sizing:border-box; }
 .irow { display:flex; gap:8px; align-items:center; margin-top:4px; flex-wrap:wrap; }
+/* 장애 위험도(#risk): 지수 요약 · 확인할 것 · 용인 기록 */
+.rsum, .rcheck { margin-bottom:12px; }
+.rsum-row { display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+.rbig.warn { color:var(--warn); } .rbig.crit { color:var(--crit); } .rbig.ok { color:var(--ok); }
+.rsum-main { font-size:14px; color:var(--t1); }
+.rinc { margin-top:10px; padding:6px 10px; border-left:3px solid var(--crit); background:color-mix(in srgb, var(--crit) 8%, transparent); font-size:13px; }
+.rinc b { color:var(--crit); } .rinc-h { color:var(--t2); }
+.rcheck-h { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+.rcheck-h .rnote { margin:0; }
+.rgrid { display:flex; flex-direction:column; }
+.rrow { display:grid; grid-template-columns:22px minmax(110px,1fr) 92px 64px 80px minmax(110px,1fr) minmax(150px,1.5fr) 220px; gap:10px; align-items:center; padding:7px 0; border-bottom:1px solid var(--line); font-size:13px; }
+.rrow.rhead { font-size:12px; color:var(--t3); padding:2px 0 4px; }
+.rrow.rnone > div, .rrow.rsplit > div { grid-column:1 / -1; }
+.rrow.rnone { color:var(--t3); }
+.rrow.rsplit { font-size:12px; color:var(--t3); padding-top:14px; border-bottom:1px dashed var(--line); }
+.rc-n { color:var(--t3); font-weight:600; text-align:center; }
+.rc-name { font-weight:600; }
+.rc-val b { font-variant-numeric:tabular-nums; } .rc-val .ratio { margin-left:5px; font-size:11px; color:var(--crit); }
+.rc-base { color:var(--t3); font-variant-numeric:tabular-nums; }
+.rc-bar .bar { display:block; height:8px; background:var(--bg); border-radius:2px; }
+.rc-bar .bar i { display:block; height:100%; background:var(--s1); border-radius:2px; }
+.rc-where { display:flex; flex-wrap:wrap; gap:4px; min-width:0; }
+.chip { font-size:12px; padding:0 7px; border:1px solid var(--line); border-radius:9px; color:var(--accent); text-decoration:none; white-space:nowrap; }
+.chip:hover { border-color:var(--accent); }
+.rc-check { color:var(--t2); font-size:12px; line-height:1.4; }
+.rrow.held .rc-bar .bar i { background:repeating-linear-gradient(135deg, var(--t3) 0 2px, transparent 2px 5px); }
+.rrow.held .rc-name, .rrow.held .rc-val, .rrow.held .rc-check { color:var(--t3); }
+.rst { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.rst-line { font-size:12px; } .rst-line.ack { color:var(--accent); } .rst-line.accept { color:var(--t2); font-weight:600; }
+.rst-why { font-size:12px; color:var(--t3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rst-btn { display:flex; gap:4px; flex-wrap:wrap; }
+.rst-btn button { font-size:12px; padding:1px 8px; }
+button.acc { border-color:var(--accent); color:var(--accent); }
+.rc-form { grid-column:2 / -1; }
+.racc { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:flex-end; padding:8px 10px; background:var(--bg); border-radius:4px; }
+.racc label { display:flex; flex-direction:column; gap:2px; font-size:12px; color:var(--t3); }
+.racc input[name=reason] { width:320px; max-width:100%; }
+.racc input[name=limit] { width:100px; }
+.racc small { font-size:11px; }
+.racc-btn { display:flex; gap:6px; align-items:center; }
+.racc-msg { font-size:12px; color:var(--crit); }
+.racc-help { flex-basis:100%; margin:0; font-size:12px; color:var(--t3); }
+.rlow { display:grid; grid-template-columns:1.7fr 1fr; gap:12px; margin:12px 0; }
+.rsub { font-size:13px; margin:12px 0 4px; color:var(--t2); font-weight:600; }
+.adv.warn { color:var(--warn); } .adv.crit { color:var(--crit); }
+.rhist { font-size:12px; } .rhist td, .rstat td { white-space:nowrap; } .rhist td:last-child { white-space:normal; }
+.rwhy { display:inline-block; max-width:170px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:bottom; }
+@media (max-width:1100px) {
+  .rrow { grid-template-columns:22px 1fr 1fr; }
+  .rrow.rhead { display:none; }
+  .rc-base, .rc-bar { display:none; }
+  .rc-where, .rc-check, .rst, .rc-form { grid-column:2 / -1; }
+  .rlow { grid-template-columns:1fr; }
+}
 @media (max-width:900px) { .rtop { grid-template-columns:1fr; } }
+.rrow.acked { box-shadow:inset 2px 0 0 var(--accent); }

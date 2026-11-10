@@ -1,5 +1,6 @@
 // /hosts /flows /runs /runs/{id} /series /panels /profile 와 플로우 수동 실행
 import { MIN, SEC, cronNext, round } from './util.js';
+import { openAt } from './riskhold.js';
 import {
   hostsView, HOST_TH, groupMatch, flowLevels, flowLast, flowOf, runPublic, procsOf, startFlowRun, PANELS,
 } from './world.js';
@@ -161,8 +162,12 @@ export function seriesQuery(c, p) {
       });
     }
   }
-  if (names.includes('risk.index') && (p.host === '_eum' || (!p.host && !p.group && !p.exec_id))) {
-    entities.push({ host: '_eum', exec_id: '', names: ['risk.index'], range: [-Infinity, now], at: (ts) => ({ 'risk.index': riskAt(ts, c.sig) }) });
+  const riskNames = ['risk.index', 'risk.index_open'].filter((n) => names.includes(n));
+  if (riskNames.length && (p.host === '_eum' || (!p.host && !p.group && !p.exec_id))) {
+    entities.push({ host: '_eum', exec_id: '', names: riskNames, range: [-Infinity, now], at: (ts) => {
+      const v = riskAt(ts, c.sig);
+      return { 'risk.index': v, 'risk.index_open': openAt(c.w, ts, v) };
+    } });
   }
 
   const raw = [];
