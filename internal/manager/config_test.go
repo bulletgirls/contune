@@ -40,6 +40,7 @@ func TestManagerConfigDefaults(t *testing.T) {
 		{"alerts.incident_clear", c.Alerts.IncidentClear == 60*time.Second},
 		{"alerts.auto_incident", c.Alerts.AutoIncident},
 		{"notify.min_level", c.Notify.MinLevel == "warn" && c.Notify.Webhook == ""},
+		{"collect", c.Collect.Dir == "/collect" && !c.Collect.Enabled},
 	}
 	for _, ch := range checks {
 		if !ch.ok {
@@ -49,7 +50,7 @@ func TestManagerConfigDefaults(t *testing.T) {
 
 	t.Setenv("T", "abc")
 	p := filepath.Join(t.TempDir(), "m.yaml")
-	body := "token: ${T}\nlisten: 127.0.0.1:0\nhost_state: { cpu_warn: 50 }\nrisk: { lead: 2m }\neditor:\n  enabled: true\n  allow: ['^\\$\\{DEMO\\}/scripts/x\\.sh( |$)']\n"
+	body := "token: ${T}\nlisten: 127.0.0.1:0\nhost_state: { cpu_warn: 50 }\nrisk: { lead: 2m }\ncollect: { enabled: true }\neditor:\n  enabled: true\n  allow: ['^\\$\\{DEMO\\}/scripts/x\\.sh( |$)']\n"
 	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -65,6 +66,9 @@ func TestManagerConfigDefaults(t *testing.T) {
 	}
 	if c.Risk.Lead != 2*time.Minute || c.Risk.Model != "logreg" {
 		t.Errorf("risk %+v", c.Risk)
+	}
+	if !c.Collect.Enabled || c.Collect.Dir != "/collect" {
+		t.Errorf("일부만 적은 collect는 dir 기본값 유지: %+v", c.Collect)
 	}
 	if !c.Editor.Enabled || len(c.Editor.Allow) != 1 || c.Editor.Allow[0] != `^\$\{DEMO\}/scripts/x\.sh( |$)` {
 		t.Errorf("editor %+v", c.Editor)

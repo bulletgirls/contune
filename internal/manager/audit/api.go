@@ -26,12 +26,13 @@ const (
 
 // kind → action 앞부분(계약 표).
 var kindPrefixes = map[string][]string{
-	"login": {"login.", "logout"},
-	"flow":  {"flow."},
-	"run":   {"run."},
-	"alert": {"alert."},
-	"risk":  {"risk.", "incident."},
-	"audit": {"audit."},
+	"login":   {"login.", "logout"},
+	"flow":    {"flow."},
+	"run":     {"run."},
+	"alert":   {"alert."},
+	"risk":    {"risk.", "incident."},
+	"audit":   {"audit."},
+	"collect": {"collect."},
 }
 
 // Deps는 조회 API의 의존성이다. TZ가 nil이면 CSV 시각은 time.Local이다.
