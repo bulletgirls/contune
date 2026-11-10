@@ -35,8 +35,12 @@ S4·S5는 쓰는 경로가 겹치지 않으므로 동시에 진행한다. S5는 
 | | `incident.create` / `.update` / `.import` | 장애 기록 추가 / 수정 / 가져오기 | | `incident:<n>` / `incidents` | 제목 / 건수 |
 | | `incident.confirm` (2026-11-10, 05 §6.1) | 자동 장애 기록 확인 | | `incident:<n>` | `<제목> · 장애로 확인` 또는 `· 확인 취소` |
 | `audit` (**새로**) | `audit.export` | 감사 기록 내려받기 | | `audit` | 구간·건수 |
+| `collect` (2026-11-10, 05 §17) | `collect.save` | 수집 설정 저장 | | 범위(`all`·`group:…`·`host:…`) | `<파일> <옛 sha> → <새 sha> 출처 N개` |
+| | `collect.delete` | 수집 설정 삭제 | ⚠ | 범위 | 파일 |
+| | `collect.reload` | 수집 설정 다시 읽기 | | `collect` | 범위·읽지 못한 파일 수 |
+| | `collect.discover` / `.peek` | 로그 파일 찾기 / 로그 미리보기 | | `host:<id>` | 후보 수 / `<파일> N줄` |
 
-kind → action 앞부분: `login`=[`login.`, `logout`], `flow`=[`flow.`], `run`=[`run.`], `alert`=[`alert.`], `risk`=[`risk.`, `incident.`], `audit`=[`audit.`].
+kind → action 앞부분: `login`=[`login.`, `logout`], `flow`=[`flow.`], `run`=[`run.`], `alert`=[`alert.`], `risk`=[`risk.`, `incident.`], `audit`=[`audit.`], `collect`=[`collect.`].
 actor는 지금과 같다: 로그인 사용자 `user:<id>`, 로그인 꺼짐 `user:web(<호스트>)`, 로그인 실패 `web(<호스트>)`.
 
 ### API

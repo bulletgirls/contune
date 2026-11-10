@@ -4,7 +4,7 @@ import { MIN, hash32, rnd } from './util.js';
 const ok = (body, status = 200) => ({ status, body });
 const err = (status, msg) => ({ status, body: { error: msg } });
 
-const KINDS = { login: ['login.', 'logout'], flow: ['flow.'], run: ['run.'], alert: ['alert.'], risk: ['risk.', 'incident.'], audit: ['audit.'] };
+const KINDS = { login: ['login.', 'logout'], flow: ['flow.'], run: ['run.'], alert: ['alert.'], risk: ['risk.', 'incident.'], audit: ['audit.'], collect: ['collect.'] };
 const inKind = (action, kind) => (KINDS[kind] || []).some((p) => action.startsWith(p));
 
 const U = 'user:admin', O = 'user:operator';
@@ -32,6 +32,9 @@ const SPEC = [
   [352, O, 'alert.ack', 'al-lag-match-01', '체결 지연 · match-01'],
   [301, O, 'run.rerun', '01JC9A4D8R1MB6Y0S3W2K7N5JF', 'market-open/load-equity → 01JC9A9T3H5QX2C8V1Z4E6P0LM'],
   [240, U, 'risk.train', 'risk', '표본 436건 · 정확도 0.89'],
+  [214, U, 'collect.discover', 'host:match-01', '후보 6개'],
+  [212, U, 'collect.peek', 'host:match-01', '/data/log/matching_svc.01JC9B2K.log 20줄'],
+  [209, U, 'collect.save', 'group:매매/체결', 'group-매매-체결.yaml 4c1e9a07 → 8b52d3f6 출처 1개'],
   [190, U, 'flow.save', 'market-open', 'flows/개장준비/market-open.yaml 7b20d4aa → c91e5f08'],
   // 몰림: 3분 사이 5회
   [98, 'web(10.0.3.7)', 'login.fail', 'admin', ''],
@@ -49,6 +52,7 @@ const SPEC = [
   [47, O, 'run.manual', 'ext-send-margin', '실행 1건'],
   [33, O, 'run.kill', '01JCA2F7E4W9ZT5N0D3R8H1BKC', 'daily-settle/settle-report'],
   [26, O, 'run.force_ok', '01JCA2F7E4W9ZT5N0D3R8H1BKC', 'daily-settle/settle-report 사유: 보고서는 수작업으로 발송 완료'],
+  [22, U, 'collect.delete', 'host:ops-03', 'host-ops-03.yaml'],
   [18, U, 'incident.create', 'incident:8', '정산 보고서 지연'],
   [12, U, 'flow.save', 'ext-send-margin', 'flows/대외송수신/ext-send-margin.yaml a4d83e15 → 1d6c70b9'],
   [6, U, 'audit.export', 'audit', '최근 24시간 · 41건'],
