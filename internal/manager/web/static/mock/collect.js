@@ -11,6 +11,10 @@ const hex = (s, n = 8) => {
   for (let i = 0; out.length < n; i++) out += hash32(s + '#' + i).toString(16).padStart(8, '0');
   return out.slice(0, n);
 };
+const QUOTE_METRICS = [
+  { name: 'biz.quote.tps', re: 'recv=([\\d,]+)', agg: 'sum' },
+  { name: 'biz.quote.count_1m', re: 'recv=([\\d,]+)', agg: 'sum', window: '60s' },
+];
 const LOGW = [{ re: '^\\(E\\)', level: 'error' }, { re: '^\\(W\\)', level: 'warn' }];
 
 let S = null;
@@ -25,6 +29,8 @@ function state(now) {
       { name: 'order-gw', path: '/var/lib/eum/logs/gw/order_*.log', match: [{ re: 'REJECT', level: 'warn' }] },
     ]),
     // 에이전트 허용 폴더(read_roots) 밖이라 dw-03이 이 파일만 건너뛴다(일부 적용)
+    // 시세 로그: 줄 규칙 없이 통계 줄(recv=N)에서 숫자만 뽑는다(05 §18)
+    mk('group:매매/시세', 'group-매매-시세.yaml', [{ name: 'quote', path: '{log_dir}/quote_feed.log', match: [], metrics: QUOTE_METRICS }]),
     mk('host:dw-03', 'host-dw-03.yaml', [{ name: 'etl-load', path: '/data/etl/load_*.log', match: [{ re: 'ORA-\\d+', level: 'error' }] }]),
   ];
   S = {
@@ -58,7 +64,7 @@ function effective(s, id, group) {
   }
   return out;
 }
-const revOf = (logs) => hex(JSON.stringify(logs.map(({ name, path, match }) => ({ name, path, match }))), 16);
+const revOf = (logs) => hex(JSON.stringify(logs.map(({ name, path, match, metrics }) => ({ name, path, match, metrics }))), 16);
 
 // 서버마다 정해 둔 상황: 대부분 적용됨, 하나는 적용 대기, 하나는 꺼짐, 하나는 실패(설정을 받지 못함), 하나는 모름.
 // 일부 적용은 정해 두지 않는다: 경로가 허용 폴더(ROOTS) 밖인 로그 파일이 있으면 그 서버가 건너뛴다(실제 에이전트와 같게).
@@ -102,7 +108,7 @@ function statusOf(row, logs) {
     return { host: row.host, rev: '', state: 'disabled', ts: row.ts, read_roots: [], sources: local };
   }
   const remote = logs.map((l, i) => {
-    const o = { name: l.name, path: l.path, match: l.match, origin: 'remote', files: 1 + (hash32(l.name + row.host) % 3) };
+    const o = { name: l.name, path: l.path, match: l.match, ...(l.metrics && l.metrics.length ? { metrics: l.metrics } : {}), origin: 'remote', files: 1 + (hash32(l.name + row.host) % 3) };
     if (/\*/.test(l.path)) o.files = 2 + (hash32(row.host) % 4);
     if (row.state !== 'failed' && outside(l.path, row.read_roots)) Object.assign(o, { files: 0, why: 'outside', dir: dirOf(l.path), skipped: `읽어도 되는 폴더(read_roots) 밖: ${dirOf(l.path)}` });
     return o;
@@ -132,11 +138,28 @@ function hostDetail(c, m) {
 function problems(logs) {
   const out = [];
   const seen = new Set();
+  const metricSeen = new Map();
   logs.forEach((l, i) => {
     if (!/^[a-z0-9][a-z0-9_.-]{0,39}$/.test(l.name || '')) out.push({ index: i, rule: -1, field: 'name', msg: '이름은 소문자·숫자·_.-만, 40자까지' });
     else if (seen.has(l.name)) out.push({ index: i, rule: -1, field: 'name', msg: `이름 중복: ${l.name}` });
     seen.add(l.name);
     if (!/^(\/|\{log_dir\})/.test(l.path || '')) out.push({ index: i, rule: -1, field: 'path', msg: '경로는 절대 경로나 {log_dir}로 시작' });
+    if (!(l.match || []).length && !(l.metrics || []).length) out.push({ index: i, rule: -1, field: 'match', msg: '줄 규칙이나 지표가 하나 이상 있어야 합니다' });
+    if ((l.metrics || []).length > 10) out.push({ index: i, rule: -1, field: 'metrics', msg: '지표는 10개까지입니다' });
+    (l.metrics || []).forEach((m, k) => {
+      if (!/^biz(\.[a-z0-9_]+)+$/.test(m.name || '') || m.name.length > 80) out.push({ index: i, rule: k, field: 'metric.name', msg: '지표 이름은 biz.로 시작하고 영문 소문자·숫자·_를 .로 이어 80자까지입니다(예 biz.quote.count_1m)' });
+      else if (metricSeen.has(m.name)) out.push({ index: i, rule: k, field: 'metric.name', msg: `지표 ${m.name}를 logs[${metricSeen.get(m.name)}]에서 이미 냅니다` });
+      else metricSeen.set(m.name, i);
+      if (!['count', 'sum', 'max', 'last'].includes(m.agg)) out.push({ index: i, rule: k, field: 'metric.agg', msg: '계산은 count·sum·max·last 가운데 하나입니다' });
+      if (!m.re) out.push({ index: i, rule: k, field: 'metric.re', msg: '정규식이 비어 있습니다' });
+      else {
+        try {
+          const g = new RegExp(m.re + '|').exec('').length - 1;
+          if (m.agg !== 'count' && g === 0) out.push({ index: i, rule: k, field: 'metric.re', msg: '숫자를 담을 묶음 ( )이 있어야 합니다(예 recv=(\\d+))' });
+        } catch (e) { out.push({ index: i, rule: k, field: 'metric.re', msg: `정규식(RE2)을 해석하지 못함: ${e.message}` }); }
+      }
+      if (m.window && !/^(\d+m)?(\d+s)?$/.test(m.window)) out.push({ index: i, rule: k, field: 'metric.window', msg: '창은 1s·60s·5m 같은 기간입니다' });
+    });
     (l.match || []).forEach((r, k) => {
       try { new RegExp(r.re); } catch (e) { out.push({ index: i, rule: k, field: 're', msg: `정규식 오류: ${e.message}` }); }
       if (r.level !== 'error' && r.level !== 'warn') out.push({ index: i, rule: k, field: 'level', msg: 'error 또는 warn' });
@@ -212,6 +235,7 @@ const FILES = [
   { path: '/var/lib/eum/logs/feed_tick.20261110.log', size: 912884112, ago: 0.05, origin: 'root', suggest: '{log_dir}/feed_tick.*.log', allowed: true },
   { path: '/var/lib/eum/logs/gw/order_0003.log', size: 5821044, ago: 2, origin: 'root', suggest: '{log_dir}/gw/order_*.log', allowed: true, name: 'order-gw' },
   { path: '/var/lib/eum/logs/settle.01JC9A4D8R1MB6Y0S3W2K7N5JF.log', size: 220311, ago: 14, origin: 'proc', pid: 4388, comm: 'settle', flow: 'daily-settle/settle', suggest: '{log_dir}/settle.{exec_id}.log', allowed: true },
+  { path: '/var/lib/eum/logs/quote_feed.log', size: 3120441, ago: 0.02, origin: 'root', suggest: '{log_dir}/quote_feed.log', allowed: true, name: 'quote' },
   { path: '/var/log/syslog', size: 3318002, ago: 0.02, origin: 'syslog', suggest: '/var/log/syslog', allowed: true },
   { path: '/data/etl/load_2026-11-10.log', size: 7345120, ago: 30, origin: 'root', suggest: '/data/etl/load_*.log', allowed: false },
 ];
@@ -255,6 +279,13 @@ const SYSLOG = [
   'Nov 10 09:00:07 match-01 settle[4388]: warning: slow disk 480ms',
   'Nov 10 09:00:08 match-01 systemd[1]: Started Session 112 of user ops.',
 ];
+// 시세 로그: 1초마다 통계 줄, 가끔 다른 줄
+function quoteLine(i) {
+  const t = `2026-11-10 09:01:${String((i * 1) % 60).padStart(2, '0')}`;
+  if (i % 12 === 5) return `${t} [INFO] session keepalive ok peer=krx-feed-a`;
+  const recv = 1400 + (hash32('q' + i) % 900);
+  return `${t} [STAT] recv=${recv.toLocaleString('en-US')} send=${recv.toLocaleString('en-US')} lost=${i % 17 === 9 ? 3 : 0}`;
+}
 function peek(c) {
   const b = c.json();
   const h = b && c.w.hosts.find((x) => x.id === b.host);
@@ -263,10 +294,11 @@ function peek(c) {
   const path = String(b.path || '');
   if (outside(path, rootsOf(h.id))) return err(422, `이 서버가 읽어도 되는 폴더(read_roots: ${rootsOf(h.id).join(', ')}) 밖입니다: ${dirOf(path)}`);
   const n = Math.max(1, Math.min(500, Number(b.lines) || 200));
+  const quote = /quote/.test(path);
   const base = /syslog/.test(path) ? SYSLOG : LINES;
-  const lines = Array.from({ length: Math.min(n, 48) }, (_, i) => base[i % base.length]);
+  const lines = Array.from({ length: Math.min(n, 48) }, (_, i) => (quote ? quoteLine(i) : base[i % base.length]));
   const file = path.replace('{log_dir}', '/var/lib/eum/logs').replace('{exec_id}', '01JC8M2Q4T9XK0A7V5N3B6D1ER').replace('*', '20261110');
-  return ok({ file, lines, size: 48213377, rate: /tick/.test(path) ? 870 : 12.5 });
+  return ok({ file, lines, size: 48213377, rate: /tick/.test(path) ? 870 : quote ? 1.1 : 12.5 });
 }
 
 export const routes = [

@@ -5,7 +5,7 @@ import { api, poll, ApiError } from '../api.js';
 import { el, relTime, toast, confirmBox, table, DASH } from '../ui.js';
 import { can, gate } from '../auth.js';
 import { hashWith } from '../tree.js';
-import { openWizard, watchApplied, scopeName, scopeCovers, viewScope, ruleChipText, pathDir } from './collectwiz.js';
+import { openWizard, watchApplied, scopeName, scopeCovers, viewScope, ruleChipText, pathDir, metricTip } from './collectwiz.js';
 
 // ---- 순수 함수 ----
 
@@ -80,20 +80,31 @@ export function hostSourceRows(detail) {
   for (const s of (st && st.sources) || []) {
     seen.add(s.name);
     const why = skipWhy(s);
-    rows.push({ name: s.name, path: s.path, match: s.match || [], src: s.origin === 'local' ? '로컬(YAML)' : srcLabel(scopeOf(s.name)), scope: scopeOf(s.name), files: s.files, skipped: s.skipped || '', why,
+    rows.push({ name: s.name, path: s.path, match: s.match || [], metrics: s.metrics || [], src: s.origin === 'local' ? '로컬(YAML)' : srcLabel(scopeOf(s.name)), scope: scopeOf(s.name), files: s.files, skipped: s.skipped || '', why,
       dir: why === 'outside' ? s.dir || pathDir(s.path) : '', local: s.origin === 'local' });
   }
-  for (const l of logs) if (!seen.has(l.name)) rows.push({ name: l.name, path: l.path, match: l.match || [], src: srcLabel(l.scope), scope: l.scope, files: null, skipped: '', why: '', dir: '', waiting: true });
+  for (const l of logs) if (!seen.has(l.name)) rows.push({ name: l.name, path: l.path, match: l.match || [], metrics: l.metrics || [], src: srcLabel(l.scope), scope: l.scope, files: null, skipped: '', why: '', dir: '', waiting: true });
   return rows;
 }
 
 const YAML_EXAMPLE = 'remote:\n  enabled: true\n  read_roots: [/var/lib/eum/logs]';
 const LOCKED_TIP = '매니저 설정 collect.enabled가 꺼져 있어 조회만 됩니다';
 
-function rulesCell(match) {
+function rulesCell(match, metrics) {
+  if ((!match || !match.length) && metrics && metrics.length) return el('span', { class: 'meta', text: DASH, title: '줄 규칙 없음 — 숫자만 뽑습니다' });
   const box = el('span', { class: 'cl-rules' });
   if (!match || !match.length) box.append(el('span', { class: 'empty', text: '규칙 없음' }));
   for (const r of match || []) box.append(el('code', { class: 'cl-rule ' + r.level, text: ruleChipText(r), title: r.level === 'error' ? '오류로 보고' : '경고로 보고' }));
+  return box;
+}
+// 표의 '지표' 칸: 이름 칩 2개까지 + 외 N, ⓘ에 정규식·계산·창
+export const METRIC_SHOW = 2;
+export function metricsCell(metrics) {
+  if (!metrics || !metrics.length) return DASH;
+  const box = el('span', { class: 'cl-rules cl-mcell' });
+  for (const m of metrics.slice(0, METRIC_SHOW)) box.append(el('code', { class: 'cl-metric', text: m.name, title: metricTip(m) }));
+  if (metrics.length > METRIC_SHOW) box.append(el('span', { class: 'meta', text: `외 ${metrics.length - METRIC_SHOW}`, title: metrics.slice(METRIC_SHOW).map((m) => m.name).join('\n') }));
+  box.append(el('span', { class: 'cl-i', text: 'ⓘ', title: metrics.map(metricTip).join('\n\n') }));
   return box;
 }
 const hostList = (data) => (data.hosts || []).map((h) => ({ id: h.host, group: h.group, roots: h.read_roots }));
@@ -196,10 +207,11 @@ export async function render(root, params, query) {
       columns: [
         { key: 'name', label: '이름', render: (r) => el('span', { class: 'cl-name', text: r.name }) },
         { key: 'path', label: '경로', render: (r) => el('code', { class: 'cl-path', text: r.path }) },
-        { key: 'match', label: '규칙', render: (r) => rulesCell(r.match) },
+        { key: 'match', label: '규칙', render: (r) => rulesCell(r.match, r.metrics) },
+        { key: 'metrics', label: '지표', render: (r) => metricsCell(r.metrics) },
         { key: 'scope', label: '정한 곳', render: (r) => (r.own ? (r.overrides ? el('span', { class: 'badge warn', text: '덮어씀', title: '더 넓은 적용 대상의 같은 이름 로그 파일을 여기서 바꿈' }) : el('span', { class: 'meta', text: '여기' })) : el('span', { class: 'meta', text: `${scopeName(r.scope)}에서 받음` })) },
         { key: 'x', label: '', render: (r) => (r.own ? el('span', { class: 'cl-act' },
-          lock(el('button', { type: 'button', text: '편집', onclick: () => openAdd({ scope, source: { name: r.name, path: r.path, match: r.match } }) })),
+          lock(el('button', { type: 'button', text: '편집', onclick: () => openAdd({ scope, source: { name: r.name, path: r.path, match: r.match, metrics: r.metrics } }) })),
           lock(el('button', { type: 'button', class: 'ghost', text: '삭제', onclick: () => del(set, r) }))) : '') },
       ],
     });
@@ -315,7 +327,7 @@ export function drawHostCollect(body, hostId) {
     const editTip = !all.editable ? LOCKED_TIP : '관리 계정만 할 수 있습니다';
     const editAt = (r) => openWizard({
       hosts: [{ id: hostId, group: d.group, roots: d.status && d.status.read_roots }], allHosts: hostList(all), host: hostId, hostFixed: true,
-      scope: r.scope, sets: all.sets, edit: { scope: r.scope, source: { name: r.name, path: r.path, match: r.match } },
+      scope: r.scope, sets: all.sets, edit: { scope: r.scope, source: { name: r.name, path: r.path, match: r.match, metrics: r.metrics } },
       onSaved: (sc, host) => afterSave(sc, host, reload) });
     const outDirs = [...new Set(rows.filter((r) => r.why === 'outside' && r.dir).map((r) => r.dir))];
     const fix = outDirs.length ? fixBox(d, outDirs) : null;
@@ -339,7 +351,8 @@ export function drawHostCollect(body, hostId) {
       columns: [
         { key: 'name', label: '이름', render: (r) => el('span', { class: 'cl-name', text: r.name }) },
         { key: 'path', label: '경로', render: (r) => el('code', { class: 'cl-path', text: r.path }) },
-        { key: 'match', label: '규칙', render: (r) => rulesCell(r.match) },
+        { key: 'match', label: '규칙', render: (r) => rulesCell(r.match, r.metrics) },
+        { key: 'metrics', label: '지표', render: (r) => metricsCell(r.metrics) },
         { key: 'src', label: '정한 곳', render: (r) => (r.local ? el('span', { class: 'badge silent', text: r.src, title: '에이전트 YAML의 logs. 화면에서는 읽기만 됩니다' }) : el('span', { text: r.src })) },
         { key: 'files', label: '읽는 파일 수', title: '경로에 맞는 파일 중 에이전트가 지금 읽고 있는 수', num: true, render: (r) => (r.files == null || r.skipped ? DASH : String(r.files)) },
         { key: 'skipped', label: '문제', render: problem },
