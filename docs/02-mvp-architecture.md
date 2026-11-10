@@ -358,7 +358,7 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 // GET /api/v1/hosts
 {"now":1761534000000,"hosts":[
   {"id":"match-01","group":"매매/체결","last_seen":1761533999000,"state":"warn",   // ok | warn | crit | silent
-   "cpu":78.2,"mem":61.0,"load1":3.1,"reasons":["host.cpu.pct ≥ 70"]}]}
+   "cpu":78.2,"mem":61.0,"load1":3.1,"reasons":["CPU 사용률 ≥ 70%"]}]}
 
 // GET /api/v1/series?group=매매/체결&name=host.cpu.pct&from=&to=&step=30
 {"from":1761533100000,"to":1761534000000,"step":30,"series":[

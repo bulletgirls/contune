@@ -8,7 +8,7 @@
 | 탭 | 요구 | 이 문서 |
 |---|---|---|
 | 관제 | 중복 정보·번역체 단어를 빼고 간결하게. **장애 위험 지수**: 과거 장애 기록과 수집 데이터의 관계를 주기적으로 학습해 지수로. 시연 때 정확하지 않아도 메커니즘(로컬 ML 또는 사내 LLM)은 갖춤 | §5 알림, §6 위험 지수, §14 화면 |
-| 서버 | 서브 탭 **CPU · 메모리 · 시스템 · 프로세스 · IO**와 지정 항목. 과거 구간을 골라 봄. 실수집은 미뤄도 항목은 있고 확장 가능 | §2 지표 카탈로그, §3 실행 프로세스 지표, §14.3 |
+| 서버 | 서브 탭 **개요 · CPU · 메모리 · 디스크 · 네트워크 · 프로세스**와 지정 항목(2026-11-10 개편, §14.8). 과거 구간을 골라 봄. 실수집은 미뤄도 항목은 있고 확장 가능 | §2 지표 카탈로그, §3 실행 프로세스 지표, §14.8 |
 | 배치 | 화면에서 작업 구성, 노드 조작(강제 OK 등), **자연어 입력 통로**(LLM 연동은 확장, 입력 화면은 지금) | §7 운영자 조작, §8 편집기, §9 자연어 초안 |
 | 업무(신설) | APM이 보던 정보: 이력 버퍼, 초당 주문 건수, 평균 응답시간, **업무 로그 이벤트**. 테스트 프로그램 로그의 `(E)` 줄을 주기 수집해 알림 | §4 업무 로그, §5 알림, §14.5 |
 
@@ -42,55 +42,64 @@
 
 ## 2. 지표 카탈로그 (서버 탭)
 
-서버 탭의 서브 탭과 항목은 **카탈로그 하나**가 정한다. 화면은 카탈로그를 읽어 그리므로, 항목을 늘릴 때는 카탈로그에 한 줄을 더하고 수집기에서 그 이름을 내면 된다(화면 코드는 바뀌지 않음). 카탈로그는 `internal/model/catalog.go`의 `Catalog()`이고 `GET /api/v1/catalog`로 나간다.
+서버 상세의 서브 탭·차트·항목은 **카탈로그 하나**가 정한다. 화면은 카탈로그를 읽어 그리므로, 항목을 늘릴 때는 `metrics`에 한 줄(새 차트면 `charts`에도 한 줄)을 더하고 수집기에서 그 이름을 내면 된다(화면 코드는 바뀌지 않음). 카탈로그는 `internal/model/catalog.go`의 `Catalog()`이고 `GET /api/v1/catalog`로 나간다. 지표 이름(`host.*`·`job.*`)은 저장·수집 계약이라 바꾸지 않았고, **화면 이름만** 아래 용어 원칙대로 다시 정했다(2026-11-10).
 
-| 그룹 `id` | 화면 이름 | 지표 이름 | 표시 이름 | 단위 | procfs 수집 |
-|---|---|---|---|---|---|
-| `cpu` | CPU | `host.cpu.pct` | User+Sys | % | ○ user+nice+system+irq+softirq (**steal 제외**로 정의를 바로잡음) |
-| | | `host.cpu.user_pct` | User | % | ○ user+nice |
-| | | `host.cpu.sys_pct` | Sys | % | ○ system+irq+softirq |
-| | | `host.cpu.wait_pct` | Wait | % | ○ iowait |
-| | | `host.cpu.idle_pct` | Idle | % | ○ |
-| | | `host.cpu.steal_pct` | Stolen | % | ○ |
-| | | `host.cpu.busy_wait_pct` | User+Sys+Wait | % | ○ |
-| | | `host.proc.running` | 실행 중 프로세스 | 개 | ○ `/proc/stat` procs_running |
-| `mem` | 메모리 | `host.mem.used_pct` | 사용 | % | ○ (Total−Free−Buffers−Cached−SReclaimable)/Total |
-| | | `host.mem.used_mb` | 사용 | MB | ○ |
-| | | `host.mem.cache_pct` | 캐시 | % | ○ (Buffers+Cached+SReclaimable)/Total |
-| | | `host.mem.used_cache_pct` | 사용+캐시 | % | ○ (Total−Free)/Total |
-| `sys` | 시스템 | `host.sys.fork_ps` | Fork | 회/초 | ○ `processes` 증가분 |
-| | | `host.sys.intr_ps` | 인터럽트 | 회/초 | ○ `intr` 첫 값 증가분 |
-| | | `host.sys.syscall_ps` | 시스템 콜 | 회/초 | ✕ procfs로 못 셈(sim만, 확장: eBPF) |
-| | | `host.sys.ctxsw_ps` | 문맥 교환 | 회/초 | ○ `ctxt` 증가분 |
-| | | `host.proc.count` | 프로세스 | 개 | ○ `/proc`의 숫자 폴더 수 |
-| | | `host.proc.threads` | 스레드 | 개 | ○ `/proc/loadavg` 4번째 필드의 분모 |
-| | | `host.load1` | Load 1분 | — | ○ |
-| `proc` | 프로세스 | (§3의 `job.*`) | | | 이음이 띄운 실행만 |
-| `io` | IO | `host.disk.read_mbps` · `host.disk.write_mbps` | 디스크 읽기·쓰기 | MB/s | ○ `/proc/diskstats` 섹터×512 |
-| | | `host.disk.read_iops` · `host.disk.write_iops` | 디스크 IOPS | IO/s | ○ |
-| | | `host.net.rx_kbps` · `host.net.tx_kbps` | 네트워크 수신·송신 | KB/s | ○ `/proc/net/dev`, `lo` 제외 |
-| | | `host.net.rx_pps` · `host.net.tx_pps` | 네트워크 패킷 | 개/초 | ○ |
+**용어 원칙**
+1. 차트 제목 = **대상 + 측정량**(`CPU 사용률`, `디스크 처리량`, `네트워크 트래픽`). 계열 이름 = 그 안의 구성요소만 짧게(`사용자`, `읽기`, `수신`). 제목이 대상을 말하므로 `디스크 읽기 IOPS`처럼 되풀이하지 않는다.
+2. 한국어 명사가 기본. 운영자가 원어로 더 잘 아는 약어만 영어로 둔다: CPU, I/O, IOPS, RSS, fork. `User+Sys`·`Stolen`·`Char IO` 같은 도구 고유 표기는 쓰지 않는다.
+3. 단위: 비율 `%`, 횟수 흐름 `회/초`(인터럽트·IOPS·fork), 개수 `개`, 개수 흐름 `개/초`(패킷), 바이트 흐름 `KB/s`·`MB/s`, 크기 `MB`. 화면은 값 크기에 맞춰 `KB/s ↔ MB/s ↔ GB/s`(1000), `MB ↔ GB`(1024)로 바꿔 보인다(차트 하나 안에서는 한 단위).
+4. 다른 항목에서 계산되는 값(`derived`)은 선을 긋지 않고 범례 표 아래 줄·말풍선에만 둔다(쌓은 영역의 맨 위가 이미 합이므로 같은 사실을 두 번 그리지 않는다).
+5. 항목의 정의·출처는 `desc`로 범례 이름의 말풍선에 둔다.
 
+| 탭 `id` · 이름 | 차트 (`stack`: 쌓은 영역, `max`: y축 고정) | 지표 이름 | 계열 이름 | 단위 | 이전 이름 | procfs 수집 |
+|---|---|---|---|---|---|---|
+| `cpu` · CPU (카드: `host.cpu.pct`) | **CPU 사용률** (stack, 0–100, 개요) | `host.cpu.user_pct` | 사용자 | % | User | ○ user+nice |
+| | | `host.cpu.sys_pct` | 시스템 | % | Sys | ○ system+irq+softirq |
+| | | `host.cpu.wait_pct` | I/O 대기 | % | Wait | ○ iowait |
+| | | `host.cpu.steal_pct` | 스틸 | % | Stolen | ○ |
+| | | `host.cpu.pct` (계산) | CPU 사용률 | % | User+Sys | ○ user+nice+system+irq+softirq (**steal 제외**) |
+| | | `host.cpu.busy_wait_pct` (계산) | 사용률+I/O 대기 | % | User+Sys+Wait | ○ |
+| | | `host.cpu.idle_pct` (계산) | 유휴 | % | Idle | ○ |
+| | **부하 평균** | `host.load1` | 1분 | — | Load 1분 | ○ |
+| | **실행 큐** | `host.proc.running` | 실행 큐 | 개 | 실행 중 프로세스 | ○ `/proc/stat` procs_running |
+| | **인터럽트** | `host.sys.intr_ps` | 인터럽트 | 회/초 | (시스템 탭) | ○ `intr` 첫 값 증가분 |
+| | **컨텍스트 스위치** | `host.sys.ctxsw_ps` | 컨텍스트 스위치 | 회/초 | 문맥 교환 | ○ `ctxt` 증가분 |
+| | **시스템 콜** | `host.sys.syscall_ps` | 시스템 콜 | 회/초 | (시스템 탭) | ✕ procfs로 못 셈(sim만, 확장: eBPF) |
+| `mem` · 메모리 (카드: `host.mem.used_pct`) | **메모리 사용률** (stack, 0–100, 개요) | `host.mem.used_pct` | 사용 | % | 사용 | ○ (Total−Free−Buffers−Cached−SReclaimable)/Total |
+| | | `host.mem.cache_pct` | 캐시 | % | 캐시 | ○ (Buffers+Cached+SReclaimable)/Total |
+| | | `host.mem.used_cache_pct` (계산) | 사용+캐시 | % | 사용+캐시 | ○ (Total−Free)/Total |
+| | **메모리 사용량** | `host.mem.used_mb` | 사용 | MB | 사용 | ○ |
+| `disk` · 디스크 (카드: 읽기+쓰기) | **디스크 처리량** (개요) | `host.disk.read_mbps` · `write_mbps` | 읽기 · 쓰기 | MB/s | 디스크 읽기·쓰기 (IO 탭) | ○ `/proc/diskstats` 섹터×512 |
+| | **디스크 IOPS** | `host.disk.read_iops` · `write_iops` | 읽기 · 쓰기 | 회/초 | 디스크 읽기·쓰기 IOPS, `IO/s` | ○ |
+| `net` · 네트워크 (카드: 수신+송신) | **네트워크 트래픽** (개요) | `host.net.rx_kbps` · `tx_kbps` | 수신 · 송신 | KB/s | 네트워크 수신·송신 (IO 탭) | ○ `/proc/net/dev`, `lo` 제외 |
+| | **네트워크 패킷** | `host.net.rx_pps` · `tx_pps` | 수신 · 송신 | 개/초 | 수신·송신 패킷 | ○ |
+| `proc` · 프로세스 (카드: `host.proc.count`) | **프로세스 수** | `host.proc.count` | 프로세스 | 개 | 프로세스 (시스템 탭) | ○ `/proc`의 숫자 폴더 수 |
+| | **스레드 수** | `host.proc.threads` | 스레드 | 개 | 스레드 (시스템 탭) | ○ `/proc/loadavg` 4번째 필드의 분모 |
+| | **프로세스 생성** | `host.sys.fork_ps` | fork | 회/초 | Fork (시스템 탭) | ○ `processes` 증가분 |
+| | (§3 `job.*`, `scope: job`) | | | | | 이음이 띄운 실행만 |
+
+- 예전 `시스템` 탭은 이름이 모호해 없앴다: 커널 활동(인터럽트·컨텍스트 스위치·시스템 콜)과 부하 평균은 CPU로, 프로세스·스레드 수와 fork는 프로세스로 옮겼다. `IO` 탭은 서로 다른 자원이라 디스크와 네트워크로 나눴다. 예전 주소 `#host/<id>/sys`·`/io`는 `cpu`·`disk`로 열린다.
 - 디스크는 전체 장치만 센다: 이름이 `^(sd[a-z]+|vd[a-z]+|xvd[a-z]+|hd[a-z]+|nvme\d+n\d+)$`인 줄(파티션·loop·ram·dm 제외).
-- 카탈로그 항목: `{name, title, unit, chart}`. `chart`는 같은 차트에 겹쳐 그릴 묶음 이름이다(예: 디스크 읽기·쓰기는 `disk_rw` 하나의 차트에 두 계열, **단위가 같을 때만**).
-- `sim` 수집기는 카탈로그의 `host.*` 전부를 **서로 맞는 값**으로 낸다(User+Sys = User + Sys, Idle = 100 − 나머지, 사용+캐시 ≥ 사용). 화면은 데이터가 없는 항목을 "수집 안 됨"으로 둔다.
+- 카탈로그 그룹: `{id, title, key[], charts[], metrics[]}`. 차트: `{id, title, stack?, max?, overview?, scope?}`. 항목: `{name, title, unit, chart, procfs, derived?, desc?}`. 한 차트의 항목은 **단위가 같아야** 한다(`model` 테스트가 확인).
+- `sim` 수집기는 카탈로그의 `host.*` 전부를 **서로 맞는 값**으로 낸다(CPU 사용률 = 사용자 + 시스템, 유휴 = 100 − 나머지, 사용+캐시 ≥ 사용). 화면은 데이터가 없는 차트를 "미수집"으로 둔다.
 - 서버당 `host.*`가 약 30개로 늘어 43대 × 1초면 초당 약 1,300행이다. 모의 서버(fleet)는 기본 `interval: 5s`로 둔다(실제 3대는 1초).
 
 ## 3. 실행 프로세스 지표 (`job.*` 확장, 서버 탭 "프로세스")
 
 추적기(A4)는 이음이 띄운 실행의 프로세스만 잰다(02 §11 보안 최소선 유지). 실행 하나 = 프로세스 탭의 한 줄이다.
 
-| 이름 | 표시 이름 | 단위 | 출처 |
-|---|---|---|---|
-| `job.cpu.pct` | User+Sys | % (코어 1개 = 100) | `/proc/<pid>/stat` utime+stime |
-| `job.cpu.user_pct` · `job.cpu.sys_pct` | User · Sys | % (코어 1개 = 100) | utime · stime |
-| `job.mem.size_mb` | Size | MB | `/proc/<pid>/statm` data(데이터+스택) |
-| `job.rss.mb` | RSS | MB | statm resident |
-| `job.mem.vsz_mb` | Virtual Memory | MB | statm size |
-| `job.io.char_kbps` | Char IO | KB/s | `/proc/<pid>/io` rchar+wchar 증가분. 읽지 못하면 내지 않음 |
-| `job.threads` | 스레드 | 개 | stat 20번 num_threads 합 |
-| `job.procs` | 프로세스 | 개 | (기존) |
+| 이름 | 차트 · 계열 이름 | 단위 | 이전 이름 | 출처 |
+|---|---|---|---|---|
+| `job.cpu.user_pct` · `job.cpu.sys_pct` | CPU 사용률(stack) · 사용자 · 시스템 | % (코어 1개 = 100) | User · Sys | utime · stime |
+| `job.cpu.pct` (계산) | CPU 사용률 · CPU 사용률 | % (코어 1개 = 100) | User+Sys | `/proc/<pid>/stat` utime+stime |
+| `job.rss.mb` | 메모리 · RSS | MB | RSS | statm resident |
+| `job.mem.size_mb` | 메모리 · 데이터 | MB | Size | `/proc/<pid>/statm` data(데이터+스택) |
+| `job.mem.vsz_mb` | 가상 메모리 · 가상 | MB | Virtual Memory | statm size |
+| `job.io.char_kbps` | I/O · 읽기+쓰기 | KB/s | Char IO | `/proc/<pid>/io` rchar+wchar 증가분(소켓·파이프 포함). 읽지 못하면 내지 않음 |
+| `job.threads` | 스레드 수 · 스레드 | 개 | 스레드 | stat 20번 num_threads 합 |
+| `job.procs` | 프로세스 수 · 프로세스 | 개 | 프로세스 | (기존) |
 
+- 프로세스 탭 표의 열 이름도 같은 말을 쓴다: 플로우 › 스텝 · 실행 번호(뒤 6자) · CPU 사용률 · 사용자 · 시스템 · RSS · 데이터 · 가상 메모리 · I/O · 스레드 · 프로세스. 최근 실행 표는 최대 CPU 사용률 · 최대 RSS.
 - 호스트 전체의 상위 N개 프로세스(이음이 띄우지 않은 것 포함)는 **확장**이다: `procs` 수집기 + `series.labels`(02 §5.1). 검증판은 보안 최소선대로 이음이 띄운 것만 보인다.
 
 ## 4. 업무 로그 수집 (`(E)` 줄)
@@ -247,8 +256,9 @@ logs:
 ```jsonc
 // GET /api/v1/catalog
 {"groups":[{"id":"cpu","title":"CPU","metrics":[
-  {"name":"host.cpu.pct","title":"User+Sys","unit":"%","chart":"cpu_us","procfs":true}, …]},
- {"id":"proc","title":"프로세스","metrics":[{"name":"job.cpu.pct","title":"User+Sys","unit":"%","chart":"job_cpu","procfs":true}, …]}]}
+  "key":["host.cpu.pct"], "charts":[{"id":"cpu_use","title":"CPU 사용률","stack":true,"max":100,"overview":true}, …],
+  "metrics":[{"name":"host.cpu.user_pct","title":"사용자","unit":"%","chart":"cpu_use","procfs":true,"desc":"사용자 모드 시간(user+nice)"}, …]},
+ {"id":"proc","title":"프로세스", …, "metrics":[…, {"name":"job.cpu.pct","title":"CPU 사용률","unit":"%","chart":"job_cpu","procfs":true,"derived":true}, …]}]}
 
 // GET /api/v1/hosts/match-01/procs
 {"now":1761534000000,"procs":[{"exec_id":"01JBQ7...","flow_id":"market-open","step_id":"start-matching",
@@ -449,14 +459,14 @@ CREATE VIEW IF NOT EXISTS v_logs AS SELECT ts, host, source, exec_id, level, mes
 | 주소 | 화면 | 카드 |
 |---|---|---|
 | `#dashboard` | 관제 | D4 |
-| `#hosts` · `#host/<id>/<tab>` (`cpu|mem|sys|proc|io`) | 서버 목록 · 서버 상세 | D7 |
+| `#hosts` · `#host/<id>/<tab>` (`overview|cpu|mem|disk|net|proc`, 예전 `sys`·`io`도 열림) | 서버 목록 · 서버 상세 | D7 |
 | `#board/<경로>[/<flow>]` | 배치판 · 플로우 그래프 · 노드 조작 | D2 |
 | `#edit/<flow>` · `#edit/new?board=` | 편집기 · 자연어로 만들기 | D8 |
 | `#biz[/<panel>]` | 업무 | D9 |
 | `#runs` · `#run/<exec_id>` | 실행 이력 · 타임머신 | D2 · D5 |
 | `#alerts` · `#risk` | 알림 · 장애 위험과 장애 기록 | D10 |
 
-- 시간 구간은 주소에 남긴다: `?range=15m|1h|6h|24h|7d` 또는 `?from=<ms>&to=<ms>`. 공통 부품 `timerange.js`(D1)가 막대(실시간 15분 · 1시간 · 6시간 · 24시간 · 7일 · 직접 지정)를 그리고, 차트를 끌어 고르면 그 구간으로 좁힌다("실시간"이 풀림). 서버·업무·위험 화면이 같은 부품을 쓴다.
+- 시간 구간은 주소에 남긴다: `?range=15m|1h|6h|24h|7d` 또는 `?from=<ms>&to=<ms>`. 공통 부품 `timerange.js`(D1)가 막대(`최근` 15분 · 1시간 · 6시간 · 24시간 · 7일 묶음 + 직접 지정, 오른쪽에 `● 실시간 · 11/10(화) 11:35 ~ 11:50`처럼 실제 구간)를 그리고, 차트를 끌어 고르면 그 구간으로 좁힌다("실시간"이 풀림). 서버·업무·위험 화면이 같은 부품을 쓴다.
 
 ### 14.2 문구 원칙 (모든 화면)
 
@@ -532,6 +542,38 @@ log_levels: [error, warn]
 | 다크 테마 | OS 설정을 따르고 위 막대에 전환 단추(D1) |
 | 메뉴 이름 | 관제 · 서버 · 배치 · 업무 · 실행. 타임머신 이름은 유지(기획서 10쪽) |
 | 발표 모드 | 만들지 않음 |
+
+### 14.8 서버 상세 개편 (2026-11-10)
+
+> 시연 피드백: 서브 탭이 눈에 안 들어오고, 용어가 제각각이며(`User+Sys`·`Stolen`·`Fork`·`문맥 교환`·`Char IO`), 그래프 시간축이 `11:35am / 11/10/26`처럼 들쭉날쭉했다.
+
+참고한 사례와 가져온 것:
+
+| 사례 | 가져온 것 |
+|---|---|
+| Grafana Node Exporter Full(1860) | 맨 위 "Quick/Basic" 줄 = CPU·메모리·네트워크·디스크 네 자원 먼저, 자세한 것은 그 아래. CPU를 상태별 **쌓은 영역**(Busy System·User·Iowait…)으로 한 장에 |
+| Elastic Observability 호스트 지표 | 지표 이름을 "대상 + 측정량"(CPU Usage, Memory Usage, Disk Read Throughput, Network Inbound)으로 통일, 사용률은 캐시 제외 |
+| WhaTap 서버 상세 | CPU·메모리·네트워크·디스크 I/O 네 묶음과 프로세스 목록, 서버 정보는 머리에 |
+| Netdata `system.cpu` | user·system·iowait·steal… 차원을 한 차트에 쌓고 idle은 남는 몫으로 |
+| Windows 작업 관리자 성능 탭 | **탭 자체가 요약 카드**(이름 + 현재 값 + 추이선). 탭을 고르기 전에 어디가 높은지 보인다 |
+
+| 부분 | 모양 |
+|---|---|
+| 머리 | 서버 · 그룹 · 등급 배지 · 이유 / 오른쪽 마지막 수신 · 에이전트 (그대로) |
+| 탭 카드 | **개요 · CPU · 메모리 · 디스크 · 네트워크 · 프로세스** 6장. 카드마다 이름, 대표 값(카탈로그 `key`의 마지막 값, 여러 개면 합) + 단위, 고른 구간의 추이선. 개요 카드는 등급과 이유. 고른 카드는 위 테두리 강조. 탭을 바꿔도 화면 전체를 다시 그리지 않고 주소만 바꾼다 |
+| 시간 구간 | 탭 카드 아래 한 줄, 모든 차트·카드가 같은 구간을 쓴다. 왼쪽 `최근` 묶음 버튼, 오른쪽 실제 구간과 `● 실시간` |
+| 개요 탭 | `overview: true` 차트 4장: CPU 사용률 · 메모리 사용률 · 디스크 처리량 · 네트워크 트래픽. 차트 제목을 누르면 그 탭 |
+| 자원 탭 | 카탈로그 차트를 2열 격자로. 차트마다 흰 카드, 같은 높이 |
+| 프로세스 탭 | 이음 실행 프로세스 표 → (줄을 고르면) 그 실행의 `scope: job` 차트 → 서버 전체(프로세스 수 · 스레드 수 · 프로세스 생성) → 최근 실행 |
+
+차트 공통 규칙(`chart.js`, 서버·업무·위험·타임머신이 함께 쓴다):
+- **x축은 고른 구간 그대로**(데이터가 시작된 곳이 아니라). 그래서 차트끼리 시각이 맞고 아직 안 온 구간은 빈다. 수집이 끊긴 곳(간격이 보통의 3배 초과)은 선을 잇지 않는다.
+- **시간 눈금**: 24시간제 `HH:mm`, 간격은 1·2·5·10·15·30초, 1·2·5·10·15·30분, 1·2·3·6·12시간, 1·2·7일 중에서 글자가 겹치지 않는 가장 촘촘한 것. 1분 미만 간격이면 `HH:mm:ss`, 자정과 하루 이상 간격은 날짜 `M/D`. 15분 → 2분 간격, 24시간 → `18:00 · 11/10 · 06:00 · 12:00`, 7일 → `11/4 … 11/10`.
+- **y축**: 아래 끝은 늘 0. % 사용률은 0–100 고정, 나머지는 최대값보다 조금 큰 둥근 수. 눈금은 1만에 닿으면 `10k`·`1.5M`. 가로 격자선만(세로선 없음).
+- **범례**: 서버 차트는 아래에 표(이름 · 현재(과거 구간이면 마지막) · 평균 · 최대). 숫자는 오른쪽 맞춤 `tabular-nums`, 소수 자리는 차트마다 한 번 정한다(% 1자리, 100 이상 0자리, 10 이상 1자리, 그 밖 2자리). 계산 값은 구분선 아래 흐린 줄. 다른 화면은 계열이 2개 이상일 때 제목 옆 이름표. uPlot 기본 범례(`Time: --`)는 쓰지 않는다.
+- **커서**: 세로 헤어라인이 모든 차트에서 함께 움직이고, 마우스가 있는 차트에만 말풍선(시각 `11/10(화) 12:01:08`, 값이 먼저·이름이 뒤, 쌓은 차트는 위에서 아래 순, 계산 값은 구분선 아래).
+- **기준선**(`ref: true`, 예: 위험 지수의 경고 30 · 위험 60): 상태 색 점선.
+- **계열 색**: `--s1…--s6`을 순서대로(기준선은 차례를 차지하지 않음). 2026-11-10에 색약 검사기(dataviz `validate_palette.js`)로 밝음·어두움 둘 다 통과하게 맞췄다(밝음 `--s3` 채도 보정, 어두움 명도 낮춤, 5·6번 순서 교체).
 
 ## 15. 시연 보충 (03 §1에 반영)
 

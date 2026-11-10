@@ -156,7 +156,7 @@ export function createTree(host, { onBoards } = {}) {
     }
     r.addEventListener('click', () => {
       if (kind === 'host') {
-        if (isLeaf) go(`#host/${encodeURIComponent(node.item.id)}/cpu`);
+        if (isLeaf) go(`#host/${encodeURIComponent(node.item.id)}/overview`);
         else selectGroup(node.path);
       } else if (isLeaf) go('#board/' + node.path.split('/').map(encodeURIComponent).join('/') + '/' + encodeURIComponent(node.item.id));
       else go('#board/' + node.path.split('/').map(encodeURIComponent).join('/'));

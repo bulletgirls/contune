@@ -42,7 +42,7 @@ func TestCatalog(t *testing.T) {
 	for _, g := range gs {
 		ids = append(ids, g.ID)
 	}
-	if got := strings.Join(ids, ","); got != "cpu,mem,sys,proc,io" {
+	if got := strings.Join(ids, ","); got != "cpu,mem,disk,net,proc" {
 		t.Fatalf("그룹 순서 %q", got)
 	}
 	want := []string{
@@ -60,6 +60,42 @@ func TestCatalog(t *testing.T) {
 	for _, g := range gs {
 		if g.Title == "" {
 			t.Errorf("그룹 %s 제목 없음", g.ID)
+		}
+		charts := map[string]ChartDef{}
+		for _, c := range g.Charts {
+			if c.ID == "" || c.Title == "" {
+				t.Errorf("그룹 %s: 차트 id·title 비어 있음", g.ID)
+			}
+			charts[c.ID] = c
+		}
+		units := map[string]string{}
+		drawn := map[string]int{}
+		inGroup := map[string]bool{}
+		for _, m := range g.Metrics {
+			inGroup[m.Name] = true
+			if _, ok := charts[m.Chart]; !ok {
+				t.Errorf("%s: 차트 %q가 그룹 %s에 없음", m.Name, m.Chart, g.ID)
+			}
+			if u, ok := units[m.Chart]; ok && u != m.Unit {
+				t.Errorf("차트 %s: 단위가 섞임(%q, %q)", m.Chart, u, m.Unit)
+			}
+			units[m.Chart] = m.Unit
+			if !m.Derived {
+				drawn[m.Chart]++
+			}
+		}
+		for id := range charts {
+			if drawn[id] == 0 {
+				t.Errorf("차트 %s: 그릴 항목 없음", id)
+			}
+		}
+		if len(g.Key) == 0 {
+			t.Errorf("그룹 %s: key 없음", g.ID)
+		}
+		for _, k := range g.Key {
+			if !inGroup[k] {
+				t.Errorf("그룹 %s: key %s가 그룹 항목이 아님", g.ID, k)
+			}
 		}
 		for _, m := range g.Metrics {
 			if _, dup := seen[m.Name]; dup {

@@ -217,7 +217,7 @@ memstore·metricsql 모두 스위트 통과. `eum dev` 기본(`store: sqlite`, B
   - 응답은 02 §6 형식.
 - `JudgeHost(now, h, cpu, mem, th) (state, reasons)`: 순수 함수.
   - `now − LastSeen > SilentAfter`면 `silent`, 이유 `"수신 없음 12초"`. 이 판정이 가장 먼저.
-  - CPU나 메모리가 crit 이상이면 `crit`, warn 이상이면 `warn`. 이유 `"host.cpu.pct ≥ 90"` 꼴.
+  - CPU나 메모리가 crit 이상이면 `crit`, warn 이상이면 `warn`. 이유 `"CPU 사용률 ≥ 90%"` 꼴(2026-11-10 화면 용어로 바꿈, 05 §2).
   - 둘 다 아니면 `ok`.
 - `GET /api/v1/hosts`
   - 저장소 호스트와 `live` 호스트를 합친다(같으면 `live`의 last_seen·그룹 우선).

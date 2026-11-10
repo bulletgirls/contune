@@ -410,24 +410,24 @@ export function hostLastSeen(h, now) {
 }
 
 export function hostState(h, v, lastSeen, now) {
-  if (now - lastSeen > 10 * SEC) return { state: 'silent', reasons: ['10초 넘게 수신 없음'] };
+  if (now - lastSeen > 10 * SEC) return { state: 'silent', reasons: [`수신 없음 ${Math.round((now - lastSeen) / SEC)}초`] };
   const reasons = [];
   let rank = 0;
   const cpu = v['host.cpu.pct'];
   const mem = v['host.mem.used_pct'];
   if (cpu >= 90) {
     rank = 2;
-    reasons.push('host.cpu.pct ≥ 90');
+    reasons.push('CPU 사용률 ≥ 90%');
   } else if (cpu >= 70) {
     rank = Math.max(rank, 1);
-    reasons.push('host.cpu.pct ≥ 70');
+    reasons.push('CPU 사용률 ≥ 70%');
   }
   if (mem >= 90) {
     rank = 2;
-    reasons.push('host.mem.used_pct ≥ 90');
+    reasons.push('메모리 사용률 ≥ 90%');
   } else if (mem >= 80) {
     rank = Math.max(rank, 1);
-    reasons.push('host.mem.used_pct ≥ 80');
+    reasons.push('메모리 사용률 ≥ 80%');
   }
   const state = ['ok', 'warn', 'crit'][rank];
   return { state, reasons };

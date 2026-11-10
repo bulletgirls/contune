@@ -86,7 +86,7 @@ export function countLevels(alerts) {
 }
 export function alertTarget(a, panels) {
   switch (a.kind) {
-    case 'host': return a.host ? `#host/${encodeURIComponent(a.host)}/cpu` : '#hosts';
+    case 'host': return a.host ? `#host/${encodeURIComponent(a.host)}/overview` : '#hosts';
     case 'run': return `#run/${encodeURIComponent(a.exec_id)}`;
     case 'risk': return '#risk';
     default: {
@@ -257,7 +257,7 @@ function serverMap(hs) {
       const cls = ok ? `c ok l${cpuLevel(h.cpu)}` : `c ${h.state}`;
       const tip = `${h.id} · ${h.group}\nCPU ${fmtNum(h.cpu)}% · 메모리 ${fmtNum(h.mem)}%\n${HOST_LABEL[h.state] || h.state}`;
       const text = ok ? (h.cpu == null ? '' : String(Math.round(h.cpu))) : HOST_MARK[h.state] || '';
-      cells.append(el('a', { class: cls, href: `#host/${encodeURIComponent(h.id)}/cpu`, title: tip, 'data-id': h.id, text }));
+      cells.append(el('a', { class: cls, href: `#host/${encodeURIComponent(h.id)}/overview`, title: tip, 'data-id': h.id, text }));
     }
     box.append(el('div', { class: 'grow-row' }, el('span', { class: 'gl', title: r.group, text: r.label }), el('span', { class: 'gn num', text: String(r.hosts.length) }), cells));
   }

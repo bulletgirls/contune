@@ -163,9 +163,9 @@ export function render(root, params, query) {
     const r = await api(`/series?host=_eum&name=risk.index&from=${Math.round(from)}&to=${Math.round(to)}`);
     const pts = ((r.series || [])[0] || {}).points || [];
     const line = (v) => [[from, v], [to, v]];
-    const series = [{ label: '지수', data: pts }, { label: '경고', data: line(WARN_LINE) }, { label: '위험', data: line(CRIT_LINE) }];
+    const series = [{ label: '지수', data: pts }, { label: '경고', data: line(WARN_LINE), ref: true, color: '--warn' }, { label: '위험', data: line(CRIT_LINE), ref: true, color: '--crit' }];
     const shades = incidentShades(incidents, to);
-    if (chart) { chart.setShades(shades); chart.setData(series); } else chart = lineChart(chartHost, { title: '장애 위험 지수', series, shades, height: 180 });
+    if (chart) { chart.setShades(shades); chart.setData(series, { from, to }); } else chart = lineChart(chartHost, { title: '장애 위험 지수', series, shades, height: 180, max: 100, range: { from, to } });
   };
   const loadAll = () => Promise.all([loadRisk(), loadInc()]);
   tr.onChange(() => { if (chart) { chart.destroy(); chart = null; } loadInc(); });

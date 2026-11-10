@@ -63,20 +63,21 @@ func JudgeHost(now int64, h model.Host, cpu, mem float64, th model.HostThreshold
 		return "silent", []string{fmt.Sprintf("수신 없음 %d초", age/1000)}
 	}
 	state = "ok"
+	// 이유 글자는 화면 용어(05 §2): "CPU 사용률 ≥ 70%"
 	rank := func(v, warn, crit float64, name string) {
 		switch {
 		case v >= crit:
-			reasons = append(reasons, fmt.Sprintf("%s ≥ %g", name, crit))
+			reasons = append(reasons, fmt.Sprintf("%s ≥ %g%%", name, crit))
 			state = "crit"
 		case v >= warn:
-			reasons = append(reasons, fmt.Sprintf("%s ≥ %g", name, warn))
+			reasons = append(reasons, fmt.Sprintf("%s ≥ %g%%", name, warn))
 			if state == "ok" {
 				state = "warn"
 			}
 		}
 	}
-	rank(cpu, th.CPUWarn, th.CPUCrit, "host.cpu.pct")
-	rank(mem, th.MemWarn, th.MemCrit, "host.mem.used_pct")
+	rank(cpu, th.CPUWarn, th.CPUCrit, "CPU 사용률")
+	rank(mem, th.MemWarn, th.MemCrit, "메모리 사용률")
 	return state, reasons
 }
 

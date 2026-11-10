@@ -47,9 +47,11 @@ export function mergeLogs(prev, next) {
   return { rows: [...add, ...prev].sort((a, b) => b.ts - a.ts || b.id - a.id).slice(0, 500), fresh: new Set(add.map((e) => e.id)) };
 }
 // 패널 차트 정의 → 계열 이름 → 차트 계열
-export function toChartSeries(chart, resp) {
+// 계열 이름은 같은 지표를 쓰는 타일의 제목(예: biz.order.in_tps → 주문 접수). 타일이 없으면 지표 이름.
+export function toChartSeries(chart, resp, tiles = []) {
   const byName = new Map((resp.series || []).map((s) => [s.name, s]));
-  return chart.metrics.map((m) => ({ label: m, unit: chart.unit, data: (byName.get(m) || { points: [] }).points }));
+  const titleOf = new Map(tiles.map((t) => [t.metric, t.title]));
+  return chart.metrics.map((m) => ({ label: titleOf.get(m) || m, unit: chart.unit, data: (byName.get(m) || { points: [] }).points }));
 }
 
 // ---- 화면 ----
@@ -127,10 +129,10 @@ function draw(body, panel) {
       const { from, to } = tr.current();
       await Promise.all(hosts.map(async (h) => {
         const resp = await api(seriesPath(panel, h.def, from, to));
-        const ser = toChartSeries(h.def, resp);
-        if (h.chart) h.chart.setData(ser);
+        const ser = toChartSeries(h.def, resp, panel.tiles || []);
+        if (h.chart) h.chart.setData(ser, { from, to });
         else {
-          h.chart = lineChart(h.host, { title: h.def.title, unit: h.def.unit, series: ser, sync: SYNC, height: 150, onSelect: (f, t) => tr.select(f, t) });
+          h.chart = lineChart(h.host, { title: h.def.title, unit: h.def.unit, series: ser, sync: SYNC, height: 150, range: { from, to }, onSelect: (f, t) => tr.select(f, t) });
           charts.push(h.chart);
         }
       }));
