@@ -9,6 +9,7 @@ const PAGES = {
   hosts: './pages/server.js', host: './pages/server.js',
   board: './pages/batch.js', runs: './pages/runs.js',
   edit: './pages/editor.js', biz: './pages/biz.js',
+  audit: './pages/audit.js',
   run: './pages/tm.js', alerts: './pages/alerts.js', risk: './pages/risk.js',
   'dev/flame': './pages/devflame.js',
 };

@@ -1,0 +1,39 @@
+/* 감사 기록 #audit · 플로우 변경 이력 탭. 모양은 실행 이력(runs.css)을 따른다. */
+body[data-page="audit"] #page { display:flex; flex-direction:column; }
+.au-denied { margin:48px auto; color:var(--t3); font-size:15px; }
+.au-head { margin-bottom:4px; }
+.au-csv { font-size:13px; color:var(--accent); text-decoration:none; border:1px solid var(--line); border-radius:4px; padding:3px 10px; background:var(--surface); }
+.au-csv:hover { border-color:var(--accent); }
+.au-range .trange { margin-bottom:8px; }
+.au-kpis { margin-bottom:12px; }
+.au-kpis .bt-kpi .kv .num { font-size:20px; font-weight:700; }
+.au-kpis .bt-kpi .kv.c-crit .num { color:var(--crit); }
+.au-kpis .bt-kpi .kv.c-warn .num { color:var(--warn); }
+.au-filters { margin-bottom:8px; }
+.au-filters .bt-seg button { padding:3px 10px; font-size:13px; }
+
+table.au-tbl { table-layout:fixed; }
+.au-tbl col.c-at { width:124px; } .au-tbl col.c-who { width:120px; } .au-tbl col.c-act { width:230px; } .au-tbl col.c-tg { width:240px; }
+.au-tbl td.cut { overflow:hidden; text-overflow:ellipsis; }
+.au-tbl tr.is-open td { background:color-mix(in srgb, var(--accent) 6%, transparent); }
+.au-act { display:inline-flex; align-items:center; gap:4px; }
+.au-act.risk { color:var(--crit); font-weight:600; }
+.au-warn { font-weight:400; }
+.au-burst { margin-left:8px; font-size:11px; font-weight:600; color:var(--crit); border:1px solid var(--crit); border-radius:9px; padding:0 7px; }
+a.au-link { color:var(--accent); text-decoration:none; }
+a.au-link:hover { text-decoration:underline; }
+.au-tbl tr.au-open td { white-space:normal; padding:8px 12px 10px; border-bottom:1px solid var(--line); }
+.au-dl { display:grid; grid-template-columns:auto 1fr; gap:3px 14px; margin:0; font-size:13px; }
+.au-dl dt { color:var(--t3); font-size:12px; }
+.au-dl dd { margin:0; word-break:break-all; user-select:text; font-variant-numeric:tabular-nums; }
+.au-more { text-align:center; padding:10px; }
+
+/* 플로우 상세 변경 이력 */
+.au-hist { width:100%; border-collapse:collapse; font-size:13px; }
+.au-hist th { text-align:left; font-weight:500; font-size:12px; color:var(--t3); padding:6px 8px; border-bottom:1px solid var(--line); }
+.au-hist td { padding:5px 8px; border-bottom:1px solid color-mix(in srgb, var(--line) 60%, transparent); vertical-align:top; }
+.au-hist td.at { white-space:nowrap; color:var(--t2); }
+.au-hist td.dt { word-break:break-all; color:var(--t2); }
+#user .audit-link { color:var(--t2); text-decoration:none; padding:2px 8px; border-radius:4px; }
+#user .audit-link:hover { color:var(--accent); background:var(--bg); }
+body[data-page="audit"] #user .audit-link { color:var(--accent); font-weight:600; }

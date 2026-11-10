@@ -51,11 +51,15 @@ export async function logout() {
 // ---- 위 막대 사용자 칸 ----
 export function drawUser(box, onLogout) {
   box.replaceChildren();
-  if (!user || !user.auth) { box.hidden = true; return; }
-  box.hidden = false;
-  box.append(
-    el('span', { class: 'who', text: `${user.id} · ${roleName(user.role)}`, title: '로그인한 사용자' }),
-    el('button', { type: 'button', class: 'ghost', text: '로그아웃', onclick: onLogout }));
+  const kids = [];
+  if (can('admin')) kids.push(el('a', { class: 'audit-link', href: '#audit', text: '감사 기록', title: '감사 기록 조회(관리 계정만)' }));
+  if (user && user.auth) {
+    kids.push(
+      el('span', { class: 'who', text: `${user.id} · ${roleName(user.role)}`, title: '로그인한 사용자' }),
+      el('button', { type: 'button', class: 'ghost', text: '로그아웃', onclick: onLogout }));
+  }
+  box.hidden = !kids.length;
+  box.append(...kids);
 }
 
 // ---- 로그인 화면 ----

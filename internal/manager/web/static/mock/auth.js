@@ -14,6 +14,7 @@ function isIn(c) {
 // 필요한 역할. 서버 requiredRole의 요약: 읽기는 조회, 내보내기와 실행 조작은 운영, 나머지 변경은 관리.
 export function needOf(method, pathname) {
   if (/^\/export\//.test(pathname)) return 'operator';
+  if (method === 'GET' && pathname === '/audit') return 'admin';
   if (method === 'GET' || method === 'HEAD') return 'viewer';
   const op = /^\/flows\/[^/]+\/run$/.test(pathname)
     || /^\/runs\/[^/]+\/(rerun|kill|force-ok)$/.test(pathname)
