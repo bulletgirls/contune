@@ -2,7 +2,8 @@
 // 계약: docs/cards/R-risk-hold.md — 색·수준은 미확인 지수(open_index), 원래 지수(index)는 함께 보인다.
 import { fmtNum, shortExec, DASH } from './ui.js';
 
-export const HOLD_TEXT = { ack: '확인 중', accept: '용인' };
+// 화면 용어: accept = "이상 없음"(봤고 괜찮다). ack(확인 중)는 서버에 있지만 화면에서 걸지 않는다.
+export const HOLD_TEXT = { ack: '확인 중', accept: '이상 없음' };
 // 업무 지표에서 나온 요인은 서버 상세보다 그 서버가 속한 업무 패널이 먼저다.
 const BIZ_FEATURES = new Set(['queue', 'p99', 'lag', 'log_errors']);
 const inGroup = (group, g) => !!g && (group === g || String(group || '').startsWith(g + '/'));
@@ -21,7 +22,7 @@ export function notable(factors) {
   const max = Math.max(...(factors || []).map((f) => f.contrib), 0);
   return (factors || []).filter((f) => f.contrib >= Math.max(MIN_CONTRIB, max * 0.05));
 }
-// 확인할 것: 두드러진 요인 중 기여순, 용인된 요인은 뺀다.
+// 확인할 것: 두드러진 요인 중 기여순, 이상 없음 처리한 요인은 뺀다.
 export function todoFactors(r, n) {
   const list = notable((r && r.factors) || []).filter((f) => !isAccepted(f));
   return n == null ? list : list.slice(0, n);
@@ -67,10 +68,11 @@ export function clockText(ts, now = Date.now()) {
   return d.toDateString() === n.toDateString() ? hm : `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${hm}`;
 }
 export const actorText = (a) => String(a || '').replace(/^user:/, '') || DASH;
+// 이상 없음 한 줄: 누가 · 언제까지 · 몇을 넘으면 풀리는지
 export function holdLine(h, now) {
   if (!h) return '';
-  const parts = [HOLD_TEXT[h.kind] || h.kind, actorText(h.by), `~${clockText(h.until, now)}`];
-  if (h.kind === 'accept') parts.push(`한도 ${fmtNum(h.limit)}`);
+  const parts = [actorText(h.by), `${clockText(h.until, now)}까지`];
+  if (h.kind === 'accept') parts.push(`${fmtNum(h.limit)} 넘으면 해제`);
   return parts.join(' · ');
 }
 export function incidentText(i, now, withMins = true) {
@@ -78,16 +80,16 @@ export function incidentText(i, now, withMins = true) {
   const mins = Math.max(0, Math.round((now - i.start) / 60000));
   return `${clockText(i.start, now)}~ ${i.title || DASH}${withMins && mins ? ` (${mins}분째)` : ''}`;
 }
-// 반복 용인 통계 → 판단 한 줄
+// 반복 이상 없음 통계 → 판단 한 줄(없으면 '')
 export function repeatAdvice(s) {
   if (!s) return '';
-  if (s.incidents > 0) return '용인 중 장애가 있었음 · 용인 기준 재검토';
-  if (s.count >= 3) return '자주 용인됨 · 기준 조정·재학습 검토';
+  if (s.incidents > 0) return `이상 없음 처리 중 장애 ${s.incidents}건 — 처리 기준 재검토`;
+  if (s.count >= 3) return `7일간 ${s.count}번 이상 없음 — 기준 조정 검토`;
   return '';
 }
-// 용인 기간 고르기(시간)
+// 이상 없음 기간 고르기(시간)
 export const HOLD_HOURS = [1, 4, 8, 24];
-// 용인 한도 기본값과 허용 범위(서버 risk/hold.go와 같은 규칙). 기본값은 값 + |값|의 20%(음수도 위로).
+// 이상 없음 한도(넘으면 풀림) 기본값과 허용 범위(서버 risk/hold.go와 같은 규칙). 기본값은 값 + |값|의 20%(음수도 위로).
 export function defaultLimit(value) {
   const v = Number(value) || 0;
   return Math.max(Math.round((v + Math.abs(v) * 0.2) * 1000) / 1000, v);
