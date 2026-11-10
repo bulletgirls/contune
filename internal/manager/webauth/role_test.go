@@ -11,6 +11,7 @@ func TestRequiredRole(t *testing.T) {
 		{"GET", "/api/v1/flows/validate", RoleViewer}, // POST 경로의 GET도 조회
 		{"GET", "/api/v1/incidents", RoleViewer},
 		{"GET", "/api/v1/me", RoleViewer},
+		{"GET", "/api/v1/flows/x/history", RoleViewer},
 		// 단 내보내기는 운영
 		{"GET", "/api/v1/export/samples", RoleOperator},
 		{"GET", "/api/v1/export/runs", RoleOperator},
@@ -32,6 +33,8 @@ func TestRequiredRole(t *testing.T) {
 		{"DELETE", "/api/v1/flows/x", RoleAdmin},
 		{"POST", "/api/v1/risk/train", RoleAdmin},
 		{"POST", "/api/v1/incidents/import", RoleAdmin},
+		{"GET", "/api/v1/audit", RoleAdmin},
+		{"HEAD", "/api/v1/audit", RoleAdmin},
 		// 표에 없는 변경 메서드는 관리
 		{"POST", "/api/v1/new-thing", RoleAdmin},
 		{"POST", "/api/v1/flows/x", RoleAdmin},

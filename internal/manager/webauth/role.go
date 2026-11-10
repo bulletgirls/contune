@@ -24,6 +24,8 @@ var roleTable = map[string]string{
 	"DELETE /api/v1/flows/{id}":            RoleAdmin,
 	"POST /api/v1/risk/train":              RoleAdmin,
 	"POST /api/v1/incidents/import":        RoleAdmin,
+	// 감사 기록에는 로그인 실패(입력한 아이디·출처)가 담긴다. GET 기본값(조회)에 맡기지 않는다.
+	"GET /api/v1/audit": RoleAdmin,
 }
 
 // roleMux는 roleTable을 실제 경로 등록과 같은 규칙(http.ServeMux)으로 맞춰 보는 매처다.

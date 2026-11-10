@@ -283,6 +283,23 @@ type AuditEntry struct {
 	Detail string `json:"detail"`
 }
 
+// AuditQuery는 감사 기록 조회 조건이다. 빈 값은 거르지 않는다. 결과는 id 내림차순(최신 먼저).
+type AuditQuery struct {
+	From, To int64    // ts 구간 [From, To). 0이면 열림
+	Actor    string   // 정확히 같은 actor
+	Prefixes []string // action 앞부분 중 하나와 맞음(예: "login.", "logout"). 비면 전부
+	Target   string   // 정확히 같은 target
+	Q        string   // target·detail·actor에 들어 있는 글자(대소문자 무시)
+	Before   int64    // id < Before(더 보기 커서). 0이면 처음부터
+	Limit    int      // 0 이하면 제한 없음(지금 ListAudit와 같다)
+}
+
+// AuditStats는 시간 구간 안의 감사 기록 건수다(다른 조건은 보지 않는다).
+type AuditStats struct {
+	Actions map[string]int `json:"actions"` // action → 건수
+	Actors  map[string]int `json:"actors"`  // actor → 건수
+}
+
 // LogEvent는 업무 로그 한 줄이다(05 §4). Level: error | warn | info.
 type LogEvent struct {
 	ID      int64  `json:"id,omitempty"`
