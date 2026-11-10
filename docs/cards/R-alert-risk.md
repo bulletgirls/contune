@@ -14,7 +14,7 @@
 | 선행 | C4, B3 |
 | 쓰는 경로 | `internal/manager/alert/`(stub 교체), `internal/manager/notify/webhook*.go` |
 | 읽을 것 | **05 §5 전부**, §6.1(`auto`), §10(`/alerts`), §12(`alert`·`Alert` 타입), 02 §7(`Notifier`), C4 보고(`JudgeHost`, 패널 집계) |
-| 넘겨주는 것 | 알림 목록·확인(D10, 주목 피드 D4), webhook, 장애 자동 기록(R1의 학습 라벨) |
+| 넘겨주는 것 | 알림 목록·확인(D10, 실시간 이벤트 D4), webhook, 장애 자동 기록(R1의 학습 라벨) |
 
 ### 만들 것
 - `notify.NewWebhook(url)`: `Alert`를 JSON으로 POST(타임아웃 3초). 2xx가 아니거나 실패하면 에러.
@@ -46,7 +46,7 @@
 | `TestAlertsAPI` | 목록 순서, ack 204, 없는 id 404 |
 
 ### 완료 기준
-필수 테스트 통과. `demo.sh surge` 중 `match-01` 주의, 처리 대기 위험, `(E)` 로그 알림이 `/alerts`에 한 번씩(수동 확인은 보고에).
+필수 테스트 통과. `demo.sh surge` 중 `match-01` 경고, 처리 대기 위험, `(E)` 로그 알림이 `/alerts`에 한 번씩(수동 확인은 보고에).
 
 ---
 

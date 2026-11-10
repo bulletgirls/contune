@@ -51,7 +51,7 @@ function topBox(risk, onTrained) {
   idx.innerHTML = `<span class="rbig">${fmtNum(risk.index)}</span>${badgeHTML(lv)}`;
   left.append(idx);
   if (risk.note) left.append(el('div', { class: 'rnote', text: risk.note }));
-  left.append(el('h2', { class: 'sec', style: 'margin-top:12px', text: '기여' }));
+  left.append(el('h2', { class: 'sec', style: 'margin-top:12px', text: '주요 요인' }));
   for (const f of topFactors(risk.factors)) {
     const r = el('div', { class: 'cbar' });
     r.innerHTML = `<span class="cn">${esc(f.title)}</span><span class="bar"><i style="width:${f.pct.toFixed(0)}%"></i></span><span class="cv">${fmtNum(f.value)}</span>`;
@@ -147,7 +147,7 @@ export function render(root, params, query) {
   const top = el('div'), mid = el('section', { class: 'rbox' }, el('h2', { class: 'sec', text: '지수 추이' })), bot = el('div');
   const chartHost = el('div');
   mid.append(trHost, chartHost);
-  root.append(el('h2', { class: 'sec', text: '장애 위험' }), top, mid, bot);
+  root.append(el('h2', { class: 'sec', text: '장애 위험도' }), top, mid, bot);
   const tr = createTimeRange(trHost);
   let risk = null, incidents = [];
   const drawTop = () => top.replaceChildren(topBox(risk, loadAll));

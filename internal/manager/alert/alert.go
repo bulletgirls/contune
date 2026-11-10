@@ -252,7 +252,7 @@ func (w *Watcher) stepHosts(ctx context.Context, now int64, hosts []model.Host) 
 		}
 		state, reasons := query.JudgeHost(now, h, cpuV, memV, w.d.Thresholds)
 		level := "warn"
-		label := "주의"
+		label := "경고"
 		switch state {
 		case "crit":
 			level, label = "crit", "위험"
@@ -287,7 +287,7 @@ func (w *Watcher) stepTiles(ctx context.Context, now int64, hosts []model.Host) 
 		want := ts.State == "warn" || ts.State == "crit"
 		if want {
 			a.Level, a.Value = ts.State, *ts.Value
-			limit, label := tile.Warn, "주의"
+			limit, label := tile.Warn, "경고"
 			if ts.State == "crit" {
 				limit, label = tile.Crit, "위험"
 				crits = append(crits, cause{p.Group, p.Title + " · " + ts.Title})
@@ -416,7 +416,7 @@ func (w *Watcher) stepRisk(ctx context.Context, now int64) {
 	case v >= w.d.RiskCrit:
 		level, label = "crit", "위험"
 	case v >= w.d.RiskWarn:
-		level, label = "warn", "주의"
+		level, label = "warn", "경고"
 	}
 	a := model.Alert{Kind: "risk", DedupKey: "risk", Level: level, Name: "risk.index", Value: v,
 		Message: fmt.Sprintf("장애 위험 지수 %.0f (%s)", v, label)}

@@ -2,7 +2,7 @@
   --bg:#f5f6f8; --surface:#fff; --t1:#1b1f27; --t2:#4a5262; --t3:#7a8294; --line:#d9dde5;
   --ok:#1f8a4c; --warn:#b7791f; --crit:#c53030; --silent:#6b7280;
   --st-succeeded:#1f8a4c; --st-failed:#c53030; --st-running:#2b6cb0; --st-waiting:#7a8294; --st-gated:#8a5a1f; --st-forced:#6b46c1;
-  --cpu1:#e3edf7; --cpu2:#b6cfe8; --cpu3:#6f9bc9; --cpu4:#2f64a0;
+  --cpu1:#e3edf7; --cpu2:#b6cfe8; --cpu3:#6f9bc9; --cpu4:#2f64a0; --cpu-ink4:#fff;
   --s1:#2b6cb0; --s2:#d6791e; --s3:#2c9a8f; --s4:#8a4fb5; --s5:#b8508a; --s6:#7a8a1f;
   --ab-a:#2b6cb0; --ab-b:#d6791e; --accent:#2b6cb0;
 }
@@ -11,7 +11,7 @@
     --bg:#12151b; --surface:#1b2029; --t1:#e6e9ef; --t2:#b3bac8; --t3:#8a92a3; --line:#2f3644;
     --ok:#4cc38a; --warn:#e0a84a; --crit:#f26b6b; --silent:#9aa1b0;
     --st-succeeded:#4cc38a; --st-failed:#f26b6b; --st-running:#63a4e8; --st-waiting:#9aa1b0; --st-gated:#d9a566; --st-forced:#a78bfa;
-    --cpu1:#1f2a38; --cpu2:#2b4560; --cpu3:#3f6e9c; --cpu4:#6fa3d6;
+    --cpu1:#1f2a38; --cpu2:#2b4560; --cpu3:#3f6e9c; --cpu4:#6fa3d6; --cpu-ink4:#12151b;
     --s1:#63a4e8; --s2:#f0a050; --s3:#4cc3b5; --s4:#b98be0; --s5:#e57fb4; --s6:#bccb4f;
     --ab-a:#63a4e8; --ab-b:#f0a050; --accent:#63a4e8;
   }
@@ -20,12 +20,13 @@
   --bg:#12151b; --surface:#1b2029; --t1:#e6e9ef; --t2:#b3bac8; --t3:#8a92a3; --line:#2f3644;
   --ok:#4cc38a; --warn:#e0a84a; --crit:#f26b6b; --silent:#9aa1b0;
   --st-succeeded:#4cc38a; --st-failed:#f26b6b; --st-running:#63a4e8; --st-waiting:#9aa1b0; --st-gated:#d9a566; --st-forced:#a78bfa;
-  --cpu1:#1f2a38; --cpu2:#2b4560; --cpu3:#3f6e9c; --cpu4:#6fa3d6;
+  --cpu1:#1f2a38; --cpu2:#2b4560; --cpu3:#3f6e9c; --cpu4:#6fa3d6; --cpu-ink4:#12151b;
   --s1:#63a4e8; --s2:#f0a050; --s3:#4cc3b5; --s4:#b98be0; --s5:#e57fb4; --s6:#bccb4f;
   --ab-a:#63a4e8; --ab-b:#f0a050; --accent:#63a4e8;
 }
 * { box-sizing: border-box; }
 html, body { margin:0; height:100%; }
+body { display:flex; flex-direction:column; overflow:hidden; }
 body { background:var(--bg); color:var(--t1); font:14px/1.5 system-ui,-apple-system,"Malgun Gothic","Noto Sans KR",sans-serif; }
 a { color:inherit; }
 button { font:inherit; color:var(--t1); background:var(--surface); border:1px solid var(--line); border-radius:4px; padding:3px 10px; cursor:pointer; }
@@ -38,7 +39,7 @@ input, select, textarea { font:inherit; color:var(--t1); background:var(--surfac
 .empty { color:var(--t3); }
 .sec { font-size:15px; margin:0 0 8px; font-weight:600; }
 
-#top { display:flex; align-items:center; gap:16px; height:44px; padding:0 16px; background:var(--surface); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+#top { display:flex; align-items:center; gap:16px; height:44px; padding:0 16px; background:var(--surface); border-bottom:1px solid var(--line); flex:none; z-index:20; }
 .logo { font-weight:700; font-size:18px; text-decoration:none; letter-spacing:1px; }
 #menu { display:flex; gap:4px; }
 #menu a { padding:4px 12px; text-decoration:none; border-radius:4px; color:var(--t2); }
@@ -48,10 +49,10 @@ input, select, textarea { font:inherit; color:var(--t1); background:var(--surfac
 #bell.has b { color:var(--crit); }
 #clock { font-variant-numeric:tabular-nums; color:var(--t2); }
 .dot.ok { color:var(--ok); } .dot.fail { color:var(--warn); }
-#warnbar { background:var(--warn); color:#fff; padding:2px 16px; font-size:12px; position:sticky; top:44px; z-index:19; }
-#layout { display:flex; min-height:calc(100vh - 44px); }
-#tree { width:260px; flex:none; background:var(--surface); border-right:1px solid var(--line); padding:8px; overflow:auto; font-size:13px; }
-#page { flex:1; min-width:0; padding:16px; }
+#warnbar { background:var(--warn); color:#fff; padding:2px 16px; font-size:12px; flex:none; }
+#layout { display:flex; flex:1; min-height:0; }
+#tree { width:260px; flex:none; background:var(--surface); border-right:1px solid var(--line); padding:8px; overflow:auto; overscroll-behavior:contain; font-size:13px; }
+#page { flex:1; min-width:0; padding:16px; overflow:auto; overscroll-behavior:contain; }
 @media (max-width:900px) { #tree { display:none; } }
 
 .tree-chip { display:inline-flex; align-items:center; gap:6px; background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:1px 4px 1px 10px; margin-bottom:6px; }

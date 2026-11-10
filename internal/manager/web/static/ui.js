@@ -53,9 +53,11 @@ export function fmtClock(ts) {
   return `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
 }
 
+// 등급 이름(서버 상태·알림 등급). 모든 화면이 이것을 쓴다.
+export const LEVEL_TEXT = { ok: '정상', warn: '경고', crit: '위험', silent: '무응답' };
 // 상태 배지: 색 + 글자(항상 글자와 함께)
 const STATE_TEXT = {
-  ok: ['정상', '●'], warn: ['주의', '▲'], crit: ['위험', '■'], silent: ['무응답', '○'],
+  ok: [LEVEL_TEXT.ok, '●'], warn: [LEVEL_TEXT.warn, '▲'], crit: [LEVEL_TEXT.crit, '■'], silent: [LEVEL_TEXT.silent, '○'],
   SUCCEEDED: ['성공', '✓'], FAILED: ['실패', '✕'], RUNNING: ['실행 중', '▶'], WAITING: ['대기', '…'],
   GATED: ['조건 대기', '⏸'], FORCED: ['강제 OK', '✓'], KILLED: ['강제 종료', '✕'], SCHEDULED: ['예정', '◷'],
 };
@@ -70,7 +72,7 @@ export function badge(state, text) {
 }
 
 // 빈 상태 문구
-export const EMPTY = { none: DASH, notCollected: '수집 안 됨', serviceDown: '서비스 미기동' };
+export const EMPTY = { none: DASH, notCollected: '미수집', serviceDown: '서비스 미기동' };
 
 // ---- DOM 부품 ----
 export function toast(msg, ms = 2500) {

@@ -1,11 +1,11 @@
 // 알림(#alerts): 표 · 거르기 · 확인.
 import { api, poll } from '../api.js';
-import { el, esc, relTime, fmtClock, table, badgeHTML, toast, DASH } from '../ui.js';
+import { el, esc, relTime, fmtClock, table, badgeHTML, toast, DASH, LEVEL_TEXT as LV } from '../ui.js';
 import { alertTarget, panelsInScope } from './dashboard.js';
 
 // ---- 순수 함수 (DOM 없이 호출) ----
-export const KIND_TEXT = { host: '서버', run: '실행', tile: '업무', log: '로그', risk: '장애 위험' };
-export const LEVEL_TEXT = { crit: '위험', warn: '주의' };
+export const KIND_TEXT = { host: '서버', run: '실행', tile: '업무', log: '로그', risk: '장애 위험도' };
+export const LEVEL_TEXT = { crit: LV.crit, warn: LV.warn };
 export const STATE_TEXT = { firing: '진행 중', resolved: '해소' };
 const LEVEL_RANK = { crit: 0, warn: 1 };
 
@@ -44,7 +44,7 @@ export function render(root, params, query) {
     body.replaceChildren(table({
       rows,
       columns: [
-        { label: '수준', render: (a) => badgeHTML(a.level, LEVEL_TEXT[a.level]), html: true },
+        { label: '등급', render: (a) => badgeHTML(a.level, LEVEL_TEXT[a.level]), html: true },
         { label: '종류', render: (a) => KIND_TEXT[a.kind] || a.kind },
         { label: '대상', render: (a) => el('a', { href: alertTarget(a, panels), text: alertTargetName(a) }) },
         { label: '메시지', key: 'message' },
@@ -65,7 +65,7 @@ export function render(root, params, query) {
   const drawBar = () => {
     bar.replaceChildren(
       select('종류', 'kind', [['', '종류 전체'], ...Object.entries(KIND_TEXT)], f.kind, (v) => { f.kind = v; draw(); }),
-      select('수준', 'level', [['', '수준 전체'], ...Object.entries(LEVEL_TEXT)], f.level, (v) => { f.level = v; draw(); }),
+      select('등급', 'level', [['', '등급 전체'], ...Object.entries(LEVEL_TEXT)], f.level, (v) => { f.level = v; draw(); }),
       select('상태', 'state', [['firing', '진행 중'], ['resolved', '해소'], ['all', '전체']], f.state, (v) => { f.state = v; load(); }));
   };
   const load = async () => {

@@ -1,10 +1,10 @@
 // 왼쪽 트리(서버 / 배치판)와 주소 해석. 집계·주소 해석은 DOM 없이 호출된다.
 import { api, poll } from './api.js';
-import { el } from './ui.js';
+import { el, LEVEL_TEXT } from './ui.js';
 
 // ---- 순수 함수 ----
 export const HOST_ORDER = ['crit', 'silent', 'warn', 'ok'];
-export const HOST_TEXT = { crit: '위험', silent: '무응답', warn: '주의', ok: '정상' };
+export const HOST_TEXT = LEVEL_TEXT;
 export const FLOW_ORDER = ['FAILED', 'RUNNING', 'SCHEDULED', 'SUCCEEDED'];
 export const FLOW_TEXT = { FAILED: '실패', RUNNING: '실행 중', SCHEDULED: '예정', SUCCEEDED: '성공' };
 
