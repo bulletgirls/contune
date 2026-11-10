@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"eum/internal/agent/logtail"
 	"eum/internal/model"
 )
 
@@ -252,4 +253,63 @@ func bothReported(ss []model.AgentConfigStatus) bool {
 		off = off || s.Host == "off-1" && s.State == model.ConfigDisabled && s.Rev == ""
 	}
 	return on && off
+}
+
+// TestAgentConfigMetrics는 로컬 logs의 숫자 뽑기 규칙이다(M2): 원격 설정과 같은 검사로 시작할 때 거절하고,
+// 문제는 손으로 고칠 사람이 찾을 수 있는 말(Problem.Text)로 알린다. 지표만 있는 출처도 된다.
+func TestAgentConfigMetrics(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "a.yaml")
+	good := `host: feed-01
+logs:
+  - name: quote
+    path: "{log_dir}/quote_feed.log"
+    metrics:
+      - { name: biz.quote.tps,      re: 'recv=(\d+)', agg: sum }
+      - { name: biz.quote.count_1m, re: 'recv=(\d+)', agg: sum, window: 60s }
+`
+	os.WriteFile(p, []byte(good), 0o644)
+	c, err := LoadConfig(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Logs) != 1 || len(c.Logs[0].Match) != 0 || len(c.Logs[0].Metrics) != 2 ||
+		c.Logs[0].Metrics[1] != (model.LogMetric{Name: "biz.quote.count_1m", Re: `recv=(\d+)`, Agg: "sum", Window: "60s"}) {
+		t.Fatalf("logs %+v", c.Logs)
+	}
+
+	cases := []struct{ metric, want string }{
+		{`{ name: quote.tps, re: 'recv=(\d+)', agg: sum }`, "로그 파일 'quote'(1번째) 지표 1 지표 이름: "},
+		{`{ name: biz.quote.tps, re: 'recv=(\d+)', agg: avg }`, "로그 파일 'quote'(1번째) 지표 1 계산: "},
+		{`{ name: biz.quote.tps, re: 'recv=\d+', agg: sum }`, "로그 파일 'quote'(1번째) 지표 1 정규식: 숫자를 담을 묶음"},
+		{`{ name: biz.quote.tps, re: 'recv=(\d+)', agg: sum, window: 5x }`, "로그 파일 'quote'(1번째) 지표 1 창: "},
+		{`{ name: biz.quote.tps, re: '(', agg: count }`, "로그 파일 'quote'(1번째) 지표 1 정규식: "},
+	}
+	for _, tc := range cases {
+		body := "host: feed-01\nlogs:\n  - name: quote\n    path: \"{log_dir}/q.log\"\n    metrics:\n      - " + tc.metric + "\n"
+		os.WriteFile(p, []byte(body), 0o644)
+		if _, err := LoadConfig(p); err == nil || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), p) {
+			t.Errorf("%s: 에러 %v, %q가 들어야 함", tc.metric, err, tc.want)
+		}
+	}
+	// 출처 둘이 같은 지표를 내면 뒤의 것을 알린다.
+	os.WriteFile(p, []byte(`host: feed-01
+logs:
+  - { name: a, path: "{log_dir}/a.log", metrics: [{ name: biz.x, re: x, agg: count }] }
+  - { name: b, path: "{log_dir}/b.log", match: [{ re: E, level: error }], metrics: [{ name: biz.x, re: y, agg: count }] }
+`), 0o644)
+	if _, err := LoadConfig(p); err == nil || !strings.Contains(err.Error(), "로그 파일 'b'(2번째) 지표 1 지표 이름") {
+		t.Errorf("겹친 지표: %v", err)
+	}
+	// 줄 규칙 쪽 형식(이름 등)은 지금처럼 보지 않는다: 지표 규칙만 거절한다.
+	os.WriteFile(p, []byte("host: x\nlogs:\n  - { name: Step, path: \"{log_dir}/{exec_id}.log\" }\n"), 0o644)
+	if _, err := LoadConfig(p); err != nil {
+		t.Errorf("지표가 없는 로컬 출처는 그대로 읽어야 함: %v", err)
+	}
+	// 코드로 준 설정(모의 서버 등)도 Run이 같은 검사로 거절한다.
+	err = Run(context.Background(), Config{Host: "x", LogDir: dir, WorkDir: dir, Allow: []string{"^x$"},
+		Logs: []logtail.SourceConfig{{Name: "a", Path: "{log_dir}/a.log", Metrics: []model.LogMetric{{Name: "log.error.count", Re: "x", Agg: "count"}}}}})
+	if err == nil || !strings.Contains(err.Error(), "지표 이름") {
+		t.Errorf("Run이 틀린 지표를 거절해야 함: %v", err)
+	}
 }

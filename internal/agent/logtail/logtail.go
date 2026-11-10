@@ -1,6 +1,7 @@
 // Package logtail은 업무 로그 파일에서 정해진 모양의 줄을 모은다(05 §4).
 // 로그 파일은 읽기만 하고, 오프셋은 메모리에만 둔다.
 // 출처 목록은 SetSources로 통째로 바꿔 끼울 수 있다(원격 수집 설정, 카드 L-collect).
+// 줄에서 숫자를 뽑아 지표로 내는 규칙(Metrics, 05 §18)은 metrics.go.
 package logtail
 
 import (
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -26,6 +28,8 @@ type SourceConfig struct {
 	Name  string      `yaml:"name" json:"name"`
 	Path  string      `yaml:"path" json:"path"`
 	Match []MatchRule `yaml:"match" json:"match"`
+	// Metrics는 숫자 뽑기 규칙이다(05 §18). 줄 규칙(Match)과 따로 모든 줄에 대 본다.
+	Metrics []model.LogMetric `yaml:"metrics" json:"metrics,omitempty"`
 
 	// Remote는 매니저 화면에서 받은 원격 출처다. 파일의 실제 경로(심볼릭 링크를 따라간 곳)가
 	// Options.ReadRoots 안일 때만 읽는다. 로컬 YAML로는 켤 수 없다(yaml:"-").
@@ -46,6 +50,8 @@ type Options struct {
 	MaxLineBytes    int
 	// ReadRoots는 원격 출처가 읽어도 되는 폴더(에이전트 YAML remote.read_roots)다. 비면 원격 출처는 아무것도 읽지 않는다.
 	ReadRoots []string
+	// Interval은 Collect를 부르는 주기(에이전트 interval, 기본 1초)다. 숫자 뽑기 창의 칸 크기다.
+	Interval time.Duration
 }
 
 const (
@@ -67,6 +73,7 @@ type source struct {
 	hasID   bool
 	remote  bool
 	rules   []rule
+	metrics []*metricRule
 	files   map[string]*fileState // 따라가는 파일 경로 → 상태
 }
 
@@ -87,6 +94,7 @@ type Tailer struct {
 	mu       sync.Mutex
 	srcs     []*source
 	lastScan time.Time
+	base     time.Time // 첫 Collect 시각(숫자 뽑기 창의 칸 번호 기준)
 }
 
 // pathPattern은 경로 틀을 glob과 exec_id 캡처 정규식으로 바꾼다.
@@ -193,6 +201,9 @@ func New(host, logDir string, srcs []SourceConfig, o Options) (*Tailer, error) {
 	if o.MaxLineBytes <= 0 {
 		o.MaxLineBytes = 4096
 	}
+	if o.Interval <= 0 {
+		o.Interval = time.Second
+	}
 	t := &Tailer{host: host, logDir: absDir(logDir), o: o}
 	if err := t.SetSources(srcs); err != nil {
 		return nil, err
@@ -216,10 +227,18 @@ func (t *Tailer) compile(sc SourceConfig) (*source, error) {
 		}
 		s.rules = append(s.rules, rule{re: re, level: m.Level})
 	}
+	for _, m := range sc.Metrics {
+		mr, err := compileMetric(sc.Name, m, t.o.Interval)
+		if err != nil {
+			return nil, err
+		}
+		s.metrics = append(s.metrics, mr)
+	}
 	return s, nil
 }
 
 // SetSources는 출처 목록을 통째로 바꿔 끼운다. 이름·경로가 그대로인 출처는 읽던 위치를 유지하고 규칙만 바꾼다.
+// 그 출처의 지표 규칙 중 이름·정규식·계산·창이 그대로인 것은 창을 이어 간다(다시 저장해도 1분 합계가 0부터 시작하지 않게).
 // 새 출처의 이미 있는 파일은 끝에서부터 읽고, 빠진 출처는 버린다. 하나라도 만들지 못하면 아무것도 바꾸지 않는다.
 func (t *Tailer) SetSources(srcs []SourceConfig) error {
 	next := make([]*source, 0, len(srcs))
@@ -242,6 +261,7 @@ func (t *Tailer) SetSources(srcs []SourceConfig) error {
 		k := s.name + "\x00" + s.path
 		if prev := old[k]; len(prev) > 0 {
 			s.files = prev[0].files
+			keepMetricStates(s, prev[0])
 			old[k] = prev[1:]
 			if s.remote && !prev[0].remote {
 				t.dropOutside(s)
@@ -252,6 +272,19 @@ func (t *Tailer) SetSources(srcs []SourceConfig) error {
 	}
 	t.srcs = next
 	return nil
+}
+
+// keepMetricStates는 이전 출처에서 같은 지표 규칙의 상태를 옮겨 온다(규칙 하나에 한 번만).
+func keepMetricStates(s, prev *source) {
+	taken := make([]bool, len(prev.metrics))
+	for _, m := range s.metrics {
+		for j, pm := range prev.metrics {
+			if !taken[j] && pm.cfg == m.cfg {
+				m.states, taken[j] = pm.states, true
+				break
+			}
+		}
+	}
 }
 
 // Files는 출처마다 지금 따라가는 파일 경로다(정렬됨). 상태 보고의 files·discover의 tracked에 쓴다.
@@ -336,9 +369,10 @@ type countKey struct {
 	execID string
 }
 
-// Collect는 새 줄을 읽어 emitLog로, 줄 수 지표를 emit으로 낸다.
+// Collect는 새 줄을 읽어 emitLog로, 줄 수·숫자 뽑기 지표를 emit으로 낸다.
 // 한 주기 예산(MaxLinesPerTick)은 따라가는 파일이 있는 출처마다 고르게 몫을 먼저 주고,
 // 몫을 다 쓰지 않은 출처의 남은 몫은 아직 읽을 것이 있는 출처끼리 다시 고르게 나눈다.
+// 줄마다 줄 규칙(처음 맞은 것의 수준)과 따로 지표 규칙을 모두 본다.
 func (t *Tailer) Collect(emit func(model.Sample), emitLog func(model.LogEvent)) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -346,8 +380,12 @@ func (t *Tailer) Collect(emit func(model.Sample), emitLog func(model.LogEvent)) 
 	if now.Sub(t.lastScan) >= t.o.ScanEvery {
 		t.scan(now)
 	}
+	if t.base.IsZero() {
+		t.base = now
+	}
+	slot := int64(math.Floor(float64(now.Sub(t.base))/float64(t.o.Interval) + 0.5))
 	nowMS := now.UnixMilli()
-	var dropped int
+	var dropped, bad int
 	errs := map[countKey]int{}
 	warns := map[countKey]int{}
 
@@ -378,6 +416,7 @@ func (t *Tailer) Collect(emit func(model.Sample), emitLog func(model.LogEvent)) 
 				if st := w.s.files[p]; st != nil {
 					ck := countKey{w.i, st.execID}
 					s := w.s
+					var ms []*mstate // 이 파일의 exec_id 지표 상태(맞은 줄이 있을 때 만든다)
 					t.readFile(s, p, st, &left, &dropped, func(line string) {
 						for _, r := range s.rules {
 							if !r.re.MatchString(line) {
@@ -390,7 +429,23 @@ func (t *Tailer) Collect(emit func(model.Sample), emitLog func(model.LogEvent)) 
 							case "warn":
 								warns[ck]++
 							}
-							return
+							break
+						}
+						for j, m := range s.metrics {
+							v, ok, isBad := m.observe(line)
+							if isBad {
+								bad++
+							}
+							if !ok {
+								continue
+							}
+							if ms == nil {
+								ms = make([]*mstate, len(s.metrics))
+							}
+							if ms[j] == nil {
+								ms[j] = m.state(st.execID, slot)
+							}
+							ms[j].acc = m.merge(ms[j].acc, v)
 						}
 					}, now)
 				}
@@ -425,12 +480,46 @@ func (t *Tailer) Collect(emit func(model.Sample), emitLog func(model.LogEvent)) 
 		return cks[a].execID < cks[b].execID
 	})
 	for _, ck := range cks {
-		emit(model.Sample{TS: nowMS, Host: t.host, Name: "log.error.count", Value: float64(errs[ck]), ExecID: ck.execID})
-		emit(model.Sample{TS: nowMS, Host: t.host, Name: "log.warn.count", Value: float64(warns[ck]), ExecID: ck.execID})
+		s := t.srcs[ck.src]
+		if len(s.rules) > 0 { // 지표만 있는 출처는 줄 수를 내지 않는다
+			emit(model.Sample{TS: nowMS, Host: t.host, Name: "log.error.count", Value: float64(errs[ck]), ExecID: ck.execID})
+			emit(model.Sample{TS: nowMS, Host: t.host, Name: "log.warn.count", Value: float64(warns[ck]), ExecID: ck.execID})
+		}
+		for _, m := range s.metrics {
+			if v, ok := m.flush(m.state(ck.execID, slot), slot); ok {
+				emit(model.Sample{TS: nowMS, Host: t.host, Name: m.cfg.Name, Value: v, ExecID: ck.execID})
+			}
+		}
+	}
+	// 활동이 끝난 (출처, exec_id)의 지표 상태를 지운다(다시 자라면 창을 새로 시작한다).
+	for i, s := range t.srcs {
+		for _, m := range s.metrics {
+			for id := range m.states {
+				if !active[countKey{i, id}] {
+					delete(m.states, id)
+				}
+			}
+		}
 	}
 	if dropped > 0 {
 		emit(model.Sample{TS: nowMS, Host: t.host, Name: "agent.logtail.dropped", Value: float64(dropped)})
 	}
+	if bad > 0 {
+		emit(model.Sample{TS: nowMS, Host: t.host, Name: "agent.logtail.bad_numbers", Value: float64(bad)})
+	}
+}
+
+// metricStates는 지금 기억하는 (출처, exec_id, 지표) 상태 수다(시험용).
+func (t *Tailer) metricStates() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	n := 0
+	for _, s := range t.srcs {
+		for _, m := range s.metrics {
+			n += len(m.states)
+		}
+	}
+	return n
 }
 
 // open은 출처의 파일을 연다. 원격 출처는 read_roots 안에서만 연다(OpenIn).

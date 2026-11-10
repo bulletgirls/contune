@@ -247,7 +247,8 @@ func (r *Remote) status() model.AgentConfigStatus {
 		for _, x := range l.Match {
 			m = append(m, model.LogMatch{Re: x.Re, Level: x.Level})
 		}
-		s.Sources = append(s.Sources, model.AgentSourceStatus{Name: l.Name, Path: l.Path, Match: m, Origin: "local", Files: len(files[l.Name])})
+		s.Sources = append(s.Sources, model.AgentSourceStatus{Name: l.Name, Path: l.Path, Match: m, Metrics: l.Metrics, Origin: "local",
+			Files: len(files[l.Name])})
 	}
 	if r.o.Enabled {
 		for _, x := range r.remote {

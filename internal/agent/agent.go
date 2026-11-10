@@ -33,6 +33,9 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("agent %s: %w", cfg.Host, err)
 	}
+	if err := checkLogMetrics(cfg.Logs); err != nil { // 코드로 만든 설정(모의 서버)도 같은 검사
+		return fmt.Errorf("agent %s: %w", cfg.Host, err)
+	}
 	if len(allow) == 0 {
 		// 한 프로세스에 에이전트가 여럿(모의 서버)이어도 한 번만 알린다.
 		warnNoAllow.Do(func() {
@@ -59,7 +62,7 @@ func Run(ctx context.Context, cfg Config) error {
 	tracker := exec.NewTracker(cfg.Host, exec.TrackerOptions{})
 	tailer, err := logtail.New(cfg.Host, cfg.LogDir, cfg.Logs, logtail.Options{
 		Now: time.Now, ScanEvery: 5 * time.Second, MaxLinesPerTick: 1000, MaxLineBytes: 4096,
-		ReadRoots: cfg.Remote.ReadRoots,
+		ReadRoots: cfg.Remote.ReadRoots, Interval: cfg.Interval,
 	})
 	if err != nil {
 		return fmt.Errorf("agent %s logs: %w", cfg.Host, err)
