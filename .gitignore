@@ -18,3 +18,6 @@ logs/
 *.db-shm
 perf*.data*
 eum-perf-*.data
+
+# 에이전트 격리 워크트리
+.claude/worktrees/

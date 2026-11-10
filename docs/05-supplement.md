@@ -716,9 +716,10 @@ mock(`?mock=1`)은 플로우마다 지난 실행 7~10회를 더 만든다(가끔
 | 화면 로그인 | `web_auth.enabled`(기본 꺼짐 + 경고 로그, `eum dev`·`deploy/manager*.yaml`은 켬). 계정은 설정 파일의 `users[]{id, hash, role}`, 해시는 PBKDF2-SHA256(표준 라이브러리, `printf '%s' '<비밀번호>' \| eum passwd`). 세션은 매니저 메모리(재시작하면 모두 로그아웃), 쿠키 `eum_session`(HttpOnly, SameSite=Strict, TLS면 Secure), 고정 만료 `session_ttl`(기본 8h). 역할은 요청마다 현재 설정에서 읽는다 |
 | 역할 | **조회**(viewer): 모든 GET · **운영**(operator): 실행·재실행·강제 종료·강제 OK·알림 확인·장애 기록·검증·초안·내보내기 · **관리**(admin): 플로우 저장·삭제, 위험 모델 학습, 장애 가져오기. 표(`webauth/role.go`)는 `http.ServeMux`로 맞춰 실제 경로 등록과 같은 규칙이고, **표에 없는 변경 요청은 관리**가 필요하다 |
 | 화면 API | `GET /api/v1/me`, `POST /api/v1/login`, `POST /api/v1/logout`. 세션 없음 401, 역할 부족 `403 {"error":"forbidden","need":"operator"}`. 화면은 401이면 로그인 화면, 403이면 알림, 권한 없는 버튼은 잠근다(편의, 막는 것은 서버) |
-| 감사 | `login.ok`·`login.fail`·`logout`이 `audit`에. 운영자 조작·편집기·위험 엔진의 actor는 `user:<아이디>`(로그인 꺼짐이면 예전처럼 `user:web(<주소>)`) |
+| 감사 | `login.ok`·`login.fail`·`logout`이 `audit`에. 운영자 조작·편집기·위험 엔진의 actor는 `user:<아이디>`(로그인 꺼짐이면 예전처럼 `user:web(<주소>)`). 11-10 밤부터 수동 실행·재실행·강제 종료·강제 OK(`run.*`)·알림 확인(`alert.ack`)·감사 내려받기(`audit.export`)도 남기고, 기록 함수는 `internal/manager/audit` 한 곳이다(행동 코드 표는 [cards/S-audit.md](cards/S-audit.md)) |
+| 감사 조회 | `GET /api/v1/audit?from=&to=&kind=&actor=&q=&before=&limit=[&format=csv]`(**관리만** — 로그인 실패의 입력 아이디·출처가 담긴다), `GET /api/v1/flows/{id}/history`(조회 이상, 그 플로우의 저장·삭제). 화면 `#audit`(위 막대 사용자 칸 옆 링크): 시간 구간, 요약 카드(조작·로그인 실패·플로우 변경·강제 OK·강제 종료·사용자), 분류·사용자·검색, 위험 조작 ⚠, 대상 링크(실행 건 → 타임머신 등), 같은 곳 로그인 실패 몰림 배지, CSV(수식 주입 방지, 내려받은 일도 기록). 플로우 상세에 "변경 이력" 탭. state.db는 지우지 않으므로 보존은 무기한 |
 | 공격 방어 | 같은 주소에서 1분에 5번 틀리면 1분 동안 429, 없는 아이디도 같은 응답·같은 시간. 변경 요청은 `Origin`이 다른 출처면 403(CSRF). 모든 응답에 CSP(`script-src 'self'`)·`X-Frame-Options: DENY`·`nosniff`·`Referrer-Policy`, TLS면 HSTS |
 | 호스트별 에이전트 토큰 | `agent_tokens: {host: token}`. 그 토큰으로 온 요청은 **자기 호스트 이름으로만** 지표·이벤트를 보내고 명령을 받는다(다르면 403 `host mismatch`). 공유 `token`은 그대로 쓸 수 있고(모의 서버), 운영은 `token: ""`로 끈다 |
 | 에이전트 허용 목록 | 에이전트 설정 `allow: [정규식]`. `editor.allow`와 같은 문법·대상이라 목록을 그대로 옮긴다. 밖의 명령은 띄우지 않고 FAILED + 로그 꼬리 `(E) 에이전트 허용 목록 밖 명령…`. **매니저가 뚫려도 서버는 정해진 명령만 실행한다**(심층 방어). 비면 모두 허용 + 경고 |
 | TLS | 매니저 `tls: {cert, key}`(TLS 1.2 이상), 에이전트 `ca`(PEM, 비면 시스템 루트). `eum dev`는 HTTP |
-| 남은 것 | 사내 SSO·LDAP 연결(구현이 둘이 되는 때 인증 인터페이스를 둔다), 세션 영속·다중 매니저, 그룹별 권한, `run_as_user` |
+| 남은 것 | 감사 기록 변조 방지(행 해시 사슬)·플로우 변경 내용 비교(지금은 sha만), 사내 SSO·LDAP 연결(구현이 둘이 되는 때 인증 인터페이스를 둔다), 세션 영속·다중 매니저, 그룹별 권한, `run_as_user` |
