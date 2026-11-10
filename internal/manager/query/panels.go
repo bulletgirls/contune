@@ -1,8 +1,10 @@
 package query
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -55,8 +57,11 @@ func LoadPanels(dir string) (panels []model.Panel, errs []PanelError, err error)
 			continue
 		}
 		var p model.Panel
-		if err := yaml.Unmarshal(b, &p); err != nil {
-			bad(err.Error())
+		// 모르는 칸은 오류다: crit_bellow 같은 오타가 조용히 무시되면 운영자는 기준을 걸었다고 믿고 알림을 못 받는다.
+		dec := yaml.NewDecoder(bytes.NewReader(b))
+		dec.KnownFields(true)
+		if err := dec.Decode(&p); err != nil && err != io.EOF {
+			bad(panelYAMLError(err))
 			continue
 		}
 		if err := validatePanel(p); err != nil {
@@ -431,4 +436,24 @@ func handlePanelsReload(w http.ResponseWriter, r *http.Request, d Deps) {
 	}
 	audit.Record(r, d.State, d.Now, "panels.reload", "panels", fmt.Sprintf("패널 %d개, 읽지 못한 파일 %d개", n, len(errs)))
 	writeJSON(w, http.StatusOK, map[string]any{"panels": n, "errors": errs})
+}
+
+// panelYAMLError는 YAML 해석 오류를 손으로 고칠 사람의 말로 바꾼다. 모르는 칸이면 칸 이름과 줄을 짚는다.
+func panelYAMLError(err error) string {
+	msg := strings.TrimPrefix(err.Error(), "yaml: ")
+	if strings.Contains(msg, "not found in type") {
+		// "unmarshal errors:\n  line 7: field crit_bellow not found in type model.Tile"
+		var parts []string
+		for _, l := range strings.Split(msg, "\n") {
+			l = strings.TrimSpace(l)
+			if line, rest, ok := strings.Cut(l, ": field "); ok {
+				name, _, _ := strings.Cut(rest, " ")
+				parts = append(parts, fmt.Sprintf("%s의 %s는 모르는 칸입니다(오타인지 확인)", strings.Replace(line, "line ", "", 1)+"번째 줄", name))
+			}
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, "; ")
+		}
+	}
+	return "YAML을 읽지 못함: " + msg
 }

@@ -326,6 +326,7 @@ func TestLoadPanelsSkipBad(t *testing.T) {
 		"active": {"id: x\ntitle: X\ngroup: g\ntiles:\n  - {title: t, metric: m, agg: sum, active: \"mon-fri 9-15\"}\n",
 			`타일 "t": active는 "mon-fri 09:00-15:30"처럼 [요일] 시작-끝입니다`},
 		"agg":  {"id: x\ntitle: X\ngroup: g\ntiles:\n  - {title: t, metric: m, agg: median}\n", `타일 "t": title, metric이 필요하고 agg는 sum|max|avg|min이어야 합니다`},
+		"오타":   {"id: x\ntitle: X\ngroup: g\ntiles:\n  - {title: t, metric: m, agg: sum,\n     crit_bellow: 10}\n", `6번째 줄의 crit_bellow는 모르는 칸입니다(오타인지 확인)`},
 		"cagg": {"id: x\ntitle: X\ngroup: g\ntiles:\n  - {title: t, metric: m, agg: sum}\ncharts:\n  - {title: c, agg: foo, metrics: [m]}\n", `차트 "c": metrics가 1개 이상이고 agg는 sum|max|avg|min이어야 합니다`},
 	} {
 		d := t.TempDir()
