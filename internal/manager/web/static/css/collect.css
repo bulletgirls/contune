@@ -142,3 +142,17 @@ button.cw-chip.warn { border-color:var(--warn); background:color-mix(in srgb, va
 .cw-diff .df { padding:0 10px; white-space:pre; color:var(--t3); }
 .cw-diff .df.add { color:var(--t1); background:color-mix(in srgb, var(--ok) 14%, transparent); }
 .cw-diff .df.del { color:var(--t1); background:color-mix(in srgb, var(--crit) 12%, transparent); text-decoration:line-through; text-decoration-color:color-mix(in srgb, var(--crit) 60%, transparent); }
+
+/* 건너뜀·실패 고치는 법 */
+.cl-band .cl-todo { margin-top:4px; color:var(--t2); }
+.cl-raw { margin-top:6px; font-size:12px; }
+.cl-raw summary { cursor:pointer; color:var(--t3); }
+.cl-raw code { display:block; margin-top:4px; padding:4px 8px; background:var(--bg); border:1px solid var(--line); border-radius:4px; white-space:pre-wrap; word-break:break-all; user-select:text; }
+.cl-prob { display:inline-flex; align-items:center; gap:8px; white-space:nowrap; }
+.cl-prob button { padding:1px 10px; font-size:13px; }
+.cl-fix { margin-top:12px; border:1px solid var(--line); border-left:3px solid var(--warn); border-radius:6px; background:var(--surface); padding:6px 14px; font-size:13px; }
+.cl-fix summary { cursor:pointer; }
+.cl-fix ol { margin:8px 0 4px; padding-left:20px; display:flex; flex-direction:column; gap:4px; }
+.cl-yamlrow { display:flex; align-items:flex-start; gap:8px; margin:4px 0 6px; }
+.cl-yamlrow .cl-yaml { margin:0; flex:1; }
+.cl-note .cl-todo { margin-top:4px; color:var(--t2); }

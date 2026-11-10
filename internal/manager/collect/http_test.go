@@ -408,7 +408,8 @@ func TestHostsAndStatus(t *testing.T) {
 		t.Fatalf("agent/config: %d %s", code, b)
 	}
 	// 상태 보고 → applied
-	status := model.AgentConfigStatus{Host: "h1", Rev: h1.WantRev, State: model.ConfigApplied, TS: 1234, ReadRoots: []string{"/var/log"}}
+	status := model.AgentConfigStatus{Host: "h1", Rev: h1.WantRev, State: model.ConfigApplied, TS: 1234, ReadRoots: []string{"/var/log"},
+		Sources: []model.AgentSourceStatus{{Name: "step", Origin: "remote"}, {Name: "m", Origin: "remote", Skipped: "밖", Why: model.SkipOutside, Dir: "/m"}}}
 	if code, b := e.do("POST", "/api/v1/agent/config-status", status, "X-Agent: h1"); code != 204 {
 		t.Fatalf("config-status: %d %s", code, b)
 	}
@@ -417,8 +418,8 @@ func TestHostsAndStatus(t *testing.T) {
 		decodeJSON[map[string]any](t, b)["config_rev"] != h1.WantRev {
 		t.Fatalf("commands: %d %s", code, b)
 	}
-	e.do("POST", "/api/v1/agent/config-status", model.AgentConfigStatus{Host: "h2", State: model.ConfigDisabled, TS: 99}, "X-Agent: *")
-	e.do("POST", "/api/v1/agent/config-status", model.AgentConfigStatus{Host: "lost", State: model.ConfigFailed, Error: "boom", TS: 5}, "X-Agent: *")
+	e.do("POST", "/api/v1/agent/config-status", model.AgentConfigStatus{Host: "h2", State: model.ConfigDisabled, TS: 99, ReadRoots: []string{"/x"}}, "X-Agent: *")
+	e.do("POST", "/api/v1/agent/config-status", model.AgentConfigStatus{Host: "lost", State: model.ConfigFailed, Error: "boom", ErrorKind: model.FailFetch, TS: 5}, "X-Agent: *")
 
 	l := e.list()
 	got := map[string]HostCollect{}
@@ -431,16 +432,16 @@ func TestHostsAndStatus(t *testing.T) {
 		t.Fatalf("hosts는 라이브 + 상태 보낸 호스트, id 순: %v", order)
 	}
 	if h := got["h1"]; h.State != stateApplied || h.Rev != h1.WantRev || h.WantRev != h1.WantRev || h.TS != 1234 ||
-		h.Polled != e.clock.Now().UnixMilli() || h.Group != "매매/체결" {
+		h.Polled != e.clock.Now().UnixMilli() || h.Group != "매매/체결" || h.Skipped != 1 || strings.Join(h.ReadRoots, ",") != "/var/log" {
 		t.Fatalf("h1 %+v", h)
 	}
-	if h := got["h2"]; h.State != stateDisabled || h.Group != "매매2" {
+	if h := got["h2"]; h.State != stateDisabled || h.Group != "매매2" || h.ReadRoots != nil {
 		t.Fatalf("h2 %+v", h)
 	}
 	if h := got["h3"]; h.State != stateUnknown || h.Polled != 0 {
 		t.Fatalf("h3 %+v", h)
 	}
-	if h := got["lost"]; h.State != stateFailed || h.Error != "boom" {
+	if h := got["lost"]; h.State != stateFailed || h.Error != "boom" || h.ErrorKind != model.FailFetch {
 		t.Fatalf("lost %+v", h)
 	}
 	// 저장하면 판이 바뀌어 적용 대기가 된다.

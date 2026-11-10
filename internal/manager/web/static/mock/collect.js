@@ -24,10 +24,12 @@ function state(now) {
       { name: 'matching', path: '{log_dir}/matching_svc.{exec_id}.log', match: [...LOGW, { re: '^\\(F\\)', level: 'error' }] },
       { name: 'order-gw', path: '/var/lib/eum/logs/gw/order_*.log', match: [{ re: 'REJECT', level: 'warn' }] },
     ]),
+    // 에이전트 허용 폴더(read_roots) 밖이라 dw-03이 이 파일만 건너뛴다(일부 적용)
+    mk('host:dw-03', 'host-dw-03.yaml', [{ name: 'etl-load', path: '/data/etl/load_*.log', match: [{ re: 'ORA-\\d+', level: 'error' }] }]),
   ];
   S = {
     sets,
-    errors: [{ file: 'group-사후처리.yaml', msg: 'logs[0].match[1].re: 정규식 오류(missing closing ): `^(E`)' }],
+    errors: [{ file: 'group-사후처리.yaml', msg: "로그 파일 'settle'(1번째) 규칙 2 정규식: 정규식(RE2)을 해석하지 못함: error parsing regexp: missing closing ): `^(E`" }],
     pendingUntil: {}, seen: {},
     audit: [
       { id: 3, ts: now - 95 * MIN, actor: 'user:admin', action: 'collect.save', target: 'group:매매/체결', detail: `group-매매-체결.yaml ${hex('g0')} → ${hex('g1')} 로그 파일 1개` },
@@ -58,9 +60,22 @@ function effective(s, id, group) {
 }
 const revOf = (logs) => hex(JSON.stringify(logs.map(({ name, path, match }) => ({ name, path, match }))), 16);
 
-// 서버마다 정해 둔 상황: 대부분 적용됨, 하나는 적용 대기, 하나는 꺼짐, 하나는 실패, 하나는 일부 적용, 하나는 모름
-const SPECIAL = { 'match-03': 'pending', 'ext-02': 'disabled', 'dw-03': 'failed', 'feed-04': 'partial', 'ext-04': 'unknown' };
+// 서버마다 정해 둔 상황: 대부분 적용됨, 하나는 적용 대기, 하나는 꺼짐, 하나는 실패(설정을 받지 못함), 하나는 모름.
+// 일부 적용은 정해 두지 않는다: 경로가 허용 폴더(ROOTS) 밖인 로그 파일이 있으면 그 서버가 건너뛴다(실제 에이전트와 같게).
+const SPECIAL = { 'match-03': 'pending', 'ext-02': 'disabled', 'feed-04': 'failed', 'ext-04': 'unknown' };
 const LOCAL = [{ name: 'agent', path: '{log_dir}/eum-agent.log', match: [{ re: 'level=error', level: 'error' }], origin: 'local' }];
+const ROOTS = ['/var/lib/eum/logs'];
+// dw-01만 /data/etl을 허용해 두었다: 거기서 파일을 골라 그룹에 저장하면 마법사가 나머지 서버는 건너뛴다고 미리 알린다.
+const rootsOf = (id) => (id === 'dw-01' ? [...ROOTS, '/data/etl'] : ROOTS);
+const FETCH_ERR = '매니저에서 로그 수집 설정을 받지 못함: Get "https://eum-mgr:8080/api/v1/agent/config?host=feed-04": context deadline exceeded';
+// 에이전트 dirOf와 같은 규칙: 와일드카드·{exec_id}가 든 첫 요소 앞까지, 없으면 파일이 든 폴더. {log_dir}는 ROOTS[0]
+export function dirOf(path) {
+  const elems = String(path).replace('{log_dir}', ROOTS[0]).split('/');
+  let n = elems.length - 1;
+  for (let i = 0; i < n; i++) if (/[*?]|\{exec_id\}/.test(elems[i])) { n = i; break; }
+  return elems.slice(0, n).join('/') || '/';
+}
+const outside = (path, roots = ROOTS) => !roots.some((r) => dirOf(path) === r || dirOf(path).startsWith(r + '/'));
 
 function hostRow(s, h, now) {
   const logs = effective(s, h.id, h.group);
@@ -69,12 +84,14 @@ function hostRow(s, h, now) {
   const row = { host: h.id, group: h.group, want_rev: want, rev: want, state: 'applied', error: '', ts: now - 1000 * (3 + (hash32(h.id) % 50)), polled: now - 1000 * (1 + (hash32(h.id + 'p') % 20)) };
   if (sp === 'unknown') return { ...row, rev: '', state: 'unknown', ts: 0, polled: now - 3 * MIN };
   if (sp === 'disabled') return { ...row, rev: '', state: 'disabled' };
-  if (sp === 'failed') return { ...row, rev: 'c4e2a190b7d3f851', state: 'failed', error: '받은 설정을 적용하지 못함: logs[0].path: read_roots 밖입니다(/data/etl)' };
+  row.read_roots = rootsOf(h.id);
+  if (sp === 'failed') return { ...row, rev: 'c4e2a190b7d3f851', state: 'failed', error: FETCH_ERR, error_kind: 'fetch' };
   if (sp === 'pending') return { ...row, rev: 'a1b2c3d4e5f60718', state: 'pending' };
   const until = s.pendingUntil[h.id];
   if (until && until > now) return { ...row, rev: s.seen[h.id] || '', state: 'pending' };
   s.seen[h.id] = want;
-  if (sp === 'partial') return { ...row, state: 'partial', error: '1개 건너뜀' };
+  const skipped = logs.filter((l) => outside(l.path, row.read_roots)).length;
+  if (skipped) return { ...row, state: 'partial', skipped };
   return row;
 }
 
@@ -87,10 +104,10 @@ function statusOf(row, logs) {
   const remote = logs.map((l, i) => {
     const o = { name: l.name, path: l.path, match: l.match, origin: 'remote', files: 1 + (hash32(l.name + row.host) % 3) };
     if (/\*/.test(l.path)) o.files = 2 + (hash32(row.host) % 4);
-    if (row.state === 'partial' && i === logs.length - 1) { o.files = 0; o.skipped = '경로가 read_roots 밖'; }
+    if (row.state !== 'failed' && outside(l.path, row.read_roots)) Object.assign(o, { files: 0, why: 'outside', dir: dirOf(l.path), skipped: `읽어도 되는 폴더(read_roots) 밖: ${dirOf(l.path)}` });
     return o;
   });
-  return { host: row.host, rev: row.rev, state: row.state, error: row.error, ts: row.ts, read_roots: ['/var/lib/eum/logs'], sources: [...local, ...remote] };
+  return { host: row.host, rev: row.rev, state: row.state, error: row.error, error_kind: row.error_kind, ts: row.ts, read_roots: row.read_roots, sources: [...local, ...remote] };
 }
 
 function list(c) {
@@ -244,7 +261,7 @@ function peek(c) {
   if (!h) return err(404, '서버를 찾을 수 없음');
   if (SPECIAL[h.id] === 'disabled') return err(422, '원격 설정이 꺼져 있습니다(에이전트 YAML remote.enabled)');
   const path = String(b.path || '');
-  if (/^\/data\//.test(path)) return err(422, '읽기 허용 경로 밖입니다(read_roots)');
+  if (outside(path, rootsOf(h.id))) return err(422, `이 서버가 읽어도 되는 폴더(read_roots: ${rootsOf(h.id).join(', ')}) 밖입니다: ${dirOf(path)}`);
   const n = Math.max(1, Math.min(500, Number(b.lines) || 200));
   const base = /syslog/.test(path) ? SYSLOG : LINES;
   const lines = Array.from({ length: Math.min(n, 48) }, (_, i) => base[i % base.length]);

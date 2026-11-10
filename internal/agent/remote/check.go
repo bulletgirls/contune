@@ -9,7 +9,7 @@ import (
 	"eum/internal/model"
 )
 
-const skipLocalName = "로컬 설정과 이름이 같음"
+const skipLocalName = "에이전트 YAML(로컬)에 같은 이름의 로그 파일이 있음"
 
 // check는 받은 원격 출처를 하나씩 본다: 형식(model.ValidateLogSources), 로컬 출처와 이름 겹침, read_roots.
 // 걸린 출처는 Skipped에 사유를 담아 빼고, 나머지를 logtail 출처(Remote)로 돌려준다. 상태는 받은 순서 그대로다.
@@ -18,9 +18,9 @@ func (r *Remote) check(logs []model.LogSource) ([]logtail.SourceConfig, []model.
 	for _, p := range model.ValidateLogSources(logs) {
 		switch {
 		case p.Index >= 0 && p.Rule >= 0:
-			reasons[p.Index] = append(reasons[p.Index], fmt.Sprintf("match[%d].%s: %s", p.Rule, p.Field, p.Msg))
+			reasons[p.Index] = append(reasons[p.Index], fmt.Sprintf("규칙 %d %s: %s", p.Rule+1, model.FieldText(p.Field), p.Msg))
 		case p.Index >= 0:
-			reasons[p.Index] = append(reasons[p.Index], p.Field+": "+p.Msg)
+			reasons[p.Index] = append(reasons[p.Index], model.FieldText(p.Field)+": "+p.Msg)
 		default: // 목록 전체(출처 수): 한도를 넘는 것만 뺀다
 			for i := model.MaxLogSources; i < len(logs); i++ {
 				reasons[i] = append(reasons[i], p.Msg)
@@ -41,11 +41,12 @@ func (r *Remote) check(logs []model.LogSource) ([]logtail.SourceConfig, []model.
 		st := model.AgentSourceStatus{Name: s.Name, Path: s.Path, Match: match, Origin: "remote"}
 		switch {
 		case len(reasons[i]) > 0:
-			st.Skipped = strings.Join(reasons[i], "; ")
+			st.Skipped, st.Why = strings.Join(reasons[i], "; "), model.SkipInvalid
 		case local[s.Name]:
-			st.Skipped = skipLocalName
+			st.Skipped, st.Why = skipLocalName, model.SkipLocal
 		case !logtail.InRoots(r.o.ReadRoots, r.dirOf(s.Path)):
-			st.Skipped = logtail.ErrOutsideRoots.Error()
+			st.Dir = r.dirOf(s.Path)
+			st.Skipped, st.Why = "읽어도 되는 폴더(read_roots) 밖: "+st.Dir, model.SkipOutside
 		}
 		statuses = append(statuses, st)
 		if st.Skipped != "" {

@@ -40,6 +40,7 @@
 
 **남은 것:**
 - ~~감사 화면의 행동 이름(`auditfmt.js`)~~ → 넣음(S-audit 행동 코드 표, 분류 `로그 수집`). 화면 용어는 05 §17 머리말(로그 수집·로그 파일·버전·적용 대상).
+- ~~건너뜀·실패가 무엇을 하라는 건지 알 수 없음~~ → 고치는 법(05 §17 '문제를 고치는 법'): `why`·`dir`·`error_kind` 코드, 서버 탭 단추(경로 고치기·폴더 허용…·이름 바꾸기), 저장 전 허용 폴더 경고.
 - 거절된 미리보기는 감사에 남지 않는다.
 - 매니저 재시작 뒤 상태는 다음 보고(5분)까지 비어 있을 수 있다.
 - 2단계(지표 수집기·프로파일러 원격, 템플릿, 단계적 배포).
@@ -61,7 +62,7 @@ L1·L2·L3은 **쓰는 경로가 겹치지 않으므로 동시에 진행한다.*
 - 범위(scope): `all` | `group:<그룹 경로>` | `host:<호스트 id>`. 그룹 경로는 에이전트의 `group`(예 `매매/체결`). `group:매매`는 `매매`와 `매매/…` 모두에 걸린다.
 - 한 호스트의 원격 출처 = `all` → 그룹 경로의 짧은 것부터(`group:매매` → `group:매매/체결`) → `host:<id>` 순으로 합친다. **이름이 같은 출처는 좁은 범위가 덮어쓴다**(자리는 처음 나온 곳, `scope`만 바뀜). 처음 나온 순서 유지.
 - 판(rev) = 합친 `[]model.LogSource`(scope 빼고)의 `json.Marshal` sha256 앞 16자(hex). 빈 목록도 판이 있다(`[]`의 해시).
-- 에이전트에서는 로컬 출처가 먼저 돌고, **로컬과 이름이 같은 원격 출처는 건너뛴다**(`skipped: "로컬 설정과 이름이 같음"`).
+- 에이전트에서는 로컬 출처가 먼저 돌고, **로컬과 이름이 같은 원격 출처는 건너뛴다**(`skipped: "에이전트 YAML(로컬)에 같은 이름의 로그 파일이 있음"`, `why: "local"`).
 
 ### 매니저 설정 폴더 (기준 = 파일)
 
@@ -108,7 +109,7 @@ logs:
 | `POST /api/v1/collect/peek` | 본문 `{"host","path","lines"}`(lines 기본 200, 1~500로 자름, path는 `model.CheckLogPath`) → `200 {"file","lines":[…],"size","rate"}`. 오류는 discover와 같음 |
 | `GET /api/v1/collect/history?scope=&limit=` | `200 {"entries":[AuditEntry]}` — 그 범위의 `collect.save`·`collect.delete`, 최신 먼저(기본 50) |
 
-- `HostCollect` = `{"host","group","want_rev","rev","state","error","ts","polled"}`: 매니저가 아는 호스트(라이브) + 상태를 보낸 호스트. `rev`·`error`·`ts`는 마지막 상태 보고, `polled`는 마지막 롱폴링 시각(ms, 없으면 0).
+- `HostCollect` = `{"host","group","want_rev","rev","state","error","error_kind","skipped","read_roots","ts","polled"}`: 매니저가 아는 호스트(라이브) + 상태를 보낸 호스트. `rev`·`error`·`error_kind`(`fetch`|`apply`)·`ts`는 마지막 상태 보고, `skipped`는 건너뛴 로그 파일 수, `read_roots`는 보고된 허용 폴더(꺼짐·보고 없음이면 빠짐, 마법사의 저장 전 경고용), `polled`는 마지막 롱폴링 시각(ms, 없으면 0).
 - `state`: `disabled`(보고가 disabled) · `failed`(보고가 failed) · `pending`(보고·롱폴링에서 본 판 ≠ `want_rev`) · `partial`(판 같고 보고가 partial) · `applied`(판 같고 applied) · `unknown`(아무 보고 없음). 화면 이름: 꺼짐·실패·적용 대기·일부 적용·적용됨·모름.
 - 권한: GET은 조회 이상(기본), 나머지(PUT·DELETE·POST)는 **관리**(역할 표 기본값 — 고칠 것 없음). 미리보기는 서버 파일을 읽는 일이라 관리만.
 - 요청 중계: 호스트마다 대기 요청 4개까지(넘으면 `429`), 10초가 지나면 버린다.
@@ -166,7 +167,7 @@ logs:
 3. **remote 패키지**:
    - 켜져 있으면: 시작할 때 `work_dir/remote-config.json`(받은 `AgentConfig`, 0600, 원자적 쓰기)을 읽어 먼저 적용한다.
    - 롱폴링 응답의 `config_rev` ≠ 본 판이면 본 판을 바꾸고 따로 `GetConfig(host, group)`. 실패하면 1초~30초 backoff로 다시 시도(그사이 판이 또 바뀌면 최신 것만).
-   - 받은 출처마다 `model.ValidateLogSources`·read_roots(`{log_dir}`를 펼친 뒤 와일드카드·`{exec_id}`가 든 요소 앞까지의 폴더, EvalSymlinks)·로컬 이름 겹침을 보고, 걸린 출처만 `skipped`에 사유를 담아 뺀다.
+   - 받은 출처마다 `model.ValidateLogSources`·read_roots(`{log_dir}`를 펼친 뒤 와일드카드·`{exec_id}`가 든 요소 앞까지의 폴더, EvalSymlinks)·로컬 이름 겹침을 보고, 걸린 출처만 `skipped`에 사유를 담아 뺀다. 화면이 고칠 방법을 고르도록 `why`(`invalid`·`local`·`outside`)와 폴더 밖이면 `dir`(본 폴더)를 함께 보낸다.
    - 로컬 + 남은 원격으로 `SetSources`. 결과로 상태 보고(`applied`/`partial`, `SetSources` 실패나 가져온 본문 해석 실패면 `failed` — 이전 설정 유지). 적용한 것만 캐시에 쓴다.
    - 상태 보고: 적용할 때마다, 시작할 때, 5분마다(파일 수 갱신). 꺼져 있으면 `disabled` + 로컬 출처를 시작할 때·5분마다.
    - **요청**(`requests`): 꺼져 있으면 `error: "원격 설정이 꺼져 있습니다(에이전트 YAML remote.enabled)"`. 동시에 2개까지, 요청마다 8초 안에 `PostCollectResult`.

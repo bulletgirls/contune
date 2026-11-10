@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -34,8 +35,8 @@ func (r *Remote) peek(ctx context.Context, q model.CollectRequest) model.Collect
 		n = peekDefaultLines
 	}
 	n = min(n, peekMaxLines)
-	if !logtail.InRoots(r.o.ReadRoots, r.dirOf(q.Path)) {
-		res.Error = logtail.ErrOutsideRoots.Error()
+	if d := r.dirOf(q.Path); !logtail.InRoots(r.o.ReadRoots, d) {
+		res.Error = fmt.Sprintf("이 서버가 읽어도 되는 폴더(read_roots: %s) 밖입니다: %s", strings.Join(r.o.ReadRoots, ", "), d)
 		return res
 	}
 	paths, err := logtail.Glob(q.Path, r.o.LogDir)

@@ -103,7 +103,7 @@ func readSet(path string) (model.CollectSet, error) {
 	if ps := model.ValidateLogSources(doc.Logs); len(ps) > 0 {
 		msgs := make([]string, len(ps))
 		for i, p := range ps {
-			msgs[i] = p.String()
+			msgs[i] = p.Text(doc.Logs)
 		}
 		return model.CollectSet{}, errors.New(strings.Join(msgs, "; "))
 	}

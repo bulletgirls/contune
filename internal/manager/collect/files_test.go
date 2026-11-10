@@ -78,7 +78,7 @@ func TestLoadDir(t *testing.T) {
 	if len(errs) != 6 {
 		t.Errorf("errors %d개: %+v", len(errs), errs)
 	}
-	if !strings.Contains(got["all.yaml"], "all-copy.yml") || !strings.Contains(got["bad-re.yaml"], "logs[0].match[0].re") {
+	if !strings.Contains(got["all.yaml"], "all-copy.yml") || !strings.Contains(got["bad-re.yaml"], "1번째) 규칙 1 정규식") {
 		t.Errorf("오류 내용: %+v", errs)
 	}
 	for i := 1; i < len(errs); i++ {

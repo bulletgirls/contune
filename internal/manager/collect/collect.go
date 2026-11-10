@@ -80,8 +80,13 @@ type HostCollect struct {
 	Rev     string `json:"rev"`
 	State   string `json:"state"`
 	Error   string `json:"error"`
-	TS      int64  `json:"ts"`
-	Polled  int64  `json:"polled"`
+	// ErrorKind는 failed일 때 실패 종류(model.FailFetch | FailApply), Skipped는 건너뛴 로그 파일 수다.
+	ErrorKind string `json:"error_kind,omitempty"`
+	Skipped   int    `json:"skipped,omitempty"`
+	// ReadRoots는 에이전트가 보고한 읽어도 되는 폴더다. 화면이 저장 전에 경로를 미리 견줘 본다(보고 없으면 nil).
+	ReadRoots []string `json:"read_roots,omitempty"`
+	TS        int64    `json:"ts"`
+	Polled    int64    `json:"polled"`
 }
 
 // New는 collect 폴더를 읽어 수집 설정을 만든다. 폴더가 없으면 빈 설정이고, 읽지 못한 파일은 errors에 담는다.
@@ -188,7 +193,15 @@ func (c *Collect) hostsLocked(live []model.Host) []HostCollect {
 		st := c.statusLocked(id)
 		hc := HostCollect{Host: id, Group: group, WantRev: want, State: hostState(want, st, c.polls[id].rev), Polled: c.polls[id].ts}
 		if st != nil {
-			hc.Rev, hc.Error, hc.TS = st.Rev, st.Error, st.TS
+			hc.Rev, hc.Error, hc.ErrorKind, hc.TS = st.Rev, st.Error, st.ErrorKind, st.TS
+			if st.State != model.ConfigDisabled {
+				hc.ReadRoots = st.ReadRoots
+			}
+			for _, s := range st.Sources {
+				if s.Skipped != "" {
+					hc.Skipped++
+				}
+			}
 		}
 		out = append(out, hc)
 	}

@@ -5,7 +5,7 @@ import { api, poll, ApiError } from '../api.js';
 import { el, relTime, toast, confirmBox, table, DASH } from '../ui.js';
 import { can, gate } from '../auth.js';
 import { hashWith } from '../tree.js';
-import { openWizard, watchApplied, scopeName, scopeCovers, viewScope, ruleChipText } from './collectwiz.js';
+import { openWizard, watchApplied, scopeName, scopeCovers, viewScope, ruleChipText, pathDir } from './collectwiz.js';
 
 // ---- 순수 함수 ----
 
@@ -43,6 +43,32 @@ export function countStates(hosts) {
   for (const h of hosts) c[h.state] = (c[h.state] || 0) + 1;
   return c;
 }
+// ---- 건너뜀·실패를 고치는 법 ----
+// 건너뛴 까닭 코드(outside 허용 폴더 밖 · local 에이전트 YAML에 같은 이름 · invalid 형식). why가 없는 옛 에이전트는 글로 짐작한다.
+export function skipWhy(s) {
+  if (!s || !s.skipped) return '';
+  if (s.why) return s.why;
+  return /read_roots/.test(s.skipped) ? 'outside' : /로컬/.test(s.skipped) ? 'local' : 'invalid';
+}
+// 실패 종류(fetch 설정을 받지 못함 · apply 끼우지 못함). error_kind가 없으면 글로 짐작한다.
+export const failKind = (st) => (st && st.error_kind) || (/가져오지|받지 못함/.test((st && st.error) || '') ? 'fetch' : 'apply');
+// 끼우지 못한 로그 파일 이름(에이전트 오류 "logtail <이름>: ...")
+export const failedSource = (msg) => ((/logtail (\S+?):/.exec(msg || '') || [])[1] || '');
+// 허용 폴더를 더한 에이전트 YAML 조각
+export function rootsYaml(roots, dirs) {
+  const all = [...(roots || [])];
+  for (const d of dirs) if (d && !all.includes(d)) all.push(d);
+  return `remote:\n  enabled: true\n  read_roots: [${all.join(', ')}]`;
+}
+// 적용 상태 표 '문제' 칸의 짧은 말
+export function problemText(h) {
+  if (h.state === 'partial') return h.skipped ? `로그 파일 ${h.skipped}개 안 읽음` : '건너뛴 로그 파일 있음';
+  if (h.state === 'failed') return failKind(h) === 'fetch' ? '설정을 받지 못함' : '설정을 끼우지 못함';
+  return h.error || '';
+}
+const SKIP_TEXT = { outside: (r) => `허용 폴더 밖: ${r.dir || '?'}`, local: () => '에이전트 YAML에 같은 이름이 있음', invalid: (r) => r.skipped };
+const FIX_TEXT = { outside: '경로 고치기', local: '이름 바꾸기', invalid: '고치기' };
+
 // 에이전트 상태 보고의 출처 + 합친 설정 → 서버 탭 표 줄
 export function hostSourceRows(detail) {
   const logs = detail.logs || [];
@@ -53,9 +79,11 @@ export function hostSourceRows(detail) {
   const seen = new Set();
   for (const s of (st && st.sources) || []) {
     seen.add(s.name);
-    rows.push({ name: s.name, path: s.path, match: s.match || [], src: s.origin === 'local' ? '로컬(YAML)' : srcLabel(scopeOf(s.name)), files: s.files, skipped: s.skipped || '', local: s.origin === 'local' });
+    const why = skipWhy(s);
+    rows.push({ name: s.name, path: s.path, match: s.match || [], src: s.origin === 'local' ? '로컬(YAML)' : srcLabel(scopeOf(s.name)), scope: scopeOf(s.name), files: s.files, skipped: s.skipped || '', why,
+      dir: why === 'outside' ? s.dir || pathDir(s.path) : '', local: s.origin === 'local' });
   }
-  for (const l of logs) if (!seen.has(l.name)) rows.push({ name: l.name, path: l.path, match: l.match || [], src: srcLabel(l.scope), files: null, skipped: st ? '' : '', waiting: true });
+  for (const l of logs) if (!seen.has(l.name)) rows.push({ name: l.name, path: l.path, match: l.match || [], src: srcLabel(l.scope), scope: l.scope, files: null, skipped: '', why: '', dir: '', waiting: true });
   return rows;
 }
 
@@ -68,7 +96,7 @@ function rulesCell(match) {
   for (const r of match || []) box.append(el('code', { class: 'cl-rule ' + r.level, text: ruleChipText(r), title: r.level === 'error' ? '오류로 보고' : '경고로 보고' }));
   return box;
 }
-const hostList = (data) => (data.hosts || []).map((h) => ({ id: h.host, group: h.group }));
+const hostList = (data) => (data.hosts || []).map((h) => ({ id: h.host, group: h.group, roots: h.read_roots }));
 function pickHost(list, states) {
   const ok = list.find((h) => ['applied', 'pending', 'partial', 'failed'].includes(states.get(h.id)));
   return (ok || list[0] || {}).id || '';
@@ -77,7 +105,7 @@ function afterSave(scope, host, reload) {
   toast('저장했습니다. 서버에 반영하는 중…');
   reload();
   if (host) watchApplied(host, (s) => {
-    toast(s === 'applied' ? `${host}: 적용됨` : s === 'partial' ? `${host}: 일부만 적용됨` : s === 'timeout' ? `${host}: 30초 안에 적용되지 않았습니다` : `${host}: ${STATE_TEXT[s] || s}`);
+    toast(s === 'applied' ? `${host}: 적용됨` : s === 'partial' ? `${host}: 일부만 적용됨 — 서버 탭의 '문제' 칸에서 고치세요` : s === 'timeout' ? `${host}: 30초 안에 적용되지 않았습니다` : `${host}: ${STATE_TEXT[s] || s}`);
     reload();
   });
 }
@@ -125,7 +153,8 @@ export async function render(root, params, query) {
     else if (!can('admin')) n.push(el('div', { class: 'cl-note lock', role: 'status', text: '관리 계정만 고칠 수 있습니다.' }));
     if ((data.errors || []).length) {
       n.push(el('div', { class: 'cl-note bad', role: 'alert' }, el('b', { text: `읽지 못한 파일 ${data.errors.length}개` }), ' — 이 파일의 설정은 서버에 내려가지 않습니다. ',
-        el('ul', {}, data.errors.map((e) => el('li', {}, el('code', { text: e.file }), ' ', e.msg)))));
+        el('ul', {}, data.errors.map((e) => el('li', {}, el('code', { text: e.file }), ' ', e.msg))),
+        el('div', { class: 'cl-todo' }, `매니저 서버의 설정 폴더(${data.dir || DASH})에서 파일을 고친 뒤 '폴더 다시 읽기'를 누르세요.`)));
     }
     notes.replaceChildren(...n);
   }
@@ -148,7 +177,7 @@ export async function render(root, params, query) {
   function openAdd(edit) {
     const hs = hostsOfScope();
     const states = new Map(hs.map((h) => [h.host, h.state]));
-    const list = hs.map((h) => ({ id: h.host, group: h.group }));
+    const list = hs.map((h) => ({ id: h.host, group: h.group, roots: h.read_roots }));
     openWizard({
       hosts: list, allHosts: hostList(data), host: pickHost(list, states), scope, sets: data.sets, edit,
       onSaved: (sc, host) => afterSave(sc, host, () => { sig = ''; load(); }),
@@ -210,7 +239,7 @@ export async function render(root, params, query) {
         { key: 'group', label: '그룹' },
         { key: 'state', label: '상태', render: (h) => stateBadge(h.state) },
         { key: 'rev', label: '원하는 버전 / 적용된 버전', render: (h) => el('code', { class: 'cl-rev' + (h.state === 'pending' ? ' diff' : '') }, `${shortRev(h.want_rev)} / ${shortRev(h.rev)}`) },
-        { key: 'error', label: '오류', render: (h) => (h.error ? el('span', { class: 'wrap cl-skip', text: h.error }) : DASH) },
+        { key: 'error', label: '문제', render: (h) => { const t = problemText(h); return t ? el('span', { class: 'cl-skip', text: `${t} →`, title: `${h.error || t}\n눌러서 고칠 방법 보기` }) : DASH; } },
         { key: 'ts', label: '마지막 보고', render: (h) => (h.ts ? relTime(h.ts) : '보고 없음') },
       ],
     });
@@ -257,22 +286,47 @@ export function drawHostCollect(body, hostId) {
   }, 5000);
   const reload = () => { alive && Promise.all([api(`/collect/hosts/${encodeURIComponent(hostId)}`), api('/collect')]).then(([d, a]) => alive && draw(d, a)).catch(() => {}); };
 
-  function band(d) {
+  let fixOpen = false;
+  function band(d, nSkipped) {
     const st = d.status;
     const kids = [stateBadge(d.state), ' '];
     if (d.state === 'applied') kids.push(`버전 ${shortRev(st && st.rev)} 적용 · 마지막 보고 ${relTime(st && st.ts)}`);
     else if (d.state === 'pending') kids.push(`원하는 버전 ${shortRev(d.want_rev)} · 에이전트는 아직 ${shortRev(st && st.rev)}. 에이전트가 다음 롱폴링에서 받아 갑니다.`);
-    else if (d.state === 'partial') kids.push(`버전 ${shortRev(st && st.rev)} 일부만 적용 — 건너뛴 로그 파일이 있습니다. ${(st && st.error) || ''}`);
-    else if (d.state === 'failed') kids.push(`적용하지 못함: ${(st && st.error) || '사유 없음'} (이전 설정으로 계속 수집 중)`);
+    else if (d.state === 'partial') kids.push(`버전 ${shortRev(st && st.rev)} 일부만 적용 — 로그 파일 ${nSkipped}개를 이 서버에서 읽지 않습니다. 아래 표의 '문제' 칸에서 고치세요.`);
+    else if (d.state === 'failed' && failKind(st) === 'fetch') {
+      kids.push(el('b', { text: '에이전트가 매니저에서 설정을 받지 못했습니다.' }), ' 이전 설정으로 계속 수집하며, 에이전트가 알아서 다시 시도합니다(1초~30초 간격).',
+        el('div', { class: 'cl-todo' }, '몇 분 넘게 이어지면 이 서버에서 에이전트 로그와 에이전트 YAML의 매니저 주소·토큰(', el('code', { text: 'manager:' }), '), 매니저까지의 네트워크를 확인하세요.'));
+    } else if (d.state === 'failed') {
+      const bad = failedSource(st && st.error);
+      kids.push(el('b', { text: '에이전트가 받은 설정을 끼우지 못했습니다.' }), ' 이전 설정으로 계속 수집 중입니다.',
+        el('div', { class: 'cl-todo' }, '같은 설정은 다시 받아도 같습니다. ', bad ? `로그 파일 '${bad}'을(를) ` : '문제 로그 파일을 ', '고쳐 저장하면 다시 적용합니다.'));
+    }
     else if (d.state === 'disabled') kids.push('이 서버의 에이전트에서 원격 설정이 꺼져 있습니다. 에이전트 YAML에 아래를 더하고 다시 시작하세요.');
     else kids.push('아직 이 서버에서 상태 보고가 없습니다. 에이전트가 원격 설정을 지원하는 버전인지, 켜졌는지 확인하세요.');
     const cls = { applied: 'ok', pending: 'warn', partial: 'warn', failed: 'crit', disabled: 'silent', unknown: 'silent' }[d.state] || 'silent';
     return el('div', { class: `cl-band ${cls}`, role: 'status' }, el('div', {}, kids),
-      d.state === 'disabled' ? el('pre', { class: 'cl-yaml', text: YAML_EXAMPLE }) : null);
+      d.state === 'disabled' ? el('pre', { class: 'cl-yaml', text: YAML_EXAMPLE }) : null,
+      d.state === 'failed' && st && st.error ? el('details', { class: 'cl-raw' }, el('summary', { text: '에이전트가 보낸 메시지' }), el('code', { text: st.error })) : null);
   }
 
   function draw(d, all) {
     const rows = hostSourceRows(d);
+    const canEdit = all.editable && can('admin');
+    const editTip = !all.editable ? LOCKED_TIP : '관리 계정만 할 수 있습니다';
+    const editAt = (r) => openWizard({
+      hosts: [{ id: hostId, group: d.group, roots: d.status && d.status.read_roots }], allHosts: hostList(all), host: hostId, hostFixed: true,
+      scope: r.scope, sets: all.sets, edit: { scope: r.scope, source: { name: r.name, path: r.path, match: r.match } },
+      onSaved: (sc, host) => afterSave(sc, host, reload) });
+    const outDirs = [...new Set(rows.filter((r) => r.why === 'outside' && r.dir).map((r) => r.dir))];
+    const fix = outDirs.length ? fixBox(d, outDirs) : null;
+    const problem = (r) => {
+      if (!r.skipped) return r.waiting ? el('span', { class: 'meta', text: d.state === 'disabled' ? '원격 꺼짐: 적용 안 됨' : '적용 대기' }) : DASH;
+      const b = el('button', { type: 'button', text: FIX_TEXT[r.why] || '고치기', onclick: () => editAt(r),
+        title: r.scope && !r.scope.startsWith('host:') ? `${scopeName(r.scope)}에서 정한 로그 파일이라 그 적용 대상 전체가 바뀝니다` : '' });
+      if (!canEdit || !r.scope) { b.disabled = true; b.title = !r.scope ? '어디서 정했는지 몰라 여기서 고칠 수 없습니다' : editTip; }
+      return el('span', { class: 'cl-prob' }, el('span', { class: 'cl-skip', text: (SKIP_TEXT[r.why] || SKIP_TEXT.invalid)(r), title: r.skipped }), b,
+        r.why === 'outside' ? el('button', { type: 'button', class: 'ghost', text: '폴더 허용…', title: '서버에서 이 폴더를 읽게 하는 방법', onclick: () => { fix.open = true; fixOpen = true; fix.scrollIntoView({ block: 'nearest' }); } }) : null);
+    };
     const add = el('button', { type: 'button', class: 'primary', text: '+ 로그 파일 추가', onclick: () => {
       const me = [{ id: hostId, group: d.group }];
       openWizard({ hosts: me, allHosts: hostList(all), host: hostId, hostFixed: true, scope: 'host:' + hostId, sets: all.sets,
@@ -287,13 +341,29 @@ export function drawHostCollect(body, hostId) {
         { key: 'path', label: '경로', render: (r) => el('code', { class: 'cl-path', text: r.path }) },
         { key: 'match', label: '규칙', render: (r) => rulesCell(r.match) },
         { key: 'src', label: '정한 곳', render: (r) => (r.local ? el('span', { class: 'badge silent', text: r.src, title: '에이전트 YAML의 logs. 화면에서는 읽기만 됩니다' }) : el('span', { text: r.src })) },
-        { key: 'files', label: '읽는 파일 수', title: '경로에 맞는 파일 중 에이전트가 지금 읽고 있는 수', num: true, render: (r) => (r.files == null ? DASH : String(r.files)) },
-        { key: 'skipped', label: '건너뛴 이유', render: (r) => (r.skipped ? el('span', { class: 'cl-skip', text: r.skipped }) : r.waiting ? el('span', { class: 'meta', text: d.state === 'disabled' ? '원격 꺼짐: 적용 안 됨' : '적용 대기' }) : DASH) },
+        { key: 'files', label: '읽는 파일 수', title: '경로에 맞는 파일 중 에이전트가 지금 읽고 있는 수', num: true, render: (r) => (r.files == null || r.skipped ? DASH : String(r.files)) },
+        { key: 'skipped', label: '문제', render: problem },
       ],
     });
     t.querySelectorAll('tbody tr').forEach((tr, i) => { if (rows[i] && rows[i].skipped) tr.classList.add('skipped'); });
     const link = el('a', { class: 'cl-link', href: hashWith('collect', { s: 'host:' + hostId }), text: '적용 대상별로 보기 →' });
-    body.replaceChildren(band(d), el('div', { class: 'cl-tabhead' }, el('h3', { class: 'sec', text: '이 서버에서 수집하는 로그 파일' }), el('span', { class: 'grow' }), link, add), t);
+    body.replaceChildren(band(d, rows.filter((r) => r.skipped).length), el('div', { class: 'cl-tabhead' }, el('h3', { class: 'sec', text: '이 서버에서 수집하는 로그 파일' }), el('span', { class: 'grow' }), link, add), t, fix || '');
+  }
+  // 허용 폴더 밖을 읽게 하는 법(서버 담당자). 원격으로 넓힐 수 없는 보안 경계라 YAML 조각을 준다.
+  function fixBox(d, dirs) {
+    const yaml = rootsYaml(d.status && d.status.read_roots, dirs);
+    const copy = el('button', { type: 'button', text: '복사', onclick: async () => {
+      try { await navigator.clipboard.writeText(yaml); toast('복사했습니다'); } catch (e) { const sel = getSelection(); sel.selectAllChildren(pre); toast('선택해 두었습니다. Ctrl+C로 복사하세요'); }
+    } });
+    const pre = el('pre', { class: 'cl-yaml', text: yaml });
+    const box = el('details', { class: 'cl-fix', open: fixOpen, ontoggle: () => { fixOpen = box.open; } },
+      el('summary', {}, el('b', { text: '폴더 허용하기' }), el('span', { class: 'meta', text: ' — 서버 담당자가 이 서버에서' })),
+      el('ol', {},
+        el('li', {}, `이 서버(${hostId})의 에이전트 YAML에서 `, el('code', { text: 'remote.read_roots' }), '에 ', dirs.flatMap((x, i) => [i ? ', ' : '', el('code', { text: x })]), ' 폴더를 더합니다.'),
+        el('li', { text: '에이전트를 다시 시작합니다. 시작하자마자 상태를 보고하므로 이 표에서 바로 확인됩니다.' })),
+      el('div', { class: 'cl-yamlrow' }, pre, copy),
+      el('div', { class: 'meta', text: '읽을 폴더는 화면에서 넓힐 수 없게 막아 두었습니다(매니저가 뚫려도 서버의 다른 파일을 읽지 못하게).' }));
+    return box;
   }
   return () => { alive = false; stop(); };
 }

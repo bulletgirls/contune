@@ -57,13 +57,23 @@ const (
 	ConfigDisabled = "disabled" // 에이전트 YAML에서 remote.enabled가 꺼짐
 )
 
+// 건너뛴 까닭(AgentSourceStatus.Why)과 실패 종류(AgentConfigStatus.ErrorKind). 화면은 이것으로 고칠 방법을 고른다.
+const (
+	SkipOutside = "outside" // 경로의 폴더가 read_roots 밖(Dir에 그 폴더). 경로를 고치거나 서버에서 폴더를 허용한다
+	SkipLocal   = "local"   // 에이전트 YAML logs에 같은 이름이 있음. 이름을 바꾼다
+	SkipInvalid = "invalid" // 형식 검사에 걸림(매니저보다 오래된 에이전트 등). 고쳐 저장한다
+	FailFetch   = "fetch"   // 매니저에서 설정을 받지 못함. 에이전트가 알아서 다시 시도한다
+	FailApply   = "apply"   // 받은 설정을 끼우지 못함. 같은 설정으로는 다시 해도 같으니 고쳐 저장한다
+)
+
 // AgentConfigStatus는 POST /api/v1/agent/config-status 본문이다: 에이전트가 실제로 돌리는 설정.
 type AgentConfigStatus struct {
 	Host      string              `json:"host"`
 	Rev       string              `json:"rev"`   // 마지막으로 받은 AgentConfig.Rev(없으면 "")
 	State     string              `json:"state"` // applied | partial | failed | disabled
 	Error     string              `json:"error,omitempty"`
-	TS        int64               `json:"ts"` // unix ms
+	ErrorKind string              `json:"error_kind,omitempty"` // failed일 때 FailFetch | FailApply
+	TS        int64               `json:"ts"`                   // unix ms
 	ReadRoots []string            `json:"read_roots"`
 	Sources   []AgentSourceStatus `json:"sources"` // 로컬 + 원격, 지금 도는 순서
 }
@@ -76,6 +86,8 @@ type AgentSourceStatus struct {
 	Origin  string     `json:"origin"`            // local | remote
 	Files   int        `json:"files"`             // 지금 따라가는 파일 수
 	Skipped string     `json:"skipped,omitempty"` // 적용하지 않은 이유(비면 도는 중)
+	Why     string     `json:"why,omitempty"`     // 건너뛴 까닭 코드: SkipOutside | SkipLocal | SkipInvalid
+	Dir     string     `json:"dir,omitempty"`     // SkipOutside: read_roots로 본 폴더({log_dir}를 펼친 것)
 }
 
 // CollectRequest는 매니저가 롱폴링 응답(requests)으로 에이전트에 시키는 읽기 전용 요청이다.
@@ -130,6 +142,38 @@ func (p Problem) String() string {
 		return fmt.Sprintf("logs[%d].match[%d].%s: %s", p.Index, p.Rule, p.Field, p.Msg)
 	}
 	return fmt.Sprintf("logs[%d].%s: %s", p.Index, p.Field, p.Msg)
+}
+
+// Text는 손으로 YAML을 고칠 사람이 찾을 수 있게 쓴 문제 설명이다: 로그 파일 이름·순서, 규칙 번호(1부터), 칸 이름.
+func (p Problem) Text(logs []LogSource) string {
+	if p.Index < 0 || p.Index >= len(logs) {
+		return p.Msg
+	}
+	at := fmt.Sprintf("로그 파일 %d번째", p.Index+1)
+	if n := logs[p.Index].Name; n != "" {
+		at = fmt.Sprintf("로그 파일 '%s'(%d번째)", n, p.Index+1)
+	}
+	if p.Rule >= 0 {
+		return fmt.Sprintf("%s 규칙 %d %s: %s", at, p.Rule+1, FieldText(p.Field), p.Msg)
+	}
+	return fmt.Sprintf("%s %s: %s", at, FieldText(p.Field), p.Msg)
+}
+
+// FieldText는 검사 문제의 칸 이름을 화면 말로 바꾼다.
+func FieldText(f string) string {
+	switch f {
+	case "name":
+		return "이름"
+	case "path":
+		return "경로"
+	case "match":
+		return "규칙"
+	case "re":
+		return "정규식"
+	case "level":
+		return "수준"
+	}
+	return f
 }
 
 // 수집 설정 한도.

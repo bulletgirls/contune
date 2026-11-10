@@ -39,6 +39,14 @@ func TestValidateLogSources(t *testing.T) {
 	if len(ps) != 1 || ps[0].Index != 1 || ps[0].Field != "name" || !strings.Contains(ps[0].String(), "logs[1].name") {
 		t.Fatalf("이름 중복: %v", ps)
 	}
+	// 손으로 YAML을 고칠 사람에게 보이는 말: 이름·순서·규칙 번호(1부터)·칸 이름
+	bad := []LogSource{ok, {Name: "etl", Path: "/a.log", Match: []LogMatch{ok.Match[0], {Re: "(", Level: "error"}}}}
+	if ps := ValidateLogSources(bad); len(ps) != 1 || !strings.HasPrefix(ps[0].Text(bad), "로그 파일 'etl'(2번째) 규칙 2 정규식: ") {
+		t.Errorf("Text: %v", ps)
+	}
+	if p := (Problem{Index: -1, Rule: -1, Field: "logs", Msg: "많음"}); p.Text(bad) != "많음" {
+		t.Errorf("목록 전체 문제는 Msg만: %q", p.Text(bad))
+	}
 	many := make([]LogSource, MaxLogSources+1)
 	for i := range many {
 		many[i] = LogSource{Name: "s" + strings.Repeat("x", i%30) + string(rune('a'+i%26)), Path: "/a.log", Match: ok.Match}

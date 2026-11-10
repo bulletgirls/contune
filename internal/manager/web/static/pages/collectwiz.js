@@ -172,6 +172,24 @@ export function viewScope(sets, scope, hostGroup) {
 // ---- 이름·비교 ----
 
 // 파일 이름 → 출처 이름 제안: 마지막 요소에서 {…}·*·확장자·날짜·숫자 꼬리를 떼고 소문자로
+// 경로의 폴더(에이전트 dirOf와 같은 규칙): 와일드카드·{exec_id}가 든 첫 요소 앞까지, 없으면 파일이 든 폴더.
+// {log_dir}로 시작하면 서버마다 달라 ''(판단하지 않음).
+export function pathDir(path) {
+  const p = String(path || '').trim();
+  if (!p.startsWith('/')) return '';
+  const elems = p.split('/');
+  let n = elems.length - 1;
+  for (let i = 0; i < n; i++) if (/[*?]|\{exec_id\}/.test(elems[i])) { n = i; break; }
+  return elems.slice(0, n).join('/') || '/';
+}
+const within = (d, r) => { const rr = String(r).replace(/\/+$/, ''); return rr === '' || d === rr || d.startsWith(rr + '/'); };
+// 저장 전에 미리 본다: 경로의 폴더를 읽도록 허용하지 않은 서버 id(보고된 read_roots 기준, 심볼릭 링크는 모름).
+export function blockedHosts(path, hosts) {
+  const d = pathDir(path);
+  if (!d) return [];
+  return hosts.filter((h) => h.roots && h.roots.length && !h.roots.some((r) => within(d, r))).map((h) => h.id);
+}
+
 export function suggestName(path) {
   let b = String(path ?? '').split('/').filter(Boolean).pop() || '';
   b = b.replace(/\{[^}]*\}/g, '').replace(/[*?]/g, '');
@@ -329,7 +347,11 @@ export function openWizard(opts) {
       st.busy = false;
       if (!st.lines.length) { st.err = '읽은 줄이 없습니다. 파일이 비어 있거나 아직 쓰이지 않았습니다.'; drawFiles(); return; }
       go(2);
-    } catch (e) { st.busy = false; st.err = err(e); if (bg.isConnected) drawFiles(); }
+    } catch (e) {
+      st.busy = false; st.err = err(e);
+      if (/read_roots/.test(st.err)) st.err += ' — 허용 폴더 안의 경로로 고치세요. 이 폴더를 꼭 읽어야 하면 서버 담당자가 에이전트 YAML의 read_roots에 더하고 에이전트를 다시 시작해야 합니다.';
+      if (bg.isConnected) drawFiles();
+    }
   }
 
   // ---- 줄 목록(②·③ 공통) ----
@@ -467,6 +489,11 @@ export function openWizard(opts) {
     const probBox = el('div', { class: 'cw-probs', role: 'alert' });
     const saveBtn = el('button', { type: 'button', class: 'primary', text: '저장', onclick: save });
     const msg = el('div', { class: 'cw-err', role: 'alert', text: st.err });
+    const targets = (opts.allHosts || opts.hosts).filter((x) => scopeCovers(st.scope, x.id, x.group));
+    const blocked = blockedHosts(st.path, targets);
+    const warn = blocked.length ? el('div', { class: 'cw-warnbar', role: 'status' },
+      `⚠ 서버 ${blocked.length}대(${blocked.slice(0, 3).join(', ')}${blocked.length > 3 ? ' 외' : ''})는 `, el('code', { text: pathDir(st.path) }),
+      ' 폴더를 읽도록 허용하지 않아 이 로그 파일을 건너뜁니다. 그 서버의 에이전트 YAML read_roots에 폴더를 더해야 읽힙니다.') : null;
     function upd() {
       const bad = checkName(st.name, others);
       const over = !bad && wider.find((w) => w.name === st.name);
@@ -488,7 +515,7 @@ export function openWizard(opts) {
           el('div', { class: 'cw-sub', text: '이름' }),
           el('div', { class: 'cw-row' }, nameInp, nameMsg),
           el('div', { class: 'cw-recap' }, el('span', { class: 'meta', text: '경로 ' }), el('code', { text: st.path }), el('span', { class: 'meta', text: ` · 규칙 ${st.rules.length}개` })),
-          probBox, msg),
+          warn, probBox, msg),
         el('div', { class: 'cw-col side' },
           el('div', { class: 'cw-sub' }, `바뀌는 내용 `, el('span', { class: 'meta', text: set ? `(${set.file})` : '(새 설정 파일)' })),
           diffBox)));

@@ -297,12 +297,14 @@ func TestFetchFailBackoff(t *testing.T) {
 	}
 	g.run()
 	g.r.OnPoll("R3", nil)
-	g.waitStatus(func(s model.AgentConfigStatus) bool { return s.State == model.ConfigFailed })
+	if f := g.waitStatus(func(s model.AgentConfigStatus) bool { return s.State == model.ConfigFailed }); f.ErrorKind != model.FailFetch {
+		t.Errorf("실패 종류 %q, fetch여야 함", f.ErrorKind)
+	}
 	if got := g.r.Rev(); got != "R3" {
 		t.Fatalf("가져오기가 실패해도 본 판은 R3: %q", got)
 	}
 	s := g.waitStatus(func(s model.AgentConfigStatus) bool { return s.Rev == "R3" })
-	if s.State != model.ConfigApplied || s.Error != "" {
+	if s.State != model.ConfigApplied || s.Error != "" || s.ErrorKind != "" {
 		t.Fatalf("status = %+v", s)
 	}
 	ts := g.m.fetchTimes()
@@ -350,8 +352,14 @@ func TestPartial(t *testing.T) {
 			t.Errorf("%s skipped = %q, %q가 들어야 함", name, x.Skipped, sub)
 		}
 	}
-	if x, _ := source(s, "remote", "step"); x.Skipped != "로컬 설정과 이름이 같음" {
-		t.Errorf("이름 겹침 사유 %q", x.Skipped)
+	if x, _ := source(s, "remote", "step"); x.Skipped != skipLocalName || x.Why != model.SkipLocal {
+		t.Errorf("이름 겹침 사유 %q / %q", x.Skipped, x.Why)
+	}
+	// 화면이 고칠 방법을 고르는 코드: 폴더 밖은 그 폴더(Dir)까지, 형식 문제는 invalid
+	for name, why := range map[string]string{"out": model.SkipOutside, "link": model.SkipOutside, "badre": model.SkipInvalid, "good": ""} {
+		if x, _ := source(s, "remote", name); x.Why != why || (why == model.SkipOutside) != (x.Dir != "") {
+			t.Errorf("%s why=%q dir=%q, why %q여야 함", name, x.Why, x.Dir, why)
+		}
 	}
 	if x, _ := source(s, "local", "step"); x.Skipped != "" || x.Path != "{log_dir}/{exec_id}.log" {
 		t.Errorf("로컬 step은 그대로: %+v", x)

@@ -62,12 +62,13 @@ type Remote struct {
 	reqs chan pending
 	wait func(ctx context.Context, d time.Duration) bool // peek rate 간격(시험에서 바꾼다)
 
-	mu     sync.Mutex
-	seen   string                    // 롱폴링에서 본 마지막 판(rev 질의로 보냄)
-	rev    string                    // 지금 돌고 있는 원격 설정의 판
-	state  string                    // applied | partial | failed | disabled
-	errMsg string                    // failed일 때 사유
-	remote []model.AgentSourceStatus // 지금 적용한 원격 출처(건너뛴 것 포함). Files는 보고할 때 채운다
+	mu      sync.Mutex
+	seen    string                    // 롱폴링에서 본 마지막 판(rev 질의로 보냄)
+	rev     string                    // 지금 돌고 있는 원격 설정의 판
+	state   string                    // applied | partial | failed | disabled
+	errMsg  string                    // failed일 때 사유
+	errKind string                    // failed일 때 model.FailFetch | model.FailApply
+	remote  []model.AgentSourceStatus // 지금 적용한 원격 출처(건너뛴 것 포함). Files는 보고할 때 채운다
 }
 
 // New는 부품을 만든다. 켜져 있으면 work_dir의 캐시를 읽어 먼저 적용한다(매니저가 꺼져 있어도 수집이 이어지게).
@@ -188,7 +189,7 @@ func (r *Remote) fetch(ctx context.Context) bool {
 	if err != nil {
 		slog.Warn("원격 수집 설정을 가져오지 못함, 다시 시도", "host", r.o.Host, "err", err)
 		r.mu.Lock()
-		r.state, r.errMsg = model.ConfigFailed, "수집 설정을 가져오지 못함: "+err.Error()
+		r.state, r.errMsg, r.errKind = model.ConfigFailed, "매니저에서 로그 수집 설정을 받지 못함: "+err.Error(), model.FailFetch
 		r.mu.Unlock()
 		r.report(ctx)
 		return false
@@ -211,7 +212,7 @@ func (r *Remote) apply(cfg model.AgentConfig, save bool) bool {
 	if err := r.tl.SetSources(all); err != nil {
 		slog.Warn("원격 수집 설정을 적용하지 못함, 이전 설정 유지", "host", r.o.Host, "rev", cfg.Rev, "err", err)
 		r.mu.Lock()
-		r.state, r.errMsg = model.ConfigFailed, "로그 파일 설정을 적용하지 못함: "+err.Error()
+		r.state, r.errMsg, r.errKind = model.ConfigFailed, "받은 로그 파일 설정을 끼우지 못함: "+err.Error(), model.FailApply
 		r.mu.Unlock()
 		return false
 	}
@@ -222,7 +223,7 @@ func (r *Remote) apply(cfg model.AgentConfig, save bool) bool {
 		}
 	}
 	r.mu.Lock()
-	r.rev, r.remote, r.state, r.errMsg = cfg.Rev, statuses, state, ""
+	r.rev, r.remote, r.state, r.errMsg, r.errKind = cfg.Rev, statuses, state, "", ""
 	r.mu.Unlock()
 	if save {
 		if err := r.saveCache(cfg); err != nil {
@@ -238,7 +239,7 @@ func (r *Remote) status() model.AgentConfigStatus {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	s := model.AgentConfigStatus{
-		Host: r.o.Host, Rev: r.rev, State: r.state, Error: r.errMsg, TS: r.o.Now().UnixMilli(),
+		Host: r.o.Host, Rev: r.rev, State: r.state, Error: r.errMsg, ErrorKind: r.errKind, TS: r.o.Now().UnixMilli(),
 		ReadRoots: append([]string{}, r.o.ReadRoots...), Sources: []model.AgentSourceStatus{},
 	}
 	for _, l := range r.o.Local {
