@@ -330,6 +330,58 @@ function buildHistory(w, flows, base) {
   w.runs.find((r) => r.flow_run_id === efr.id && r.step_id === 'confirm-send').events[0].reason = '';
 }
 
+// 지난 실행 이력: 플로우마다 최근 실행 앞으로 몇 회 더(실행 이력 격자·간트·성공률 확인용).
+// 기존 실행 번호가 바뀌지 않게 맨 뒤에 붙인다. 가끔 재시도 끝 성공, 드물게 실패.
+function buildPast(w, flows) {
+  const from = w.runs.length;
+  for (const flow of flows) {
+    const frs = w.flowRuns.filter((f) => f.flow_id === flow.id);
+    if (!frs.length) continue;
+    const latest = frs.reduce((a, b) => (b.started_at >= a.started_at ? b : a)).started_at;
+    const f = String(flow.schedule || '').trim().split(/\s+/);
+    let step = DAY, n = 7;
+    const every = /^\*\/(\d+)$/.exec(f[0] || '');
+    if (every && f[1] === '*') { step = Number(every[1]) * MIN; n = 10; }
+    else if (f[1] === '*') { step = HOUR; n = 10; }
+    const weekdays = f[4] === '1-5';
+    const { levels } = flowLevels(flow.steps);
+    const order = [...flow.steps].sort((a, b) => levels.get(a.id) - levels.get(b.id));
+    let made = 0;
+    for (let k = 1; made < n && k < n * 3; k++) {
+      const t0 = latest - k * step + ((hash32(flow.id + 'j' + k) % 90) - 45) * SEC;
+      const dow = new Date(t0 + 9 * HOUR).getUTCDay();
+      if (weekdays && step === DAY && (dow === 0 || dow === 6)) continue;
+      made++;
+      const h = hash32(flow.id + '#' + k);
+      const fr = newFlowRun(w, flow, 'schedule', t0);
+      const retryAt = h % 6 === 0 ? order[Math.min(order.length - 1, 1)] : null;
+      const failAt = h % 17 === 5 ? order[order.length - 1] : null;
+      const ends = new Map();
+      let dead = false;
+      for (const s of order) {
+        if (dead) break;
+        const depEnd = Math.max(t0, ...(s.depends || []).map((d) => ends.get(d) || t0));
+        const start = depEnd + 1500;
+        const base = (3 + (hash32(flow.id + s.id) % 18)) * SEC;
+        const dur = Math.round(base * (0.75 + 0.6 * rnd(flow.id + s.id + k)));
+        if (s === retryAt || s === failAt) {
+          const fdur = Math.round(dur * 0.6);
+          newRun(w, fr, flow, s, 1, { scheduledAt: depEnd, startAt: start, endAt: start + fdur, status: 'FAILED', exit: 1, log: `(I) ${s.id} 시작\n(E) ${s.id} 처리 실패\n` });
+          if (s === failAt) { dead = true; break; }
+          const s2 = start + fdur + 60 * SEC;
+          newRun(w, fr, flow, s, 2, { scheduledAt: s2 - 1000, startAt: s2, endAt: s2 + dur, status: 'SUCCEEDED', reason: 'retry' });
+          ends.set(s.id, s2 + dur);
+        } else {
+          newRun(w, fr, flow, s, 1, { scheduledAt: depEnd, startAt: start, endAt: start + dur, status: 'SUCCEEDED' });
+          ends.set(s.id, start + dur);
+        }
+      }
+    }
+  }
+  // 지난 실행이 띄운 서비스는 이미 내려갔다(살아 있는 서비스는 w.startRun 하나).
+  for (let i = from; i < w.runs.length; i++) w.runs[i].service = false;
+}
+
 function buildIncidents(base) {
   const d = (days, h, m, durMin) => {
     const start = base - days * DAY + (h * 60 + m) * MIN - (base % DAY);
@@ -354,17 +406,17 @@ export const PANELS = [
     tiles: [
       { title: '주문 접수', metric: 'biz.order.in_tps', agg: 'sum', unit: '건/초', kpi: true },
       { title: '체결 처리', metric: 'biz.order.tps', agg: 'sum', unit: '건/초' },
-      { title: '처리 대기', metric: 'biz.order.queue', agg: 'sum', unit: '건', warn: 500, crit: 2000, kpi: true },
+      { title: '대기 큐', metric: 'biz.order.queue', agg: 'sum', unit: '건', warn: 500, crit: 2000, kpi: true },
       { title: '평균 응답', metric: 'biz.order.latency_avg_ms', agg: 'max', unit: 'ms', warn: 20, crit: 100 },
       { title: 'p99 응답', metric: 'biz.order.latency_p99_ms', agg: 'max', unit: 'ms', warn: 50, crit: 200, kpi: true },
       { title: '이력 버퍼', metric: 'biz.order.histbuf_pct', agg: 'max', unit: '%', warn: 70, crit: 90 },
       { title: '오류 로그', metric: 'log.error.count', agg: 'sum', unit: '건/초', warn: 1, crit: 5 },
-      { title: '함수 추적 부하', metric: 'agent.profiler.cpu_pct', agg: 'max', unit: '%', warn: 1 },
+      { title: '프로파일러 부하', metric: 'agent.profiler.cpu_pct', agg: 'max', unit: '%', warn: 1 },
     ],
     charts: [
       { title: '주문 건수', unit: '건/초', agg: 'sum', metrics: ['biz.order.in_tps', 'biz.order.tps'] },
-      { title: '응답시간', unit: 'ms', agg: 'max', metrics: ['biz.order.latency_avg_ms', 'biz.order.latency_p99_ms'] },
-      { title: '처리 대기', unit: '건', agg: 'sum', metrics: ['biz.order.queue'] },
+      { title: '응답 시간', unit: 'ms', agg: 'max', metrics: ['biz.order.latency_avg_ms', 'biz.order.latency_p99_ms'] },
+      { title: '대기 큐', unit: '건', agg: 'sum', metrics: ['biz.order.queue'] },
       { title: '이력 버퍼', unit: '%', agg: 'max', metrics: ['biz.order.histbuf_pct'] },
     ],
     log_levels: ['error', 'warn'],
@@ -397,6 +449,7 @@ export function getWorld(now) {
     extFail: null,
   };
   buildHistory(w, w.flows, base);
+  buildPast(w, w.flows);
   w.incidents = buildIncidents(base);
   W = w;
   return w;

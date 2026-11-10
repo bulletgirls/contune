@@ -67,6 +67,7 @@ const STATE_TEXT = {
   ok: [LEVEL_TEXT.ok, '●'], warn: [LEVEL_TEXT.warn, '▲'], crit: [LEVEL_TEXT.crit, '■'], silent: [LEVEL_TEXT.silent, '○'],
   SUCCEEDED: ['성공', '✓'], FAILED: ['실패', '✕'], RUNNING: ['실행 중', '▶'], WAITING: ['대기', '…'],
   GATED: ['조건 대기', '⏸'], FORCED: ['강제 OK', '✓'], KILLED: ['강제 종료', '✕'], SCHEDULED: ['예정', '◷'],
+  TIMEOUT: ['시간 초과', '✕'], HELD: ['보류', '⏸'], LOST: ['유실', '✕'], DISPATCHED: ['대기', '…'],
 };
 export function badgeHTML(state, text) {
   const t = STATE_TEXT[state] || [String(state), '•'];

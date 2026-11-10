@@ -8,7 +8,7 @@ import { createTimeRange } from '../timerange.js';
 export const WARN_LINE = 30, CRIT_LINE = 60;
 export const SOURCE_TEXT = { manual: '직접', import: '가져옴', auto: '자동', seed: '시연' };
 export const FEATURE_TEXT = {
-  cpu_max: '서버 CPU 최고', mem_max: '메모리 최고', hosts_hot: '과열 서버', queue: '처리 대기',
+  cpu_max: '서버 CPU 최고', mem_max: '메모리 최고', hosts_hot: '과열 서버', queue: '대기 큐',
   p99: 'p99 응답', lag: '지연', log_errors: '(E) 로그', runs_failed: '실패 실행',
 };
 export const KIND_TEXT = { logreg: '로지스틱 회귀', rule: '규칙 기반' };

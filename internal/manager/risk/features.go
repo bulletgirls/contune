@@ -7,7 +7,7 @@ func DefaultFeatures() []FeatureDef {
 		{Name: "cpu_max", Title: "서버 CPU 최고", Metric: "host.cpu.pct", HostAgg: "max", TimeAgg: "avg", Source: "metrics", RuleLo: 70, RuleHi: 95, RuleWeight: 1},
 		{Name: "mem_max", Title: "메모리 최고", Metric: "host.mem.used_pct", HostAgg: "max", TimeAgg: "avg", Source: "metrics", RuleLo: 80, RuleHi: 95, RuleWeight: 1},
 		{Name: "hosts_hot", Title: "CPU 70% 넘은 서버 수", Metric: "host.cpu.pct", HostAgg: "count_ge", Threshold: 70, TimeAgg: "max", Source: "metrics", RuleLo: 1, RuleHi: 5, RuleWeight: 1},
-		{Name: "queue", Title: "처리 대기", Metric: "biz.order.queue", HostAgg: "sum", TimeAgg: "max", Source: "metrics", RuleLo: 500, RuleHi: 2000, RuleWeight: 2},
+		{Name: "queue", Title: "대기 큐", Metric: "biz.order.queue", HostAgg: "sum", TimeAgg: "max", Source: "metrics", RuleLo: 500, RuleHi: 2000, RuleWeight: 2},
 		{Name: "p99", Title: "p99 응답", Metric: "biz.order.latency_p99_ms", HostAgg: "max", TimeAgg: "max", Source: "metrics", RuleLo: 50, RuleHi: 200, RuleWeight: 2},
 		{Name: "lag", Title: "처리 부족", Metric: "biz.order.in_tps", Metric2: "biz.order.tps", HostAgg: "sum", TimeAgg: "avg", Source: "metrics", RuleLo: 0, RuleHi: 1000, RuleWeight: 1},
 		{Name: "log_errors", Title: "(E) 로그", Metric: "log.error.count", HostAgg: "sum", TimeAgg: "sum", Source: "metrics", RuleLo: 0, RuleHi: 10, RuleWeight: 2},

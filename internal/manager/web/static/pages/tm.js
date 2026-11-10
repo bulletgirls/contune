@@ -3,6 +3,7 @@ import { api, poll } from '../api.js';
 import { lineChart } from '../chart.js';
 import { renderFlame, compareLeaf, verdict } from '../flame.js';
 import { el, esc, badgeHTML, fmtDuration, fmtClock, fmtNum, DASH } from '../ui.js';
+import { TRIGGER_TEXT } from './batch.js';
 
 const PAD = 5 * 60000;
 const FIXED = 30000;
@@ -40,7 +41,7 @@ export function pickTarget(sel, pending) {
   return 'b';
 }
 export function rangeText(r, n) {
-  return `${fmtClock(r.from)}–${fmtClock(r.to)}${n != null ? ` · 표본 ${fmtNum(n)}` : ''}`;
+  return `${fmtClock(r.from)}–${fmtClock(r.to)}${n != null ? ` · 샘플 ${fmtNum(n)}` : ''}`;
 }
 export function mdToHTML(s) {
   return esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
@@ -49,7 +50,7 @@ const q = encodeURIComponent;
 export function exportLinks(id, from, to) {
   return [
     ['CSV', `/api/v1/export/samples?exec_id=${q(id)}&from=${from}&to=${to}`],
-    ['함수 기록', `/api/v1/export/profile?exec_id=${q(id)}&from=${from}&to=${to}`],
+    ['프로파일', `/api/v1/export/profile?exec_id=${q(id)}&from=${from}&to=${to}`],
     ['로그', `/api/v1/export/logs?exec_id=${q(id)}&from=${from}&to=${to}`],
   ];
 }
@@ -75,12 +76,12 @@ export async function render(host, params) {
   const head = el('div', { class: 'tm-head' });
   const bar = el('div', { class: 'tm-bar' });
   const stack = el('div', { class: 'tm-stack' });
-  const hint = el('div', { class: 'tm-hint', text: '끌어서 A 선택' });
+  const hint = el('div', { class: 'tm-hint', text: '차트를 끌어 A 구간 선택' });
   const stackWrap = el('div', { class: 'tm-wrap' }, stack, hint);
   const vEl = el('div', { class: 'tm-verdict' });
   const cmpEl = el('div', { class: 'tm-cmp' });
   const flames = el('div', { class: 'flame-pair' }, el('div', { class: 'fa' }), el('div', { class: 'fb' }));
-  const det = el('details', { class: 'tm-detail' }, el('summary', { text: '세부' }));
+  const det = el('details', { class: 'tm-detail' }, el('summary', { text: '실행 상세' }));
   host.append(head, bar, stackWrap, vEl, flames, cmpEl, det);
 
   function drawHead() {
@@ -89,25 +90,25 @@ export async function render(host, params) {
     const links = exportLinks(id, st.view.from, st.view.to).map(([t, h]) => `<a href="${esc(h)}" download>${esc(t)}</a>`).join('');
     head.innerHTML = `<div class="tm-path">${esc([detail.board, r.flow_id, r.step_id].filter(Boolean).join(' › '))}</div>
       <div class="tm-meta">${esc([group, r.host].filter(Boolean).join(' · '))}<span>${esc(fmtClock(r.started_at || r.scheduled_at))}</span>
-      ${badgeHTML(r.forced ? 'FORCED' : r.status)}${st.live && st.live.procs > 0 ? '<span class="tm-live">서비스 실행 중</span>' : ''}
+      ${badgeHTML(r.forced ? 'FORCED' : r.status)}${st.live && st.live.procs > 0 ? '<span class="tm-live">상주 프로세스 실행 중</span>' : ''}
       <span class="tm-id">${esc(r.exec_id)}</span></div><div class="tm-links">${links}</div>`;
   }
 
   function drawBar() {
     bar.replaceChildren(
-      el('button', { type: 'button', text: 'A 다시', onclick: () => { st.pending = 'a'; } }),
-      el('button', { type: 'button', text: 'B 다시', onclick: () => { st.pending = 'b'; } }),
-      el('button', { type: 'button', text: '지우기', onclick: () => { st.sel = { a: null, b: null }; st.pending = null; selChanged(); } }),
-      el('button', { type: 'button', text: '고정 구간', onclick: () => { st.sel = fixedAB(st.view); st.pending = null; st.userRange = true; selChanged(); } }));
+      el('button', { type: 'button', text: 'A 구간 다시 선택', onclick: () => { st.pending = 'a'; } }),
+      el('button', { type: 'button', text: 'B 구간 다시 선택', onclick: () => { st.pending = 'b'; } }),
+      el('button', { type: 'button', text: '선택 해제', onclick: () => { st.sel = { a: null, b: null }; st.pending = null; selChanged(); } }),
+      el('button', { type: 'button', text: '자동 선택(처음·끝 30초)', onclick: () => { st.sel = fixedAB(st.view); st.pending = null; st.userRange = true; selChanged(); } }));
   }
 
   // 띠 정의
   const BANDS = [
-    { key: 'tps', title: '처리량', unit: '건/초', biz: true },
-    { key: 'queue', title: '처리 대기', unit: '건', biz: true },
-    { key: 'lat', title: '응답시간', unit: 'ms', biz: true },
-    { key: 'cpu', title: '서비스 CPU', unit: '%' },
-    { key: 'host', title: '서버 CPU', unit: '%' },
+    { key: 'tps', title: '처리량(TPS)', unit: '건/초', biz: true },
+    { key: 'queue', title: '대기 큐', unit: '건', biz: true },
+    { key: 'lat', title: '응답 시간', unit: 'ms', biz: true },
+    { key: 'cpu', title: '프로세스 CPU 사용률', unit: '%' },
+    { key: 'host', title: '서버 CPU 사용률', unit: '%' },
   ];
   let bands = [];
 
@@ -122,10 +123,10 @@ export async function render(host, params) {
     st.biz = hasBiz(biz);
     const p = (r, n) => pointsOf(r, n);
     return {
-      tps: [{ label: '접수', data: p(biz, 'biz.order.in_tps'), dash: true }, { label: '처리', data: p(biz, 'biz.order.tps') }],
-      queue: [{ label: '대기', data: p(biz, 'biz.order.queue') }],
+      tps: [{ label: '유입', data: p(biz, 'biz.order.in_tps'), dash: true }, { label: '처리', data: p(biz, 'biz.order.tps') }],
+      queue: [{ label: '대기 건수', data: p(biz, 'biz.order.queue') }],
       lat: [{ label: '평균', data: p(biz, 'biz.order.latency_avg_ms') }, { label: 'p99', data: p(biz, 'biz.order.latency_p99_ms') }],
-      cpu: [{ label: '서비스', data: p(cpu, 'job.cpu.pct') }],
+      cpu: [{ label: '프로세스', data: p(cpu, 'job.cpu.pct') }],
       host: [{ label: '서버', data: p(hcpu, 'host.cpu.pct') }],
     };
   }
@@ -180,7 +181,7 @@ export async function render(host, params) {
     if (!rows.length) return;
     const f = (v) => v.toFixed(1);
     const tr = rows.map((r) => `<tr class="${st.hl === r.leaf ? 'on' : ''}" data-leaf="${esc(r.leaf)}"><td class="fn">${esc(r.leaf)}</td><td>${f(r.pctA)}%</td><td>${f(r.pctB)}%</td><td>${r.up ? '+' : ''}${f(r.diff)}%p</td><td><span class="tm-cbar ${r.up ? 'up' : 'down'}" style="width:${r.bar}%"></span></td></tr>`).join('');
-    cmpEl.innerHTML = `<table class="tm-cmp-t"><thead><tr><th>함수</th><th>A %</th><th>B %</th><th>변화(%p)</th><th>변화 막대</th></tr></thead><tbody>${tr}</tbody></table>`;
+    cmpEl.innerHTML = `<table class="tm-cmp-t"><thead><tr><th>함수</th><th>A 구간 비중</th><th>B 구간 비중</th><th>차이(%p)</th><th></th></tr></thead><tbody>${tr}</tbody></table>`;
     for (const row of cmpEl.querySelectorAll('tbody tr')) {
       row.addEventListener('click', () => { st.hl = st.hl === row.dataset.leaf ? null : row.dataset.leaf; drawFlames(); });
     }
@@ -225,15 +226,15 @@ export async function render(host, params) {
     try { logs = (await api(`/logs?exec_id=${q(id)}&limit=50`)).events || []; } catch (e) { /* 빈 목록 */ }
     const tail = String(r.log_tail || '').split('\n').slice(-200).join('\n');
     const dur = r.started_at ? fmtDuration((r.ended_at || Date.now()) - r.started_at) : DASH;
-    const kv = [['종료 코드', r.exit_code == null ? DASH : r.exit_code], ['소요', dur], ['peak CPU', r.peak_cpu_pct == null ? DASH : fmtNum(r.peak_cpu_pct) + '%'],
-      ['peak RSS', r.peak_rss_mb == null ? DASH : fmtNum(r.peak_rss_mb) + ' MB'], ['시도', r.attempt], ['시작 방식', r.trigger]];
+    const kv = [['종료 코드', r.exit_code == null ? DASH : r.exit_code], ['소요 시간', dur], ['최대 CPU 사용률', r.peak_cpu_pct == null ? DASH : fmtNum(r.peak_cpu_pct) + '%'],
+      ['최대 메모리(RSS)', r.peak_rss_mb == null ? DASH : fmtNum(r.peak_rss_mb) + ' MB'], ['시도', r.attempt], ['실행 유형', TRIGGER_TEXT[r.trigger] || r.trigger]];
     const evs = (detail.events || []).map((e) => `<div>${esc(fmtClock(e.ts))} ${esc(e.from || DASH)} → ${esc(e.to)} ${esc(e.reason || '')}</div>`).join('');
     const logRows = logs.map((e) => `<div>${esc(fmtClock(e.ts))} ${esc(e.level || '')} ${esc(e.message)}</div>`).join('');
-    det.replaceChildren(el('summary', { text: '세부' }));
+    det.replaceChildren(el('summary', { text: '실행 상세' }));
     det.insertAdjacentHTML('beforeend', `<dl class="tm-kv">${kv.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
-      <h3 class="sec">상태 전이</h3><div class="tm-lines">${evs}</div>
+      <h3 class="sec">상태 변경 이력</h3><div class="tm-lines">${evs}</div>
       <h3 class="sec">업무 로그</h3><div class="tm-lines">${logRows || DASH}</div>
-      <h3 class="sec">로그 끝</h3><pre class="tm-pre">${esc(tail)}</pre>`);
+      <h3 class="sec">로그(마지막 200줄)</h3><pre class="tm-pre">${esc(tail)}</pre>`);
   }
 
   drawHead(); drawBar();

@@ -24,6 +24,7 @@ async function route() {
   current = null;
   stopScope();
   document.querySelectorAll('#menu a').forEach((a) => a.classList.toggle('on', a.dataset.m === MENU[r.name]));
+  document.body.dataset.page = r.name;
   const page = document.getElementById('page');
   page.replaceChildren();
   try {

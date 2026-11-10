@@ -184,7 +184,10 @@ export function createTree(host, { onBoards } = {}) {
     if (q.g) chip = q.g.split('/').pop();
     else if (hp.startsWith('board/') && hp.length > 6) chip = null;
     if (chip) out.push(el('div', { class: 'tree-chip' }, chip, el('button', { type: 'button', text: '✕', title: '범위 해제', onclick: clearScope })));
-    for (const [kind, label, root] of [['host', '서버', buildHostTree(hosts)], ['flow', '배치판', buildFlowTree(flows)]]) {
+    // 배치 쪽 화면이면 배치판을 위에 둔다(서버 43대 아래에 묻히지 않게).
+    const roots = [['host', '서버', buildHostTree(hosts)], ['flow', '배치판', buildFlowTree(flows)]];
+    if (/^(board|edit|runs|run)(\/|$)/.test(hp)) roots.reverse();
+    for (const [kind, label, root] of roots) {
       const sm = summarize(root.counts, kind);
       const ck = 'root:' + kind;
       const open = !collapsed[ck];
