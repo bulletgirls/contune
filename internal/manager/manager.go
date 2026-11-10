@@ -105,10 +105,7 @@ func New(cfg Config) (*Manager, error) {
 		return nil, fmt.Errorf("flows: %w", err)
 	}
 	m.reg = reg
-	panels, err := query.LoadPanels(cfg.Panels)
-	if err != nil {
-		slog.Error("업무 패널을 읽지 못함", "dir", cfg.Panels, "err", err)
-	}
+	panels := query.NewPanelBook(cfg.Panels, loc) // /panels·다시 읽기와 알림 감시자가 함께 쓴다(값 끊김 기억 포함)
 	lv := live.New()
 
 	// 스케줄러 ↔ 수집 설정 → 편집기 → LLM → 초안 → 위험 엔진 → 알림
