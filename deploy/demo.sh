@@ -3,6 +3,7 @@
 # 환경변수: EUM_URL(기본 http://localhost:8080) EUM_MODE(dev|compose, 기본 dev) EUM_DATA(기본 ./data-dev)
 #          EUM_COMPOSE(compose 파일, 기본 deploy/docker-compose.yml) EUM_DEV_FLAGS(eum dev에 더 넘길 플래그)
 #          EUM_HOSTS(up이 기다리는 호스트 수, 기본 43) EUM_BIN(eum 실행 파일, 기본 deploy/bin/eum) EUM_TOKEN(기본 dev)
+#          EUM_USER·EUM_PASS(화면 로그인 계정, 기본 admin/eum-admin. 로그인이 꺼져 있으면 쓰지 않음)
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -16,7 +17,11 @@ EUM_DEV_FLAGS="${EUM_DEV_FLAGS:-}"
 EUM_HOSTS="${EUM_HOSTS:-43}"   # up이 기다리는 호스트 수
 EUM_BIN="${EUM_BIN:-deploy/bin/eum}"
 export EUM_TOKEN="${EUM_TOKEN:-dev}"
+export EUM_USER="${EUM_USER:-admin}"
+export EUM_PASS="${EUM_PASS:-eum-admin}"
 API="$EUM_URL/api/v1"
+RUN="$EUM_DATA"
+COOKIES="$RUN/demo.cookies"   # 화면 로그인 세션(API를 부르는 curl이 모두 같이 쓴다)
 Q=deploy/queries
 
 # 보조 플로우 12개(ext-send-margin은 일부러 실패해 "실패 1"을 만든다)
@@ -25,8 +30,23 @@ WARMUP_FLOWS="ext-send-margin ext-send-bank ext-send-sec ext-recv-bank ext-recv-
 say() { echo "[demo:$1] $2"; }
 die() { echo "demo.sh: $*" >&2; exit 1; }
 compose() { docker compose -f "$EUM_COMPOSE" "$@"; }
-get() { curl -fsS "$API/$1"; }
-post() { curl -sS -o /dev/null -w '%{http_code}' -X POST "$API/$1"; }
+# acurl: 세션 쿠키를 읽고 쓰는 curl. API를 부르는 curl은 모두 이것을 쓴다.
+acurl() { curl -b "$COOKIES" -c "$COOKIES" "$@"; }
+get() { acurl -fsS "$API/$1"; }
+post() { acurl -sS -o /dev/null -w '%{http_code}' -X POST "$API/$1"; }
+
+# login: 화면 로그인이 켜져 있으면 EUM_USER로 한 번 로그인해 쿠키를 남긴다.
+# 꺼져 있거나(/me의 auth:false) 쿠키가 아직 유효하면(auth:true) 건너뛴다. 비밀번호는 명령행에 싣지 않는다(표준 입력).
+login() {
+  mkdir -p "$RUN"
+  [ -f "$COOKIES" ] || (umask 077; : > "$COOKIES")
+  me=$(acurl -sS "$API/me" 2>/dev/null) || return 1
+  case "$me" in *'"auth":false'*|*'"auth":true'*) return 0 ;; esac
+  code=$(python3 -c 'import json,os; print(json.dumps({"id":os.environ["EUM_USER"],"password":os.environ["EUM_PASS"]}))' |
+    acurl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data-binary @- "$API/login") || return 1
+  [ "$code" = 200 ] || { echo "demo.sh: 로그인 실패(HTTP $code, 계정 $EUM_USER)" >&2; return 1; }
+}
+need_login() { login || die "화면 로그인을 하지 못했습니다($EUM_URL, EUM_USER·EUM_PASS 확인)"; }
 # jget <경로> <python 식>: JSON 응답 d에 식을 적용해 출력
 jget() { get "$1" | python3 -c 'import sys,json; d=json.load(sys.stdin); print('"$2"')'; }
 
@@ -68,7 +88,8 @@ cmd_up() {
   fi
   n=0
   for _ in $(seq 1 60); do
-    n=$(host_count)
+    n=0
+    login 2>/dev/null && n=$(host_count)
     [ "$n" -ge "$EUM_HOSTS" ] && { say up "호스트 $n대 확인"; return; }
     sleep 1
   done
@@ -130,7 +151,7 @@ cmd_settle() {
 
 cmd_train() {
   say train "위험 모델을 지금 학습합니다 (장면 7)"
-  curl -fsS -X POST "$API/risk/train" | python3 -c '
+  acurl -fsS -X POST "$API/risk/train" | python3 -c '
 import sys,json
 d=json.load(sys.stdin)
 print(json.dumps(d, ensure_ascii=False, indent=2)[:1500])'
@@ -162,9 +183,9 @@ cmd_export() {
   id="$1"
   mkdir -p out
   say export "exec_id=$id 의 원자료를 ./out/ 에 내려받습니다 (장면 7)"
-  curl -fsS "$API/export/samples?exec_id=$id" -o "out/samples-$id.csv"
-  curl -fsS "$API/export/profile?exec_id=$id" -o "out/profile-$id.folded"
-  curl -fsS "$API/export/logs?exec_id=$id" -o "out/logs-$id.csv"
+  acurl -fsS "$API/export/samples?exec_id=$id" -o "out/samples-$id.csv"
+  acurl -fsS "$API/export/profile?exec_id=$id" -o "out/profile-$id.folded"
+  acurl -fsS "$API/export/logs?exec_id=$id" -o "out/logs-$id.csv"
   ls -l "out/samples-$id.csv" "out/profile-$id.folded" "out/logs-$id.csv"
 }
 
@@ -182,6 +203,7 @@ for f in json.load(sys.stdin)["flows"]:
 [ $# -ge 1 ] || die "사용법: demo.sh <setup|up|down|warmup|run|surge|settle|train|sql|export|status>"
 c="$1"; shift
 case "$c" in
-  setup|up|down|warmup|run|surge|settle|train|sql|export|status) "cmd_$c" "$@" ;;
+  warmup|run|settle|train|export|status) need_login; "cmd_$c" "$@" ;;
+  setup|up|down|surge|sql) "cmd_$c" "$@" ;;
   *) die "모르는 명령 '$c'" ;;
 esac

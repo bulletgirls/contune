@@ -38,6 +38,7 @@ const usage = `사용법: eum <서브커맨드> [플래그]
   seed    --data <dir> [--days 7] [--hosts match-01,gw-01,batch-01] [--seed 1] [--tz Asia/Seoul] [--force]
   risk train --data <dir> [--config manager.yaml]
   incident import --data <dir> [--tz Asia/Seoul] <file.csv>
+  passwd  (표준 입력 첫 줄의 비밀번호 → web_auth.users[].hash)
   version
 `
 
@@ -76,6 +77,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		err = cmdRisk(args[1:], stdout, stderr)
 	case "incident":
 		err = cmdIncident(ctx, args[1:], stdout, stderr)
+	case "passwd":
+		err = cmdPasswd(args[1:], os.Stdin, stdout, stderr)
 	case "version", "--version", "-v":
 		fmt.Fprintln(stdout, "eum", version)
 	case "help", "-h", "--help":
