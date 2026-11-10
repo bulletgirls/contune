@@ -174,6 +174,13 @@ func (s *Scheduler) handleRuns(w http.ResponseWriter, r *http.Request) {
 	if n, err := strconv.Atoi(q.Get("limit")); err == nil && n > 0 {
 		f.Limit = min(n, runsMax)
 	}
+	// from·to(ms): scheduled_at 기준 구간. 실행 이력 화면의 시간 구간 막대가 쓴다.
+	if v, err := strconv.ParseInt(q.Get("from"), 10, 64); err == nil && v > 0 {
+		f.From = v
+	}
+	if v, err := strconv.ParseInt(q.Get("to"), 10, 64); err == nil && v > 0 {
+		f.To = v
+	}
 	runs, err := s.d.State.ListRuns(r.Context(), f)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())

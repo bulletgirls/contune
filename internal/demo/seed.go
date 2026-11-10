@@ -192,7 +192,7 @@ func pickIncidents(rng *rand.Rand, begin, end time.Time) []incidentSpan {
 	return out
 }
 
-// pickBumps는 접수만 오르고 처리 대기는 오르지 않는 흔들림 시각을 고른다.
+// pickBumps는 유입량만 오르고 큐 깊이는 오르지 않는 흔들림 시각을 고른다.
 func pickBumps(rng *rand.Rand, begin, end time.Time, incs []incidentSpan) []incidentSpan {
 	var out []incidentSpan
 	span := int64(end.Sub(begin) / time.Minute)
@@ -373,7 +373,7 @@ func (g *gen) minute(t time.Time) ([]model.Sample, []model.LogEvent) {
 	for i := 0; i < int(errs); i++ {
 		logs = append(logs, model.LogEvent{
 			TS: ts + int64(i)*1000, Host: bizHost, Source: "matching", ExecID: exec, Level: "error",
-			Message: fmt.Sprintf("(E) %s QUEUE 처리 대기 %s건 (위험 2,000)", t.In(g.o.Loc).Format("15:04:05"), commas(int(queue))),
+			Message: fmt.Sprintf("(E) %s QUEUE 큐 깊이 %s건 (위험 2,000)", t.In(g.o.Loc).Format("15:04:05"), commas(int(queue))),
 		})
 	}
 	return out, logs

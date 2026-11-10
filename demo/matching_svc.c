@@ -180,7 +180,7 @@ static void alert(int idx, double v, double w, double e, int64_t *last, time_t n
     char val[32], th[32];
     if (commas) { fmt_commas((long)v, val); fmt_commas((long)(lv == 'E' ? e : w), th); }
     else { snprintf(val, sizeof val, "%.0f", v); snprintf(th, sizeof th, "%.0f", lv == 'E' ? e : w); }
-    logf_(lv, cat, "%s %s%s (%s %s%s)", kor, val, unit, lv == 'E' ? "위험" : "주의", th, unit);
+    logf_(lv, cat, "%s %s%s (%s %s%s)", kor, val, unit, lv == 'E' ? "위험" : "경고", th, unit);
 }
 
 int main(int argc, char **argv) {
@@ -284,9 +284,9 @@ int main(int argc, char **argv) {
                 fprintf(stderr, "in=%lld tps=%lld queue=%d avg=%.2f p99=%.2f hist=%.1f depth=%d/%d\n",
                         (long long)accepted, (long long)processed, queue_len, avg, p99, hist_pct, book_n[0], book_n[1]);
 
-            alert(0, queue_len, W_QUEUE, E_QUEUE, last_alert, wall, "QUEUE", "처리 대기", "건", 1);
+            alert(0, queue_len, W_QUEUE, E_QUEUE, last_alert, wall, "QUEUE", "큐 깊이", "건", 1);
             alert(1, p99, W_P99, E_P99, last_alert, wall, "LATENCY", "p99", "ms", 0);
-            alert(2, hist_pct, W_HIST, E_HIST, last_alert, wall, "HISTBUF", "이력 버퍼", "%", 0);
+            alert(2, hist_pct, W_HIST, E_HIST, last_alert, wall, "HISTBUF", "이력 버퍼 사용률", "%", 0);
 
             int nr = read_rate(rate_path, rate);
             if (nr != rate) { logf_('I', "RATE", "%d -> %d", rate, nr); rate = nr; }

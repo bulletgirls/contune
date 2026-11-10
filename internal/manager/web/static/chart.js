@@ -1,12 +1,17 @@
 // uPlot 감싸기.
 // lineChart(el, {title, unit, series:[{label, unit, data:[[ts_ms, v],…], derived, desc, ref, color}], sync, height, onSelect, shades,
-//                range:{from,to}, stack, max, legend:'auto'|'table', lastLabel, onTitle})
+//                range:{from,to}, stack, max, legend:'auto'|'table'|'none', lastLabel, onTitle, head, xAxis, thresholds, marks})
 //   range   x축 양 끝(ms). 주면 데이터가 없는 구간도 비워 두어 차트끼리 시각이 맞는다.
 //   stack   계열을 쌓은 영역(구성비)으로 그린다. derived 계열은 그리지 않고 범례 표·말풍선에만.
 //   max     y축 위 끝 고정(% 사용률은 100). 아래 끝은 늘 0.
 //   legend  'auto' = 계열 2개 이상이면 제목 옆에 이름표, 'table' = 아래에 현재·평균·최대 표.
 //   계열 ref: 기준선(경고·위험 값). 점 사이를 잇고 가는 점선. color: 색 변수 이름(예 '--warn'), 없으면 --s1…
-// → {plot, setData(series, range?), setShades(shades), destroy()}
+//   head    false면 제목 줄을 그리지 않는다(바깥에서 이름을 따로 그릴 때).
+//   xAxis   false면 시간축을 숨긴다(띠를 쌓을 때 맨 아래 띠에만 축).
+//   thresholds [{value, level:'warn'|'crit', label}] 가로 점선 임계선. y축 범위는 늘리지 않는다(Grafana thresholds).
+//   marks   [{at(ms), label, color}] 세로 점선 표시(실행 시작·종료). label은 첫 띠에서만 주면 된다.
+//   shades  [{from, to, color, label}] 구간 음영. label이 있으면 음영 왼쪽 위에 글자.
+// → {plot, setData(series, range?), setShades(shades), setMarks(marks), destroy()}
 
 const p2 = (n) => String(n).padStart(2, '0');
 function cssVar(name) {
@@ -91,6 +96,25 @@ export function niceMax(v) {
   return 10 * e;
 }
 
+// y축 눈금(순수): 0부터 같은 간격, 맨 위 눈금이 곧 축 끝이다(눈금 없는 빈 윗부분이 생기지 않게).
+// 간격은 1·2·2.5·5 × 10^k 중 칸 수가 maxTicks 이하인 가장 촘촘한 것. fixedMax(예 % 100)가 있으면 그 값을 끝으로 쓰되
+// 값이 넘으면 늘린다(멀티코어 프로세스 CPU 180% 등).
+export function niceScale(hi, maxTicks = 4, fixedMax) {
+  const n = Math.max(1, maxTicks);
+  const target = fixedMax ? Math.max(fixedMax, hi > 0 ? hi : 0) : (hi > 0 ? hi * 1.05 : 1);
+  const raw = target / n;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  let step = 10 * mag;
+  for (const m of [1, 2, 2.5, 5, 10]) {
+    if (Math.ceil(target / (m * mag) - 1e-9) <= n) { step = m * mag; break; }
+  }
+  const k = Math.max(1, Math.ceil(target / step - 1e-9));
+  const fix = (v) => +v.toPrecision(12);
+  const ticks = [];
+  for (let i = 0; i <= k; i++) ticks.push(fix(i * step));
+  return { top: fix(k * step), step: fix(step), ticks };
+}
+
 // 값 글자: 천 단위 쉼표. d(소수 자리)를 주지 않으면 값 크기로 정한다.
 export function fmtVal(v, d) {
   if (v == null || Number.isNaN(v)) return '—';
@@ -155,7 +179,9 @@ export function prepare(series, unit, stack) {
 // ---- 차트 ----
 
 export function lineChart(host, opts) {
-  const { title = '', unit = '', sync, height = 160, onSelect, shades = [], stack = false, max, legend = 'auto', lastLabel = '현재', onTitle } = opts;
+  const { title = '', unit = '', sync, height = 160, onSelect, shades = [], stack = false, max, legend = 'auto', lastLabel = '현재', onTitle,
+    head: showHead = true, xAxis = true, thresholds = [] } = opts;
+  const marks = [...(opts.marks || [])];
   let series = opts.series || [];
   let xr = opts.range || null;
   const units = new Set(series.map((s) => s.unit).filter(Boolean));
@@ -199,7 +225,8 @@ export function lineChart(host, opts) {
   const tip = document.createElement('div');
   tip.className = 'ctip';
   tip.hidden = true;
-  host.append(head, box, tip);
+  if (showHead) host.append(head);
+  host.append(box, tip);
 
   // 범례 표
   let legendBody = null;
@@ -263,15 +290,24 @@ export function lineChart(host, opts) {
   const single = drawnCount === 1 && !stack;
   let hovering = false;
 
+  // y축: 맨 위 눈금 = 축 끝. 칸 수는 그림 높이에 맞춘다(칸마다 30px 안팎).
+  const padB = xAxis ? 0 : 7; // 축을 숨기면 맨 아래 눈금 글자가 잘리지 않게 여백
+  const plotH = height - 8 - padB - (xAxis ? 26 : 0);
+  const maxTicks = Math.max(3, Math.min(5, Math.floor(plotH / 26)));
+  let yTicks = [0, 1];
   function yRange(u, lo, hi) {
-    const top = max ? Math.max(max, hi ?? 0) : niceMax(hi);
-    return [0, top];
+    const sc = niceScale(hi, maxTicks, max);
+    yTicks = sc.ticks;
+    return [0, sc.top];
   }
+  const pr = typeof devicePixelRatio === 'number' && devicePixelRatio > 0 ? devicePixelRatio : 1;
+  const cfont = (px, w = 400) => `${w} ${Math.round(px * pr)}px system-ui, -apple-system, "Malgun Gothic", "Noto Sans KR", sans-serif`;
+  const LEVEL_COLOR = { warn: '--warn', crit: '--crit' };
   const o = {
     width: Math.max(200, box.clientWidth || host.clientWidth || 600),
     height,
     legend: { show: false },
-    padding: [8, 18, 0, 0],
+    padding: [8, 18, padB, 0],
     scales: {
       x: { time: true, range: (u, lo, hi) => (xr ? [xr.from / 1000, xr.to / 1000] : [lo, hi]) },
       y: { range: yRange },
@@ -285,13 +321,15 @@ export function lineChart(host, opts) {
     select: { show: true },
     axes: [
       {
-        stroke: axisCol, font, size: 26, space: 64, gap: 4,
+        show: xAxis,
+        stroke: axisCol, font, size: xAxis ? 26 : 0, space: 64, gap: 4,
         incrs: TIME_INCRS,
         values: (u, splits, ai, space, incr) => splits.map((s) => fmtTick(s, incr)),
         grid: { show: false }, ticks: { stroke: gridCol, size: 4, width: 1 },
       },
       {
         stroke: axisCol, font, size: 46, space: 28, gap: 6,
+        splits: () => yTicks,
         values: (u, splits) => { const top = Math.max(...splits.map(Math.abs)); return splits.map((v) => fmtAxis(v, top)); },
         grid: { stroke: gridCol, width: 1 }, ticks: { show: false },
       },
@@ -317,12 +355,72 @@ export function lineChart(host, opts) {
       setCursor: [(u) => paintTip(u)],
       draw: [(u) => {
         const ctx = u.ctx;
+        const { left, top, width, height: bh } = u.bbox;
         for (const sh of shades) {
-          const x0 = u.valToPos(sh.from / 1000, 'x', true), x1 = u.valToPos(sh.to / 1000, 'x', true);
+          const x0 = Math.max(left, u.valToPos(sh.from / 1000, 'x', true)), x1 = Math.min(left + width, u.valToPos(sh.to / 1000, 'x', true));
+          if (!(x1 > x0)) continue;
+          const col = cssVar(sh.color || '--ab-a');
           ctx.save();
-          ctx.globalAlpha = 0.15;
-          ctx.fillStyle = cssVar(sh.color || '--ab-a');
-          ctx.fillRect(x0, u.bbox.top, x1 - x0, u.bbox.height);
+          ctx.globalAlpha = sh.label ? 0.13 : 0.15;
+          ctx.fillStyle = col;
+          ctx.fillRect(x0, top, x1 - x0, bh);
+          if (sh.label) {
+            ctx.globalAlpha = 0.9;
+            ctx.fillRect(x0, top, Math.max(1, pr), bh);
+            ctx.fillRect(x1 - Math.max(1, pr), top, Math.max(1, pr), bh);
+            ctx.globalAlpha = 1;
+            ctx.font = cfont(11, 700);
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillText(sh.label, x0 + 4 * pr, top + 3 * pr);
+          }
+          ctx.restore();
+        }
+        // 임계선: 축 안에 들어올 때만
+        const yMax = u.scales.y.max;
+        for (const th of thresholds) {
+          if (!(th.value > 0) || th.value > yMax) continue;
+          const y = Math.round(u.valToPos(th.value, 'y', true)) + 0.5;
+          const col = cssVar(LEVEL_COLOR[th.level] || '--warn');
+          ctx.save();
+          ctx.strokeStyle = col;
+          ctx.lineWidth = pr;
+          ctx.setLineDash([5 * pr, 4 * pr]);
+          ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + width, y); ctx.stroke();
+          if (th.label) {
+            // 이름표는 왼쪽 끝: 시계열은 보통 오른쪽(최근)에서 값이 움직인다
+            ctx.font = cfont(10, 600);
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'bottom';
+            const tw = ctx.measureText(th.label).width;
+            ctx.fillStyle = surface;
+            ctx.globalAlpha = 0.85;
+            ctx.fillRect(left + 2 * pr, y - 13 * pr, tw + 6 * pr, 12 * pr);
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = col;
+            ctx.fillText(th.label, left + 5 * pr, y - 2 * pr);
+          }
+          ctx.restore();
+        }
+        // 세로 표시선(실행 시작·종료)
+        for (const m of marks) {
+          const x = Math.round(u.valToPos(m.at / 1000, 'x', true)) + 0.5;
+          if (x < left || x > left + width) continue;
+          const col = cssVar(m.color || '--t2');
+          ctx.save();
+          ctx.strokeStyle = col;
+          ctx.lineWidth = pr;
+          ctx.setLineDash([3 * pr, 3 * pr]);
+          ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, top + bh); ctx.stroke();
+          if (m.label) {
+            ctx.fillStyle = col;
+            ctx.font = cfont(10, 600);
+            ctx.textBaseline = 'top';
+            const w = ctx.measureText(m.label).width;
+            const right = x + 4 * pr + w > left + width;
+            ctx.textAlign = right ? 'right' : 'left';
+            ctx.fillText(m.label, right ? x - 4 * pr : x + 4 * pr, top + 2 * pr);
+          }
           ctx.restore();
         }
       }],
@@ -388,6 +486,7 @@ export function lineChart(host, opts) {
       u.setData([prep.x, ...prep.plotted]);
     },
     setShades(next) { shades.length = 0; shades.push(...next); u.redraw(); },
+    setMarks(next) { marks.length = 0; marks.push(...next); u.redraw(); },
     destroy() { ro?.disconnect(); u.destroy(); host.replaceChildren(); },
   };
 }

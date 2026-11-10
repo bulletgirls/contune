@@ -234,6 +234,13 @@ func TestRunDetail(t *testing.T) {
 	if rs := list("?limit=1"); len(rs) != 1 || rs[0].ExecID != "e-b" {
 		t.Fatal(rs)
 	}
+	// from·to: scheduled_at 구간(실행 이력 화면의 시간 구간)
+	if rs := list("?from=1500"); len(rs) != 1 || rs[0].ExecID != "e-b" {
+		t.Fatal(rs)
+	}
+	if rs := list("?from=500&to=1500"); len(rs) != 1 || rs[0].ExecID != "e-a" {
+		t.Fatal(rs)
+	}
 }
 
 func TestExportRuns(t *testing.T) {

@@ -49,6 +49,9 @@ func validatePanel(p model.Panel) error {
 		if t.Title == "" || t.Metric == "" || !validAgg(t.Agg) {
 			return fmt.Errorf("타일 %q: title, metric이 필요하고 agg는 sum|max|avg여야 합니다", t.Title)
 		}
+		if !validSignal(t.Signal) {
+			return fmt.Errorf("타일 %q: signal은 traffic|latency|errors|saturation이거나 비어야 합니다", t.Title)
+		}
 	}
 	for _, c := range p.Charts {
 		if len(c.Metrics) == 0 || !validAgg(c.Agg) {
@@ -56,6 +59,14 @@ func validatePanel(p model.Panel) error {
 		}
 	}
 	return nil
+}
+
+func validSignal(s string) bool {
+	switch s {
+	case "", "traffic", "latency", "errors", "saturation":
+		return true
+	}
+	return false
 }
 
 // TileState는 패널 타일 하나의 집계 결과다(/panels와 알림이 함께 씀).

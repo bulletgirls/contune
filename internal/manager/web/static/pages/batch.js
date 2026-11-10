@@ -471,7 +471,7 @@ async function renderFlow(host, params, query) {
     return [
       el('div', { class: 'bt-card bt-gridbox' }, el('div', { class: 'bt-gridscroll' }, grid), legend),
       el('div', { class: 'bt-subhead' }, el('h3', { class: 'sec', text: '스텝 실행' }), el('span', { class: 'bt-dim', text: cur ? `${fmtDT(cur.started_at)} 플로우 실행` : '' }),
-        el('span', { class: 'bt-sp' }), el('a', { class: 'bt-link', href: '#runs?flow=' + encodeURIComponent(id), text: '전체 실행 이력 →' })),
+        el('span', { class: 'bt-sp' }), el('a', { class: 'bt-link', href: '#runs?flow=' + encodeURIComponent(id) + '&range=7d', text: '전체 실행 이력 →' })),
       el('div', { class: 'bt-card bt-tablebox' }, tbl),
     ];
   }

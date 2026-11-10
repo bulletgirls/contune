@@ -47,8 +47,10 @@ function runs(c) {
   const status = c.q.get('status');
   const limit = num(c.q.get('limit')) || 100;
   const sts = status ? status.split(',') : null;
+  const from = num(c.q.get('from')), to = num(c.q.get('to'));
   const list = c.w.runs
     .filter((r) => (!flow || r.flow_id === flow) && (!host || r.host === host) && (!sts || sts.includes(r.status)))
+    .filter((r) => (!from || r.scheduled_at >= from) && (!to || r.scheduled_at <= to))
     .sort((a, b) => b.scheduled_at - a.scheduled_at || b.seq - a.seq)
     .slice(0, limit)
     .map((r) => runPublic(r));

@@ -150,9 +150,12 @@ func TestPanelYAML(t *testing.T) {
 	if kpi != 3 {
 		t.Errorf("KPI %d개", kpi)
 	}
-	q := p.Tiles[2]
-	if q.Metric != "biz.order.queue" || q.Agg != "sum" || q.Unit != "건" || q.Warn == nil || *q.Warn != 500 || q.Crit == nil || *q.Crit != 2000 {
-		t.Errorf("처리 대기 타일 %+v", q)
+	q := p.Tiles[5]
+	if q.Metric != "biz.order.queue" || q.Signal != "saturation" || q.Agg != "sum" || q.Unit != "건" || q.Warn == nil || *q.Warn != 500 || q.Crit == nil || *q.Crit != 2000 {
+		t.Errorf("큐 깊이 타일 %+v", q)
+	}
+	if p.Tiles[0].Signal != "traffic" || p.Tiles[7].Signal != "" {
+		t.Errorf("signal %q %q", p.Tiles[0].Signal, p.Tiles[7].Signal)
 	}
 	if p.Tiles[0].Warn != nil {
 		t.Error("warn 없는 타일은 nil")
@@ -160,7 +163,7 @@ func TestPanelYAML(t *testing.T) {
 	if len(p.Charts) != 4 {
 		t.Fatalf("차트 %d개", len(p.Charts))
 	}
-	if c := p.Charts[1]; c.Title != "응답시간" || c.Unit != "ms" || c.Agg != "max" || len(c.Metrics) != 2 {
+	if c := p.Charts[1]; c.Title != "응답 시간" || c.Unit != "ms" || c.Agg != "max" || len(c.Metrics) != 2 {
 		t.Errorf("차트 %+v", c)
 	}
 	if len(p.LogLevels) != 2 || p.LogLevels[0] != "error" {

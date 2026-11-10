@@ -48,7 +48,7 @@
     deploy/demo.sh warmup    # 보조 플로우 12개(ext-send-margin은 일부러 실패)
     deploy/demo.sh run       # market-open: load-equity attempt 2, start-matching이 체결 서비스 기동
     deploy/demo.sh surge     # 접수율 3000 → 4500 → 6000 → 1500
-    deploy/demo.sh settle    # daily-settle(처리 대기가 남아 있으면 HELD)
+    deploy/demo.sh settle    # daily-settle(큐 깊이가 남아 있으면 HELD)
     deploy/demo.sh train; deploy/demo.sh sql; deploy/demo.sh status; deploy/demo.sh down
 
 화면은 `http://localhost:8080/`(실제 API), `http://localhost:8080/?mock=1`(mock).
@@ -58,7 +58,7 @@
 **안 되거나 확인 못 한 것:**
 - compose 모드(`docker compose up`)는 이 PC에서 Docker 데몬이 돌지 않아 확인하지 못했습니다.
 - 브라우저 렌더링(차트·플레임 그래프·다크 모드)과 `node --check`는 브라우저·node가 없어 확인하지 못했습니다. 모든 화면 파일은 200으로 나가고 상대 import는 모두 실제 파일을 가리킵니다.
-- 체결 서비스의 폭주 강도는 CPU 속도에 달려 있습니다. 이 PC에서는 6000건/초에서 p99가 약 25ms, 처리 대기가 약 130건까지만 올라 `(E)` 로그와 위험 지수 경고·위험이 나오지 않았습니다. 시연 PC에서 `deploy/bin/matching_svc --stats`로 `COST_SCAN`을 맞춥니다(demo/README.md).
+- 체결 서비스의 폭주 강도는 CPU 속도에 달려 있습니다. 이 PC에서는 6000건/초에서 p99가 약 25ms, 큐 깊이가 약 130건까지만 올라 `(E)` 로그와 위험 지수 경고·위험이 나오지 않았습니다. 시연 PC에서 `deploy/bin/matching_svc --stats`로 `COST_SCAN`을 맞춥니다(demo/README.md).
 - `agent.profiler.cpu_pct`는 평시 약 1~2%, 폭주 중 약 4%(dwarf 호출 그래프의 perf script 비용)로 설계 목표 1% 미만보다 큽니다. 화면에 실제 값을 띄우는 것으로 대신합니다.
 - 함수 스택은 `matching_svc;[unknown];main;handle_order;…`처럼 `main` 앞에 `[unknown]`(libc 시작 프레임)이 하나 끼어 있습니다.
 

@@ -215,8 +215,10 @@ type Panel struct {
 }
 
 // Tile은 패널 타일이다. Agg: sum | max | avg. KPI면 관제 화면에도 올림.
+// Signal은 골든 시그널 묶음(traffic | latency | errors | saturation, 비면 기타)으로 업무 탭이 타일을 묶는 데 쓴다(05 §14.10).
 type Tile struct {
 	Title  string   `json:"title" yaml:"title"`
+	Signal string   `json:"signal,omitempty" yaml:"signal,omitempty"`
 	Metric string   `json:"metric" yaml:"metric"`
 	Agg    string   `json:"agg" yaml:"agg"`
 	Unit   string   `json:"unit" yaml:"unit"`

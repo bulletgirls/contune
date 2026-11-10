@@ -83,7 +83,7 @@ export function renderFlame(el, { stacks, title, subtitle, highlight } = {}) {
   if (!tree.value) {
     const p = document.createElement('p');
     p.className = 'empty';
-    p.textContent = '이 구간 표본 없음';
+    p.textContent = '이 구간에 샘플 없음';
     box.append(p);
     el.append(box);
     return { destroy() {} };
@@ -118,7 +118,7 @@ export function renderFlame(el, { stacks, title, subtitle, highlight } = {}) {
     const svg = svgEl('svg', { width: W, height: (maxDepth + 1) * ROW, class: 'flame-svg' });
     for (const { node, depth, x, w } of cells) {
       const g = svgEl('g', { class: 'flame-cell' + (highlight && node.name === highlight ? ' hl' : '') });
-      const rect = svgEl('rect', { x, y: depth * ROW, width: Math.max(w - 1, 1), height: ROW - 1, fill: node === tree ? 'var(--bg2, #ddd)' : hashColor(node.name) });
+      const rect = svgEl('rect', { x, y: depth * ROW, width: Math.max(w - 1, 1), height: ROW - 1, fill: node === tree ? '#d9dde5' : hashColor(node.name) });
       g.append(rect);
       const chars = Math.floor((w - 6) / 6.5);
       if (chars >= 2) {
@@ -129,7 +129,7 @@ export function renderFlame(el, { stacks, title, subtitle, highlight } = {}) {
       g.addEventListener('mousemove', (ev) => {
         const r = box.getBoundingClientRect();
         tip.hidden = false;
-        tip.textContent = `${node.name} · ${node.value}개 · ${((node.value / total) * 100).toFixed(1)}%`;
+        tip.textContent = `${node.name} · 샘플 ${node.value.toLocaleString('en-US')} · ${((node.value / total) * 100).toFixed(1)}%`;
         tip.style.left = `${ev.clientX - r.left + 12}px`;
         tip.style.top = `${ev.clientY - r.top + 12}px`;
       });
@@ -151,12 +151,12 @@ export function renderTopTable(el, stacks) {
   el.innerHTML = '';
   const rows = topLeaves(stacks, 10);
   if (!rows.length) {
-    el.innerHTML = '<p class="empty">이 구간 표본 없음</p>';
+    el.innerHTML = '<p class="empty">이 구간에 샘플 없음</p>';
     return;
   }
   const t = document.createElement('table');
   t.className = 'tbl flame-top';
-  t.innerHTML = '<thead><tr><th>함수</th><th class="num">표본</th><th class="num">비중</th></tr></thead>';
+  t.innerHTML = '<thead><tr><th>함수</th><th class="num">샘플</th><th class="num">Self 비중</th></tr></thead>';
   const tb = document.createElement('tbody');
   for (const r of rows) {
     const tr = document.createElement('tr');

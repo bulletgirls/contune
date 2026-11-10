@@ -310,7 +310,7 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 | `GET /api/v1/hosts` | 호스트 목록: 그룹 경로, 마지막 수신 시각, 최신 `host.*` 값, 상태(정상·주의·위험·무응답, §12.1) |
 | `GET /api/v1/series?host=&group=&name=&exec_id=&from=&to=&step=` | 시계열 조회. `step`(초) 단위 평균으로 다운샘플. `name`은 `biz.order.*`처럼 접두사로도 받음. `host`를 비우고 `group`을 주면 그 그룹(하위 포함) 서버 전부 |
 | `GET /api/v1/profile?exec_id=&from=&to=` | 구간과 겹치는 프로파일을 합친 접힌 스택(표본 수 내림차순) |
-| `GET /api/v1/runs?flow=&host=&status=&limit=` | 실행 이력(최신순, 기본 100) |
+| `GET /api/v1/runs?flow=&host=&status=&from=&to=&limit=` | 실행 이력(최신순, 기본 100, 최대 1000). `from`·`to`(ms)는 `scheduled_at` 구간 |
 | `GET /api/v1/runs/{exec_id}` | 실행 상세 + 상태 전이 이력 + 지금 살아 있는 프로세스 수(`live.procs`, "서비스 실행 중" 표시용) |
 | `GET /api/v1/flows?board=` | 플로우 목록, **배치판 경로 `board`**(접두사로 거름), 스텝 구조(호스트, 선행, **깊이 `level`**), cron 다음 실행 시각, 최근 플로우 실행의 상태와 스텝별 상태·attempt |
 | `POST /api/v1/flows/{id}/run` | 플로우 수동 실행 → `201 {"flow_run_id":"..."}`. 이전 실행이 아직 진행 중이면 `409` |

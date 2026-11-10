@@ -15,11 +15,11 @@ function surgeLines(c, tick, k0) {
   const p = b['biz.order.latency_p99_ms'];
   const h = b['biz.order.histbuf_pct'];
   const out = [];
-  if (q >= 2000) out.push(['error', `(E) ${hms} QUEUE 처리 대기 ${fmtN(q)}건 (위험 2,000)`]);
-  else if (q >= 500) out.push(['warn', `(W) ${hms} QUEUE 처리 대기 ${fmtN(q)}건 (주의 500)`]);
+  if (q >= 2000) out.push(['error', `(E) ${hms} QUEUE 큐 깊이 ${fmtN(q)}건 (위험 2,000)`]);
+  else if (q >= 500) out.push(['warn', `(W) ${hms} QUEUE 큐 깊이 ${fmtN(q)}건 (경고 500)`]);
   if (p >= 200) out.push(['error', `(E) ${hms} LATENCY p99 ${fmtN(p)}ms (위험 200)`]);
-  else if (p >= 50) out.push(['warn', `(W) ${hms} LATENCY p99 ${fmtN(p)}ms (주의 50)`]);
-  if (h >= 70) out.push(['warn', `(W) ${hms} HISTBUF 이력 버퍼 ${Math.round(h)}% (주의 70)`]);
+  else if (p >= 50) out.push(['warn', `(W) ${hms} LATENCY p99 ${fmtN(p)}ms (경고 50)`]);
+  if (h >= 70) out.push(['warn', `(W) ${hms} HISTBUF 이력 버퍼 사용률 ${Math.round(h)}% (경고 70)`]);
   return out.map(([level, message], i) => ({
     id: Math.floor(tick / 1000) * 10 + k0 + i,
     ts: tick,

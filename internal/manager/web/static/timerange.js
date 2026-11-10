@@ -10,10 +10,10 @@ export const RANGES = [
 const DEFAULT = '15m';
 
 // 순수: query(객체) → {from, to, live, range}
-export function resolveRange(query, now = Date.now()) {
+export function resolveRange(query, now = Date.now(), def = DEFAULT) {
   const f = Number(query.from), t = Number(query.to);
   if (query.from && query.to && f > 0 && t > f) return { from: f, to: t, live: false, range: 'custom' };
-  const r = RANGES.find((x) => x[0] === query.range) || RANGES.find((x) => x[0] === DEFAULT);
+  const r = RANGES.find((x) => x[0] === query.range) || RANGES.find((x) => x[0] === def) || RANGES.find((x) => x[0] === DEFAULT);
   return { from: now - r[2], to: now, live: true, range: r[0] };
 }
 
@@ -30,10 +30,11 @@ function writeQuery(patch) {
   history.replaceState(null, '', '#' + path + (s ? '?' + s : ''));
 }
 
-// createTimeRange(hostEl) → {onChange, current, select(from,to), destroy}
-export function createTimeRange(host) {
+// createTimeRange(hostEl, {def}) → {onChange, current, select(from,to), destroy}. def: 주소에 구간이 없을 때(기본 15m)
+export function createTimeRange(host, opts = {}) {
+  const def = opts.def || DEFAULT;
   const listeners = [];
-  let state = resolveRange(readQuery());
+  let state = resolveRange(readQuery(), Date.now(), def);
   const bar = el('div', { class: 'trange' });
   host.append(bar);
   const fromIn = el('input', { type: 'datetime-local' }), toIn = el('input', { type: 'datetime-local' });
@@ -69,7 +70,7 @@ export function createTimeRange(host) {
   function emit() { for (const fn of listeners) fn(current()); }
   function setRange(id) {
     writeQuery({ range: id });
-    state = resolveRange({ range: id });
+    state = resolveRange({ range: id }, Date.now(), def);
     draw(); emit();
   }
   function select(from, to) {
@@ -79,7 +80,7 @@ export function createTimeRange(host) {
   }
   // 실시간이면 부를 때마다 지금을 기준으로 다시 계산한다.
   function current() {
-    if (state.live) return resolveRange({ range: state.range });
+    if (state.live) return resolveRange({ range: state.range }, Date.now(), def);
     return { from: state.from, to: state.to, live: false, range: state.range };
   }
   draw();
