@@ -104,10 +104,13 @@ export function alertReason(a) {
 }
 export const ALERT_MARK = { crit: '■', warn: '▲' };
 
+// kpiTiles는 관제 화면에 올릴 KPI 타일이다. 칸이 모자라면 위험·경고 타일을 먼저 올린다
+// (패널이 늘어도 시세 끊김 같은 위험이 정의 순서에 밀려 숨지 않게). 같은 수준끼리는 정의 순서.
 export function kpiTiles(panels, max = 3) {
   const out = [];
   for (const p of panels) for (const t of p.tiles || []) if (t.kpi) out.push({ ...t, panel: p.id });
-  return out.slice(0, max);
+  const rank = (t) => (t.state === 'crit' ? 0 : t.state === 'warn' ? 1 : 2);
+  return out.map((t, i) => [t, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).slice(0, max).map(([t]) => t);
 }
 
 export function modelText(risk) {
