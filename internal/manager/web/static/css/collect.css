@@ -156,3 +156,30 @@ button.cw-chip.warn { border-color:var(--warn); background:color-mix(in srgb, va
 .cl-yamlrow { display:flex; align-items:flex-start; gap:8px; margin:4px 0 6px; }
 .cl-yamlrow .cl-yaml { margin:0; flex:1; }
 .cl-note .cl-todo { margin-top:4px; color:var(--t2); }
+
+/* 숫자 뽑기(지표) */
+code.cl-metric { border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:4px; padding:0 6px; background:var(--bg); white-space:nowrap; }
+.cl-i, .cw-i { color:var(--t3); font-size:12px; cursor:help; }
+.cw-tabs { display:flex; gap:0; margin:0 0 6px; border-bottom:1px solid var(--line); }
+button.cw-tab { background:none; border:0; border-bottom:2px solid transparent; border-radius:0; padding:3px 14px; margin-bottom:-1px; color:var(--t2); font-size:13px; }
+button.cw-tab.on { color:var(--accent); font-weight:700; border-bottom-color:var(--accent); }
+.cw-line.pick { cursor:pointer; }
+.cw-line.pick:hover { background:color-mix(in srgb, var(--accent) 7%, transparent); }
+.cw-line.sel { border-left-color:var(--accent); background:color-mix(in srgb, var(--accent) 12%, transparent); }
+mark.cw-val { background:color-mix(in srgb, var(--accent) 30%, transparent); color:var(--t1); border-radius:2px; padding:0 1px; }
+.cw-nums { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+button.cw-chip.num { padding:1px 10px; }
+.cw-metrics, .cw-mchecks { display:flex; flex-direction:column; gap:6px; }
+.cw-metric, .cw-mc { border:1px solid var(--line); border-radius:4px; padding:6px 8px; background:var(--surface); display:flex; flex-direction:column; gap:4px; }
+.cw-metric.bad, .cw-mc.bad { border-color:var(--crit); }
+.cw-mrow { display:flex; align-items:center; gap:6px; }
+.cw-mrow input { flex:1; min-width:0; }
+.cw-mrow .cw-cnt { font-size:12px; color:var(--t3); margin-left:auto; font-variant-numeric:tabular-nums; }
+.cw-biz { color:var(--t3); font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; }
+.cw-mprob { color:var(--crit); font-size:12px; display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.cw-mprob button { padding:0 8px; font-size:12px; }
+.cw-mchead { display:flex; align-items:baseline; gap:8px; }
+.cw-mstat { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:13px; font-variant-numeric:tabular-nums; }
+.cw-warnt { color:var(--warn); }
+.cw-exp { margin-left:auto; }
+                                                             

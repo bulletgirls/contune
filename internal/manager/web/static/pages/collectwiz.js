@@ -13,11 +13,11 @@ export function escapeRe(s) {
 }
 
 // 화면 미리보기용 JS 정규식. Go의 앞머리 (?i)는 플래그로 옮긴다. 안 되면 null.
-export function compileRe(re) {
+export function compileRe(re, extra = '') {
   let src = String(re ?? '');
-  let flags = '';
+  let flags = extra;
   const m = /^\(\?([imsU]+)\)/.exec(src);
-  if (m) { src = src.slice(m[0].length); if (m[1].includes('i')) flags += 'i'; if (m[1].includes('s')) flags += 's'; }
+  if (m) { src = src.slice(m[0].length); if (m[1].includes('i') && !flags.includes('i')) flags += 'i'; if (m[1].includes('s') && !flags.includes('s')) flags += 's'; }
   try { return new RegExp(src, flags); } catch (e) { return null; }
 }
 
@@ -117,6 +117,138 @@ export function applyRules(lines, rules) {
 
 export const ruleChipText = (r) => `${r.re} → ${r.level}`;
 
+// ---- 숫자 뽑기(지표) ----
+// 계약: docs/cards/M-biz-metric.md 3절. 화면 말: 줄 수·합계·최댓값·마지막 값 / 주기마다·최근 1분·최근 5분.
+
+export const AGG_NAME = { sum: '합계', count: '줄 수', max: '최댓값', last: '마지막 값' };
+export const AGG_ORDER = ['sum', 'count', 'max', 'last'];
+export const WINDOWS = [['', '주기마다'], ['60s', '최근 1분'], ['5m', '최근 5분']];
+export const MAX_METRICS = 10;
+
+// 창 문자열(60s·5m·1m30s) → 초. 못 읽으면 0.
+export function windowSecs(w) {
+  const m = /^(?:(\d+)m)?(?:(\d+)s)?$/.exec(String(w || ''));
+  if (!m || !String(w || '')) return 0;
+  return Number(m[1] || 0) * 60 + Number(m[2] || 0);
+}
+export function windowText(w) {
+  const n = windowSecs(w);
+  if (!n) return '주기마다';
+  return n % 60 === 0 ? `최근 ${n / 60}분` : `최근 ${n}초`;
+}
+export const metricCalcText = (m) => `${AGG_NAME[m.agg] || m.agg} · ${windowText(m.window)}`;
+// 표의 ⓘ: 정규식·계산·창
+export const metricTip = (m) => `${m.name}\n정규식 ${m.re}\n${metricCalcText(m)}`;
+
+// 시각(2026-11-10 09:01:02, 09:01:02.123)은 숫자로 보지 않게 가린다.
+const STAMP_RES = [/\b[A-Z][a-z]{2} +\d+ \d{2}:\d{2}:\d{2}/g, /\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?/g, /\b\d{1,2}:\d{2}:\d{2}(?:[.,]\d+)?/g];
+// 줄 안의 숫자들: [{text,start,end}]. 천 단위 쉼표(1,834)와 소수점은 한 숫자.
+export function numbersIn(line) {
+  let s = String(line ?? '');
+  for (const r of STAMP_RES) s = s.replace(r, (x) => ' '.repeat(x.length));
+  const out = [];
+  const re = /\d+(?:,\d{3})*(?:\.\d+)?/g;
+  let m;
+  while ((m = re.exec(s))) out.push({ text: m[0], start: m.index, end: m.index + m[0].length });
+  return out;
+}
+// 에이전트와 같은 읽기: ,·_를 빼고 ParseFloat. 못 읽으면 null.
+export function parseNum(raw) {
+  const v = parseFloat(String(raw ?? '').replace(/[,_]/g, ''));
+  return Number.isFinite(v) ? v : null;
+}
+const numPattern = (text) => (String(text).includes(',') ? '([\\d,]+(?:\\.\\d+)?)' : '(\\d+(?:\\.\\d+)?)');
+// 숫자 바로 앞의 공백 없는 글자 덩어리(recv= · qty:)
+const chunkBefore = (prefix) => (/([^\s,;|()[\]{}]+)$/.exec(prefix) || [])[1] || '';
+const wordBefore = (prefix) => (/([^\s,;|()[\]{}]+)\s+$/.exec(prefix) || [])[1] || '';
+
+// 숫자 하나 → 정규식 제안. 예: recv=1,834 → recv=([\d,]+(?:\.\d+)?) · qty=100 → qty=(\d+(?:\.\d+)?) · queue depth 812 → depth\s*(\d+(?:\.\d+)?)
+export function suggestMetricRe(line, num) {
+  const prefix = String(line).slice(0, num.start);
+  const pat = numPattern(num.text);
+  const chunk = chunkBefore(prefix).slice(-24);
+  if (chunk) return escapeRe(chunk) + pat;
+  const word = wordBefore(prefix).slice(-24);
+  return word ? `${escapeRe(word)}\\s*${pat}` : pat;
+}
+// 지표 이름 뒤쪽 낱말 제안(앞 덩어리에서 뽑은 키): recv= → recv, queue depth → depth, 없으면 value
+export function metricKey(line, num) {
+  const prefix = String(line).slice(0, num.start);
+  const words = (chunkBefore(prefix) || wordBefore(prefix)).toLowerCase().match(/[a-z0-9_]+/g);
+  return words ? words[words.length - 1] : 'value';
+}
+// 기본 지표 이름 `<이름>.<키>`(biz. 앞머리는 뺀 것). taken에 있으면 _2, _3…
+export function defaultMetricName(sourceName, key, taken = []) {
+  const src = String(sourceName || 'log').toLowerCase().replace(/[^a-z0-9_.]+/g, '_').replace(/\.+/g, '.').replace(/^[._]+|[._]+$/g, '') || 'log';
+  let base = `${src}.${key || 'value'}`, name = base, n = 2;
+  while (taken.includes(name)) name = `${base}_${n++}`;
+  return name;
+}
+// 새 지표(최근 줄의 숫자 하나를 누른 것). name은 biz. 가 붙은 전체 이름.
+export function newMetric(line, num, sourceName, taken = []) {
+  const suffix = defaultMetricName(sourceName, metricKey(line, num), taken.map((n) => String(n).replace(/^biz\./, '')));
+  return { name: 'biz.' + suffix, re: suggestMetricRe(line, num), agg: 'sum', window: '' };
+}
+// 이름 검사(서버 MetricNameOK와 같은 규칙). 빈 문자열이면 통과. others = 같은 로그 파일의 다른 지표 이름들
+export function checkMetricName(name, others) {
+  if (!/^biz\.[a-z0-9_]+(\.[a-z0-9_]+)*$/.test(name) || name.length > 80) return '이름은 영문 소문자·숫자·_를 .로 이어 씁니다(예 quote.count_1m)';
+  if (others.includes(name)) return '같은 이름의 지표가 이미 있습니다';
+  return '';
+}
+// 지표 하나를 줄들에 대 본 결과. {error:'regex'|'empty'|'group'|'', hits:[{i,value,span}], matched, bad, values, sum, last, max}
+export function extractMetric(lines, m) {
+  const out = { error: '', hits: [], matched: 0, bad: 0, values: [], sum: 0, max: null, last: null };
+  if (!String(m.re || '')) { out.error = 'empty'; return out; }
+  const re = compileRe(m.re, 'd');
+  if (!re) { out.error = 'regex'; return out; }
+  if (m.agg !== 'count' && new RegExp(re.source + '|').exec('').length < 2) { out.error = 'group'; return out; }
+  lines.forEach((ln, i) => {
+    const mm = re.exec(ln);
+    if (!mm) return;
+    const span = (mm.indices && (m.agg === 'count' ? mm.indices[0] : mm.indices[1])) || [mm.index, mm.index + mm[0].length];
+    if (m.agg === 'count') { out.matched++; out.hits.push({ i, value: 1, span }); return; }
+    const v = parseNum(mm[1]);
+    if (v == null) { out.bad++; return; }
+    out.matched++; out.sum += v; out.last = v; out.max = out.max == null ? v : Math.max(out.max, v);
+    out.values.push(v);
+    out.hits.push({ i, value: v, span });
+  });
+  return out;
+}
+// 예상 값: 쓰는 속도(초당 줄 수)를 곱한 추정. 줄당 평균 = 합계 ÷ 전체 줄 수, 창이 있으면 그 초만큼, 주기마다는 1초.
+export function expectedValue(m, ex, total, rate) {
+  if (ex.error || !total) return null;
+  const secs = windowSecs(m.window) || 1;
+  const r = Number(rate) || 0;
+  if (m.agg === 'count') return r * (ex.matched / total) * secs;
+  if (m.agg === 'sum') return (ex.sum / total) * r * secs;
+  if (m.agg === 'max') return ex.max;
+  return ex.last;
+}
+export const expectedText = (v) => (v == null ? DASH : `약 ${fmtNum(v, Math.abs(v) < 10 ? 1 : 0)}`);
+// 뽑힌 값 처음 n개 문자열
+export const valuesText = (ex, n = 5) => (ex.hits.slice(0, n).map((h) => fmtNum(h.value)).join(' · ') || DASH);
+// 숫자 부분을 괄호로 감싼 정규식(묶음이 없을 때의 고치기). 숫자 모양을 못 찾으면 null.
+export function wrapNumberRe(re) {
+  const m = /(\[\\d,\]\+|\\d\+|\\d\[\\d,\]\*)(\(\?:\\\.\\d\+\)\?)?/.exec(String(re || ''));
+  if (!m) return null;
+  return re.slice(0, m.index) + '(' + m[0] + ')' + re.slice(m.index + m[0].length);
+}
+// 저장 400의 지표 문제 → 화면 말. {text, fix} fix = 'wrap'(괄호로 감싸기) | ''. 서버 원문은 title용 raw.
+export function metricProblem(p, m) {
+  const raw = p.msg || '';
+  if (p.field === 'metric.re') {
+    if (/묶음/.test(raw)) return { text: '정규식에 숫자를 담을 묶음 ( )이 없습니다', fix: m && wrapNumberRe(m.re) ? 'wrap' : '', raw };
+    if (/비어/.test(raw)) return { text: '정규식이 비어 있습니다', fix: '', raw };
+    return { text: '정규식을 해석하지 못합니다', fix: '', raw };
+  }
+  if (p.field === 'metric.name') return { text: /이미/.test(raw) ? '다른 로그 파일이 같은 지표를 이미 냅니다. 이름을 바꾸세요' : '이름은 영문 소문자·숫자·_를 .로 이어 씁니다(예 quote.count_1m)', fix: '', raw };
+  if (p.field === 'metric.window') return { text: '창은 1초~10분입니다', fix: '', raw };
+  if (p.field === 'metric.agg') return { text: '계산을 다시 고르세요', fix: '', raw };
+  if (p.field === 'metrics') return { text: `지표는 ${MAX_METRICS}개까지입니다. 하나를 지우세요`, fix: '', raw };
+  return null;
+}
+
 // ---- 범위 ----
 
 export function scopeName(scope) {
@@ -213,6 +345,7 @@ export function sourceLines(logs) {
   for (const l of logs || []) {
     out.push(`${l.name}  ${l.path}`);
     for (const r of l.match || []) out.push(`    ${r.re} → ${r.level}`);
+    for (const m of l.metrics || []) out.push(`    ${m.name} ← ${m.re} · ${metricCalcText(m)}`);
   }
   return out;
 }
@@ -259,7 +392,9 @@ export function openWizard(opts) {
   const st = {
     step: 1, host: opts.host || (opts.hosts[0] && opts.hosts[0].id) || '',
     path: opts.edit ? opts.edit.source.path : '', name: opts.edit ? opts.edit.source.name : '',
-    rules: opts.edit ? opts.edit.source.match.map((r) => ({ ...r })) : [],
+    rules: opts.edit ? (opts.edit.source.match || []).map((r) => ({ ...r })) : [],
+    metrics: opts.edit ? (opts.edit.source.metrics || []).map((m) => ({ ...m, window: m.window || '' })) : [],
+    tab: opts.edit && !(opts.edit.source.match || []).length && (opts.edit.source.metrics || []).length ? 'metrics' : 'rules', mline: -1, saveIdx: -1,
     lines: [], file: '', size: 0, rate: 0, files: null, filesErr: '', busy: false, err: '',
     scope: opts.edit ? opts.edit.scope : '', problems: [], advanced: false, sel: null,
     fresh: null, // 저장 직전에 다시 읽은 {sets}
@@ -355,12 +490,21 @@ export function openWizard(opts) {
   }
 
   // ---- 줄 목록(②·③ 공통) ----
-  function lineList(applied, selectable) {
+  // extra: {spans: Map(줄 번호 → 뽑힌 숫자 [시작,끝] 목록), pick(i): 줄을 누름, sel: 고른 줄}
+  function lineList(applied, selectable, extra = {}) {
     const box = el('div', { class: 'cw-lines', tabindex: '0' });
+    const spans = extra.spans || new Map();
     st.lines.forEach((ln, i) => {
       const lv = applied ? applied.levels[i].level : '';
-      box.append(el('div', { class: 'cw-line' + (lv ? ' ' + lv : applied ? ' no' : ''), 'data-i': String(i) },
-        el('span', { class: 'ln', text: String(i + 1) }), el('span', { class: 'tx', text: ln || ' ' })));
+      const sp = (spans.get(i) || []).slice().sort((a, b) => a[0] - b[0]);
+      const tx = el('span', { class: 'tx' });
+      let at = 0;
+      for (const [a, b] of sp) { if (a < at) continue; if (a > at) tx.append(ln.slice(at, a)); tx.append(el('mark', { class: 'cw-val', text: ln.slice(a, b) })); at = b; }
+      if (at < ln.length || !ln) tx.append(ln.slice(at) || ' ');
+      const row = el('div', { class: 'cw-line' + (lv ? ' ' + lv : applied && !sp.length ? ' no' : '') + (extra.pick ? ' pick' : '') + (extra.sel === i ? ' sel' : ''), 'data-i': String(i) },
+        el('span', { class: 'ln', text: String(i + 1) }), tx);
+      if (extra.pick) row.addEventListener('click', () => extra.pick(i));
+      box.append(row);
     });
     if (selectable) box.addEventListener('mouseup', onSelect);
     return box;
@@ -407,8 +551,81 @@ export function openWizard(opts) {
     return box;
   }
 
-  // ---- ② 줄 고르기 ----
+  // ---- ② 줄 고르기 · 숫자 뽑기 ----
+  function tabsBar() {
+    const t = (id, text) => el('button', { type: 'button', role: 'tab', 'aria-selected': String(st.tab === id), class: 'cw-tab' + (st.tab === id ? ' on' : ''), text, onclick: () => { st.tab = id; draw(); } });
+    return el('div', { class: 'cw-tabs', role: 'tablist' }, t('rules', `줄 고르기${st.rules.length ? ` (${st.rules.length})` : ''}`), t('metrics', `숫자 뽑기${st.metrics.length ? ` (${st.metrics.length})` : ''}`));
+  }
+  const metricNames = (except) => st.metrics.filter((_, k) => k !== except).map((m) => m.name);
+  // 이 지표에 걸린 저장 문제(400 problems)
+  const probsOf = (k) => st.problems.filter((p) => p.index === st.saveIdx && p.rule === k && /^metric\./.test(p.field));
+  const nameProblem = (m, i) => (m.name === 'biz.' ? '이름이 필요합니다' : checkMetricName(m.name, metricNames(i)));
+  function metricEditor(exs) {
+    const box = el('div', { class: 'cw-metrics' });
+    if (!st.metrics.length) box.append(el('div', { class: 'empty', text: '지표가 없습니다. 줄을 누르고 숫자를 골라 만드세요.' }));
+    st.metrics.forEach((m, i) => {
+      const ex = exs ? exs[i] : null;
+      const nameBad = nameProblem(m, i);
+      const row = el('div', { class: 'cw-metric' + (nameBad || (ex && ex.error) || probsOf(i).length ? ' bad' : '') });
+      const nm = el('input', { type: 'text', class: 'mono', value: m.name.replace(/^biz\./, ''), spellcheck: 'false', 'aria-label': '지표 이름', onchange: () => { m.name = 'biz.' + nm.value.trim(); st.problems = st.problems.filter((p) => !(p.rule === i && p.field === 'metric.name')); draw(); } });
+      const re = el('input', { type: 'text', class: 'mono', value: m.re, spellcheck: 'false', 'aria-label': '정규식', onchange: () => { m.re = re.value; st.problems = st.problems.filter((p) => !(p.rule === i && p.field === 'metric.re')); draw(); } });
+      const agg = el('select', { 'aria-label': '계산', onchange: () => { m.agg = agg.value; draw(); } }, AGG_ORDER.map((a) => el('option', { value: a, text: AGG_NAME[a], selected: m.agg === a })));
+      const wins = WINDOWS.some(([v]) => v === m.window) ? WINDOWS : [...WINDOWS, [m.window, windowText(m.window)]];
+      const win = el('select', { 'aria-label': '창', onchange: () => { m.window = win.value; draw(); } }, wins.map(([v, t]) => el('option', { value: v, text: t, selected: m.window === v })));
+      row.append(
+        el('div', { class: 'cw-mrow' }, el('span', { class: 'cw-biz', text: 'biz.' }), nm, el('button', { type: 'button', class: 'ghost', text: '✕', title: '지표 지우기', onclick: () => { st.metrics.splice(i, 1); st.problems = []; draw(); } })),
+        el('div', { class: 'cw-mrow' }, re),
+        el('div', { class: 'cw-mrow' }, agg, win, ex && !ex.error ? el('span', { class: 'cw-cnt', text: `맞은 줄 ${ex.matched}` }) : null));
+      const msgs = [];
+      if (nameBad) msgs.push({ text: nameBad });
+      if (ex && ex.error === 'regex') msgs.push({ text: '정규식을 해석하지 못합니다' });
+      else if (ex && ex.error === 'empty') msgs.push({ text: '정규식이 비어 있습니다' });
+      else if (ex && ex.error === 'group') msgs.push({ text: '정규식에 숫자를 담을 묶음 ( )이 없습니다', fix: wrapNumberRe(m.re) ? 'wrap' : '', alt: true });
+      if (ex && ex.bad) msgs.push({ text: `읽지 못한 숫자 ${ex.bad}개` });
+      for (const p of probsOf(i)) { const mp = metricProblem(p, m); if (mp && !msgs.some((x) => x.text === mp.text)) msgs.push({ ...mp }); }
+      for (const g of msgs) {
+        const line = el('div', { class: 'cw-mprob', role: 'alert' }, g.text);
+        if (g.fix === 'wrap') {
+          line.append(' ', el('button', { type: 'button', text: '숫자를 괄호로 감싸기', onclick: () => { m.re = wrapNumberRe(m.re) || m.re; st.problems = st.problems.filter((p) => !(p.rule === i && p.field === 'metric.re')); draw(); } }));
+          if (g.alt) line.append(' ', el('button', { type: 'button', class: 'ghost', text: '줄 수로 세기', onclick: () => { m.agg = 'count'; draw(); } }));
+        }
+        row.append(line);
+      }
+      box.append(row);
+    });
+    return box;
+  }
+  function drawMetrics() {
+    const exs = st.metrics.map((m) => extractMetric(st.lines, m));
+    const spans = new Map();
+    exs.forEach((ex) => ex.hits.forEach((h) => spans.set(h.i, [...(spans.get(h.i) || []), h.span])));
+    const line = st.mline >= 0 ? st.lines[st.mline] : '';
+    const nums = el('div', { class: 'cw-nums' });
+    if (st.mline < 0) nums.append(el('span', { class: 'meta', text: '줄을 누르면 그 줄의 숫자가 나옵니다' }));
+    else {
+      const ns = numbersIn(line);
+      if (!ns.length) nums.append(el('span', { class: 'meta', text: '이 줄에는 숫자가 없습니다' }));
+      for (const n of ns) {
+        nums.append(el('button', { type: 'button', class: 'cw-chip num', title: `정규식 ${suggestMetricRe(line, n)}\n누르면 지표로 더합니다`, disabled: st.metrics.length >= MAX_METRICS,
+          onclick: () => { st.metrics = [...st.metrics, newMetric(line, n, st.name || suggestName(st.path), st.metrics.map((x) => x.name))]; draw(); } }, el('code', { text: n.text })));
+      }
+    }
+    const add = el('button', { type: 'button', text: '+ 지표 더하기', disabled: st.metrics.length >= MAX_METRICS, title: st.metrics.length >= MAX_METRICS ? `지표는 ${MAX_METRICS}개까지입니다` : '', onclick: () => { st.metrics = [...st.metrics, { name: 'biz.' + defaultMetricName(st.name || suggestName(st.path), 'value', st.metrics.map((x) => x.name.replace(/^biz\./, ''))), re: '', agg: 'sum', window: '' }]; draw(); } });
+    body.replaceChildren(tabsBar(),
+      el('div', { class: 'cw-cols' },
+        el('div', { class: 'cw-col' },
+          el('div', { class: 'cw-sub' }, `읽은 파일 `, el('code', { text: st.file }), ` · 마지막 ${st.lines.length}줄`),
+          lineList({ levels: st.lines.map(() => ({ level: '' })) }, false, { spans, sel: st.mline, pick: (i) => { st.mline = i; draw(); } }),
+          el('div', { class: 'cw-sub' }, '숫자 ', nums)),
+        el('div', { class: 'cw-col side' },
+          el('div', { class: 'cw-sub' }, '지표 ', el('span', { class: 'cw-i', text: 'ⓘ', title: '로그 줄의 숫자를 모아 업무 지표(biz.…)로 보냅니다. 줄 규칙 없이 지표만 써도 됩니다.' }), el('span', { class: 'grow' }), add),
+          metricEditor(exs))));
+    foot.replaceChildren(
+      el('button', { type: 'button', text: '이전', onclick: () => go(1) }),
+      el('button', { type: 'button', class: 'primary', text: '다음', onclick: () => go(3) }));
+  }
   function drawPick() {
+    if (st.tab === 'metrics') { drawMetrics(); return; }
     const chips = headChips(st.lines);
     const ap = applyRules(st.lines, st.rules);
     const chipBox = el('div', { class: 'cw-chips' });
@@ -420,7 +637,7 @@ export function openWizard(opts) {
     if (!chips.length) chipBox.append(el('span', { class: 'meta', text: '줄머리에서 수준을 읽지 못했습니다. 글자를 골라 규칙을 만드세요.' }));
     const auto = el('button', { type: 'button', text: '추천대로 고르기', title: '(E)·ERROR는 오류, (W)·WARN은 경고로', onclick: () => { st.rules = autoRules(st.rules, chips); draw(); } });
     const adv = el('label', { class: 'cw-adv' }, el('input', { type: 'checkbox', checked: st.advanced, onchange: (e) => { st.advanced = e.target.checked; draw(); } }), ' 정규식 직접 수정(고급)');
-    body.replaceChildren(
+    body.replaceChildren(tabsBar(),
       el('div', { class: 'cw-cols' },
         el('div', { class: 'cw-col' },
           el('div', { class: 'cw-sub' }, `읽은 파일 `, el('code', { text: st.file }), ` · 마지막 ${st.lines.length}줄`),
@@ -440,21 +657,47 @@ export function openWizard(opts) {
   // ---- ③ 확인 ----
   function drawCheck() {
     const ap = applyRules(st.lines, st.rules);
+    const exs = st.metrics.map((m) => extractMetric(st.lines, m));
+    const spans = new Map();
+    exs.forEach((ex) => ex.hits.forEach((h) => spans.set(h.i, [...(spans.get(h.i) || []), h.span])));
+    const hitAny = st.lines.filter((_, i) => ap.levels[i].level || spans.has(i)).length;
+    const metricBad = st.metrics.some((m, i) => exs[i].error || nameProblem(m, i));
     const warn = st.rate >= RATE_WARN;
     const kids = [];
     if (warn) kids.push(el('div', { class: 'cw-warnbar', role: 'alert', text: `이 파일은 초당 약 ${fmtNum(st.rate, 0)}줄이 쓰입니다. 수집 부하가 클 수 있으니 규칙을 좁히세요.` }));
     kids.push(el('div', { class: 'cw-cols' },
       el('div', { class: 'cw-col' },
-        el('div', { class: 'cw-sub' }, `맞은 줄 ${st.lines.length - ap.unmatched} / ${st.lines.length}`, el('span', { class: 'meta', text: ` · 쓰는 속도 약 ${fmtNum(st.rate, 1)}줄/초` })),
-        lineList(ap, false)),
+        el('div', { class: 'cw-sub' }, `맞은 줄 ${hitAny} / ${st.lines.length}`, el('span', { class: 'meta', text: ` · 쓰는 속도 약 ${fmtNum(st.rate, 1)}줄/초` })),
+        lineList(ap, false, { spans })),
       el('div', { class: 'cw-col side' },
-        el('div', { class: 'cw-sub', text: '규칙별 맞은 줄' }),
-        ruleEditor(ap.counts),
+        st.rules.length || !st.metrics.length ? el('div', { class: 'cw-sub', text: '규칙별 맞은 줄' }) : null,
+        st.rules.length || !st.metrics.length ? ruleEditor(ap.counts) : null,
+        st.metrics.length ? metricChecks(exs) : null,
         el('div', { class: 'meta cw-hint' }, '화면은 JS 정규식으로 미리 보고, 서버는 RE2로 다시 검사합니다. 둘이 다르면 저장할 때 알려 줍니다.'))));
     body.replaceChildren(...kids);
     foot.replaceChildren(
       el('button', { type: 'button', text: '이전', onclick: () => go(2) }),
-      el('button', { type: 'button', class: 'primary', text: '다음', disabled: ap.bad.length > 0, title: ap.bad.length ? '정규식을 고쳐야 합니다' : '', onclick: () => go(4) }));
+      el('button', { type: 'button', class: 'primary', text: '다음', disabled: ap.bad.length > 0 || metricBad, title: ap.bad.length || metricBad ? '정규식·지표를 고쳐야 합니다' : '', onclick: () => go(4) }));
+  }
+  // ③ 지표마다: 맞은 줄 · 뽑힌 값 처음 5개 · 예상 값
+  function metricChecks(exs) {
+    const box = el('div', { class: 'cw-mchecks' }, el('div', { class: 'cw-sub', text: '숫자 뽑기' }));
+    st.metrics.forEach((m, i) => {
+      const ex = exs[i];
+      const v = expectedValue(m, ex, st.lines.length, st.rate);
+      const card = el('div', { class: 'cw-mc' + (ex.error ? ' bad' : '') },
+        el('div', { class: 'cw-mchead' }, el('code', { text: m.name }), el('span', { class: 'meta', text: metricCalcText(m) })));
+      if (ex.error) card.append(el('div', { class: 'cw-mprob', role: 'alert' }, ex.error === 'group' ? '정규식에 숫자를 담을 묶음 ( )이 없습니다' : ex.error === 'empty' ? '정규식이 비어 있습니다' : '정규식을 해석하지 못합니다', ' ',
+        el('button', { type: 'button', text: '고치기', onclick: () => { st.tab = 'metrics'; go(2); } })));
+      else card.append(el('div', { class: 'cw-mstat' },
+        el('span', {}, `맞은 줄 ${ex.matched}/${st.lines.length}`),
+        m.agg === 'count' ? null : el('span', {}, '값 ', el('code', { text: valuesText(ex) })),
+        ex.bad ? el('span', { class: 'cw-warnt', text: `읽지 못한 숫자 ${ex.bad}` }) : null,
+        el('span', { class: 'cw-exp' }, '예상 ', el('b', { text: expectedText(v) }), m.agg === 'sum' || m.agg === 'count' ? el('span', { class: 'meta', text: windowSecs(m.window) ? ` / ${windowText(m.window)}` : ' / 초' }) : null,
+          el('span', { class: 'cw-i', text: 'ⓘ', title: '미리보기 줄의 평균에 쓰는 속도(초당 줄 수)를 곱한 추정입니다. 주기마다는 1초 기준.' }))));
+      box.append(card);
+    });
+    return box;
   }
 
   // ---- ④ 범위·저장 ----
@@ -473,7 +716,11 @@ export function openWizard(opts) {
     try { const r = await api('/collect'); st.fresh = r.sets || []; } catch (e) { st.fresh = (opts.sets || []); st.err = err(e); }
   }
   const curSet = () => (st.fresh || opts.sets || []).find((s) => s.scope === st.scope);
-  const newSource = () => ({ name: st.name, path: st.path.trim(), match: st.rules.map((r) => ({ re: r.re, level: r.level })) });
+  const newSource = () => {
+    const src = { name: st.name, path: st.path.trim(), match: st.rules.map((r) => ({ re: r.re, level: r.level })) };
+    if (st.metrics.length) src.metrics = st.metrics.map((m) => ({ name: m.name, re: m.re, agg: m.agg, ...(m.window ? { window: m.window } : {}) }));
+    return src;
+  };
 
   async function drawSave() {
     if (!st.scope) st.scope = opts.scope || 'host:' + st.host;
@@ -504,7 +751,12 @@ export function openWizard(opts) {
       const after = withSource(before, newSource(), origName);
       diffBox.replaceChildren(...diffLines(sourceLines(before), sourceLines(after)).map((d) => el('div', { class: 'df ' + (d.t === '+' ? 'add' : d.t === '-' ? 'del' : ''), text: `${d.t} ${d.text}` })));
       const mine = st.problems;
-      probBox.replaceChildren(...mine.map((p) => el('div', { class: 'cw-prob' }, el('b', { text: p.field }), ' ', p.rule >= 0 ? `규칙 ${p.rule + 1}: ` : '', p.msg)));
+      probBox.replaceChildren(...mine.map((p) => {
+        const mp = p.index === st.saveIdx && /^metric/.test(p.field) ? metricProblem(p, st.metrics[p.rule]) : null;
+        if (mp) return el('div', { class: 'cw-prob' }, p.rule >= 0 && st.metrics[p.rule] ? el('code', { text: st.metrics[p.rule].name }) : '', ' ', mp.text, ' ',
+          el('button', { type: 'button', text: '지표 고치기', onclick: () => { st.tab = 'metrics'; go(2); } }));
+        return el('div', { class: 'cw-prob' }, el('b', { text: p.field }), ' ', p.rule >= 0 ? `규칙 ${p.rule + 1}: ` : '', p.msg);
+      }));
     }
     const radios = options.map((o) => el('label', { class: 'cw-opt' },
       el('input', { type: 'radio', name: 'cw-scope', value: o.scope, checked: o.scope === st.scope, disabled: !!opts.edit, onchange: () => { st.scope = o.scope; st.problems = []; drawSave(); } }), ' ', o.text));
@@ -514,7 +766,7 @@ export function openWizard(opts) {
           el('div', { class: 'cw-sub', text: '적용 대상' }), el('div', { class: 'cw-opts' }, radios),
           el('div', { class: 'cw-sub', text: '이름' }),
           el('div', { class: 'cw-row' }, nameInp, nameMsg),
-          el('div', { class: 'cw-recap' }, el('span', { class: 'meta', text: '경로 ' }), el('code', { text: st.path }), el('span', { class: 'meta', text: ` · 규칙 ${st.rules.length}개` })),
+          el('div', { class: 'cw-recap' }, el('span', { class: 'meta', text: '경로 ' }), el('code', { text: st.path }), el('span', { class: 'meta', text: ` · 규칙 ${st.rules.length}개${st.metrics.length ? ` · 지표 ${st.metrics.length}개` : ''}` })),
           warn, probBox, msg),
         el('div', { class: 'cw-col side' },
           el('div', { class: 'cw-sub' }, `바뀌는 내용 `, el('span', { class: 'meta', text: set ? `(${set.file})` : '(새 설정 파일)' })),
@@ -527,6 +779,7 @@ export function openWizard(opts) {
     st.busy = true; st.err = ''; st.problems = [];
     const before = (set && set.logs) || [];
     const logs = withSource(before, newSource(), origName);
+    st.saveIdx = origName && before.some((l) => l.name === origName) ? before.findIndex((l) => l.name === origName) : before.length;
     try {
       await api(`/collect?scope=${encodeURIComponent(st.scope)}`, { method: 'PUT', body: { logs, if_match: set ? set.sha : '' } });
       close();
