@@ -5,6 +5,7 @@ import { api, poll, ApiError } from '../api.js';
 import { el, table, badgeHTML, fmtDuration, toast, openDrawer, closeDrawer, confirmBox, DASH, esc, relTime, shortExec } from '../ui.js';
 import { flowState } from '../tree.js';
 import { gate } from '../auth.js';
+import { actorName, actionCell } from '../auditfmt.js';
 import { renderFlowGraph, flowColumns } from '../flowgraph.js';
 
 const p2 = (n) => String(n).padStart(2, '0');
@@ -274,13 +275,15 @@ async function renderBoard(host, params, query) {
 }
 
 // ---- 플로우 상세 ----
-const TABS = [['graph', '그래프'], ['grid', '실행 이력'], ['gantt', '간트'], ['def', '정의']];
+const TABS = [['graph', '그래프'], ['grid', '실행 이력'], ['gantt', '간트'], ['history', '변경 이력'], ['def', '정의']];
+// 한 번 불러오면 주기 갱신으로 다시 그리지 않는 탭
+const STATIC_TAB = new Set(['def', 'history']);
 
 async function renderFlow(host, params, query) {
   const { board, flow: id } = params;
   const S = {
     tab: TABS.some(([t]) => t === query.tab) ? query.tab : 'graph',
-    sel: query.run || '', step: '', flow: null, frs: [], runs: [], now: Date.now(), def: null, defErr: '', drawerStop: null,
+    sel: query.run || '', step: '', hist: null, histErr: '', flow: null, frs: [], runs: [], now: Date.now(), def: null, defErr: '', drawerStop: null,
   };
   const edit = await editorEnabled();
 
@@ -541,10 +544,28 @@ async function renderFlow(host, params, query) {
       el('pre', { class: 'bt-yaml', text: d.yaml || DASH }))];
   }
 
+  // ---- 탭: 변경 이력 (GET /flows/{id}/history) ----
+  function paneHistory() {
+    if (!S.hist && !S.histErr) {
+      api(`/flows/${encodeURIComponent(id)}/history`).then((d) => { S.hist = d.entries || []; }).catch((e) => { S.histErr = errText(e); }).finally(() => { if (S.tab === 'history') drawPane(); });
+      return [el('div', { class: 'bt-card bt-emptybox', text: '불러오는 중…' })];
+    }
+    if (S.histErr) return [el('div', { class: 'bt-card bt-emptybox', text: S.histErr })];
+    if (!S.hist.length) return [el('div', { class: 'bt-card bt-emptybox', text: '변경 기록이 없습니다(편집기로 저장·삭제한 것만 남습니다)' })];
+    const t = el('table', { class: 'au-hist' });
+    t.append(el('thead', {}, el('tr', {}, ['시각', '사용자', '행동', '내용'].map((h) => el('th', { text: h })))));
+    t.append(el('tbody', {}, S.hist.map((e) => el('tr', {},
+      el('td', { class: 'num at', text: fmtDT(e.ts) }),
+      el('td', { text: actorName(e.actor), title: e.actor }),
+      el('td', {}, actionCell(e.action)),
+      el('td', { class: 'dt', text: e.detail || DASH })))));
+    return [el('div', { class: 'bt-card bt-tablebox' }, t)];
+  }
+
   function drawPane(reset) {
     if (!S.flow) return;
     if (reset) pane.scrollTop = 0;
-    const fn = { graph: paneGraph, grid: paneGrid, gantt: paneGantt, def: paneDef }[S.tab];
+    const fn = { graph: paneGraph, grid: paneGrid, gantt: paneGantt, history: paneHistory, def: paneDef }[S.tab];
     const keepX = pane.querySelector('.bt-gridscroll')?.scrollLeft;
     pane.replaceChildren(...fn());
     const sc = pane.querySelector('.bt-gridscroll');
@@ -554,11 +575,11 @@ async function renderFlow(host, params, query) {
   // ---- 스텝 실행 서랍 ----
   async function openRun(execId, sid) {
     S.step = sid;
-    if (S.tab !== 'def') drawPane();
+    if (!STATIC_TAB.has(S.tab)) drawPane();
     S.drawerStop && S.drawerStop();
     const d = openDrawer(sid);
     const watch = new MutationObserver(() => {
-      if (!document.body.contains(d.body)) { S.step = ''; S.drawerStop && S.drawerStop(); S.drawerStop = null; watch.disconnect(); if (S.tab !== 'def') drawPane(); }
+      if (!document.body.contains(d.body)) { S.step = ''; S.drawerStop && S.drawerStop(); S.drawerStop = null; watch.disconnect(); if (!STATIC_TAB.has(S.tab)) drawPane(); }
     });
     watch.observe(document.body, { childList: true });
     let cur = execId;
@@ -642,6 +663,6 @@ async function renderFlow(host, params, query) {
     drawState(f);
     drawKpis(f);
     drawTabs();
-    if (S.tab !== 'def' || !pane.childElementCount) drawPane();
+    if (!STATIC_TAB.has(S.tab) || !pane.childElementCount) drawPane();
   }, 2000);
 }
