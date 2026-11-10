@@ -53,8 +53,12 @@ type EventReport struct {
 }
 
 // CommandsResponse는 GET /api/v1/agent/commands 응답이다.
+// ConfigRev는 그 호스트에 합쳐진 원격 수집 설정의 판(05 §17): 에이전트가 가진 판과 다르면
+// GET /api/v1/agent/config로 받아 간다. Requests는 화면이 시킨 읽기 전용 요청(discover·peek)이다.
 type CommandsResponse struct {
-	Commands []model.Command `json:"commands"`
+	Commands  []model.Command        `json:"commands"`
+	ConfigRev string                 `json:"config_rev,omitempty"`
+	Requests  []model.CollectRequest `json:"requests,omitempty"`
 }
 
 // StatusError는 매니저가 2xx가 아닌 상태로 답했을 때의 에러다.
@@ -125,12 +129,21 @@ func (c *Client) PostEvent(ctx context.Context, e EventReport) error {
 
 // GetCommands는 롱폴링으로 명령을 받는다. HTTP 타임아웃은 wait + 5초다.
 func (c *Client) GetCommands(ctx context.Context, host string, wait time.Duration) (CommandsResponse, error) {
+	return c.GetCommandsRev(ctx, host, wait, "")
+}
+
+// GetCommandsRev는 GetCommands에 에이전트가 마지막으로 본 수집 설정 판(rev)을 붙인다(05 §17).
+// rev가 비면 붙이지 않는다(원격 설정을 쓰지 않는 에이전트). 매니저는 rev가 자기 판과 다르면 기다리지 않고 답한다.
+func (c *Client) GetCommandsRev(ctx context.Context, host string, wait time.Duration, rev string) (CommandsResponse, error) {
 	var out CommandsResponse
 	ctx, cancel := context.WithTimeout(ctx, wait+5*time.Second)
 	defer cancel()
 	q := url.Values{}
 	q.Set("host", host)
 	q.Set("wait", wait.String())
+	if rev != "" {
+		q.Set("rev", rev)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/api/v1/agent/commands?"+q.Encode(), nil)
 	if err != nil {
 		return out, err
@@ -143,6 +156,38 @@ func (c *Client) GetCommands(ctx context.Context, host string, wait time.Duratio
 		return out, fmt.Errorf("decode commands: %w", err)
 	}
 	return out, nil
+}
+
+// GetConfig는 그 호스트에 합쳐진 원격 수집 설정을 받는다(GET /api/v1/agent/config?host=&group=).
+func (c *Client) GetConfig(ctx context.Context, host, group string) (model.AgentConfig, error) {
+	var out model.AgentConfig
+	ctx, cancel := context.WithTimeout(ctx, postTimeout)
+	defer cancel()
+	q := url.Values{}
+	q.Set("host", host)
+	q.Set("group", group)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/api/v1/agent/config?"+q.Encode(), nil)
+	if err != nil {
+		return out, err
+	}
+	body, err := c.do(req)
+	if err != nil {
+		return out, err
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return out, fmt.Errorf("decode config: %w", err)
+	}
+	return out, nil
+}
+
+// PostConfigStatus는 원격 수집 설정의 적용 상태를 보낸다.
+func (c *Client) PostConfigStatus(ctx context.Context, s model.AgentConfigStatus) error {
+	return c.post(ctx, "/api/v1/agent/config-status", s)
+}
+
+// PostCollectResult는 discover·peek 요청의 결과를 보낸다.
+func (c *Client) PostCollectResult(ctx context.Context, r model.CollectResult) error {
+	return c.post(ctx, "/api/v1/agent/collect-result", r)
 }
 
 func (c *Client) post(ctx context.Context, path string, v any) error {

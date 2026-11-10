@@ -232,3 +232,48 @@ func TestClientCA(t *testing.T) {
 		t.Error("PEM 인증서가 없는 CA 파일은 에러")
 	}
 }
+
+// TestClientCollect는 수집 설정 계약(05 §17)의 클라이언트 쪽 모양을 본다.
+func TestClientCollect(t *testing.T) {
+	var q, cfgQ string
+	var posted []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/agent/commands":
+			q = r.URL.RawQuery
+			w.Write([]byte(`{"commands":[],"config_rev":"r2","requests":[{"id":"Q1","kind":"peek","path":"/var/log/syslog","lines":200}]}`))
+		case "/api/v1/agent/config":
+			cfgQ = r.URL.RawQuery
+			w.Write([]byte(`{"rev":"r2","logs":[{"name":"syslog","path":"/var/log/syslog","match":[{"re":"ERROR","level":"error"}]}]}`))
+		default:
+			posted = append(posted, r.Method+" "+r.URL.Path)
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL, "tok")
+	ctx := context.Background()
+	r, err := c.GetCommandsRev(ctx, "h1", time.Second, "r1")
+	if err != nil || r.ConfigRev != "r2" || len(r.Requests) != 1 || r.Requests[0].Kind != "peek" || r.Requests[0].Lines != 200 {
+		t.Fatalf("%v %+v", err, r)
+	}
+	if q != "host=h1&rev=r1&wait=1s" {
+		t.Errorf("query %q", q)
+	}
+	cfg, err := c.GetConfig(ctx, "h1", "매매/체결")
+	if err != nil || cfg.Rev != "r2" || len(cfg.Logs) != 1 || cfg.Logs[0].Match[0].Level != "error" {
+		t.Fatalf("%v %+v", err, cfg)
+	}
+	if cfgQ != "group=%EB%A7%A4%EB%A7%A4%2F%EC%B2%B4%EA%B2%B0&host=h1" {
+		t.Errorf("config query %q", cfgQ)
+	}
+	if err := c.PostConfigStatus(ctx, model.AgentConfigStatus{Host: "h1", Rev: "r2", State: model.ConfigApplied}); err != nil {
+		t.Error(err)
+	}
+	if err := c.PostCollectResult(ctx, model.CollectResult{Host: "h1", ID: "Q1", Lines: []string{"x"}}); err != nil {
+		t.Error(err)
+	}
+	if strings.Join(posted, ",") != "POST /api/v1/agent/config-status,POST /api/v1/agent/collect-result" {
+		t.Errorf("posted %v", posted)
+	}
+}
