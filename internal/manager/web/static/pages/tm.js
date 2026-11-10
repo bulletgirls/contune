@@ -8,6 +8,7 @@ import { renderFlame, compareLeaf, verdict } from '../flame.js';
 import { el, esc, badgeHTML, fmtDuration, fmtClock, fmtNum, info, shortExec, toast, DASH, LEVEL_TEXT } from '../ui.js';
 import { TRIGGER_TEXT, hashOfBoard, hashOfFlow } from './batch.js';
 import { splitPrefix } from './biz.js';
+import { can } from '../auth.js';
 
 const PAD_MIN = 30000, PAD_MAX = 5 * 60000;
 const FIXED = 30000;
@@ -140,7 +141,9 @@ export async function render(host, params) {
   function drawHead() {
     const r = st.run;
     const group = hostInfo ? hostInfo.group : '';
-    const links = exportLinks(id, Math.round(st.view.from), Math.round(st.view.to)).map(([t, h]) => `<a class="tm-dl" href="${esc(h)}" download>⤓ ${esc(t)}</a>`).join('');
+    const links = exportLinks(id, Math.round(st.view.from), Math.round(st.view.to)).map(([t, h]) => (can('operator')
+      ? `<a class="tm-dl" href="${esc(h)}" download>⤓ ${esc(t)}</a>`
+      : `<span class="tm-dl locked" title="운영 이상만 할 수 있습니다">⤓ ${esc(t)}</span>`)).join('');
     const crumbs = [];
     if (detail.board) crumbs.push(`<a href="${esc(hashOfBoard(detail.board))}">${esc(detail.board)}</a>`);
     if (r.flow_id) crumbs.push(`<a href="${esc(detail.board ? hashOfFlow(detail.board, r.flow_id) : '#runs?range=7d&flow=' + q(r.flow_id))}">${esc(r.flow_id)}</a>`);

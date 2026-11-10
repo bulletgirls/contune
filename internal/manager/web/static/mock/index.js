@@ -8,8 +8,9 @@ import * as ops from './ops.js';
 import * as editor from './editor.js';
 import * as biz from './biz.js';
 import * as alert from './alert.js';
+import * as auth from './auth.js';
 
-const ROUTES = [core, server, ops, editor, biz, alert].flatMap((m) => m.routes);
+const ROUTES = [auth, core, server, ops, editor, biz, alert].flatMap((m) => m.routes);
 
 function pageFlags(opts, q) {
   const s = new URLSearchParams(opts.search ?? (typeof location !== 'undefined' ? location.search : ''));
@@ -19,6 +20,8 @@ function pageFlags(opts, q) {
     llm: get('llm') === '1',
     rule: get('rule') === '1',
     editor: get('editor') !== '0',
+    role: get('role'),
+    login: get('login') === '1',
   };
 }
 
@@ -51,6 +54,8 @@ export async function handle(path, opts = {}) {
       }
     },
   };
+  const blocked = auth.guard(c, pathname);
+  if (blocked) return blocked;
   for (const [m, re, fn] of ROUTES) {
     if (m !== method) continue;
     const mm = re.exec(pathname);

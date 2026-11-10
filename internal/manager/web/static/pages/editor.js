@@ -3,6 +3,7 @@
 import { api, ApiError } from '../api.js';
 import { el, toast, confirmBox, DASH } from '../ui.js';
 import { hashOfFlow, hashOfBoard, fmtDT, cronText } from './batch.js';
+import { gate } from '../auth.js';
 
 // ---- 순수 함수 ----
 
@@ -260,11 +261,11 @@ function mount(page, info, st, ctx) {
   const dirtyDot = el('span', { class: 'ed-dirty', title: '저장하지 않은 변경', text: '●', hidden: true });
   const pill = el('button', { type: 'button', class: 'ed-pill', onclick: () => { ui.probs = !ui.probs; drawProbs(); } });
   const draftTag = el('span', { class: 'ed-draft', text: 'AI 초안 · 검토 후 저장', hidden: true });
-  const aiBtn = el('button', { type: 'button', class: 'ed-tbtn', text: 'AI 초안', onclick: () => openAssist() });
+  const aiBtn = gate(el('button', { type: 'button', class: 'ed-tbtn', text: 'AI 초안', onclick: () => openAssist() }), 'operator');
   const codeBtn = el('button', { type: 'button', class: 'ed-tbtn', text: '코드', 'aria-pressed': 'false', title: 'YAML 보기', onclick: () => {
     ui.code = !ui.code; codeBtn.setAttribute('aria-pressed', String(ui.code)); codeBtn.classList.toggle('on', ui.code); drawSide();
   } });
-  const saveBtn = el('button', { type: 'button', class: 'ed-save', text: '저장', onclick: () => save() });
+  const saveBtn = gate(el('button', { type: 'button', class: 'ed-save', text: '저장', onclick: () => save() }), 'admin');
   const saveMsg = el('div', { class: 'ed-savemsg', hidden: true });
   const bar = el('div', { class: 'ed-bar' }, back, el('span', { class: 'ed-tt' }, title, dirtyDot), pill, draftTag,
     el('span', { class: 'ed-grow' }), aiBtn, codeBtn, saveBtn);
@@ -792,7 +793,7 @@ function mount(page, info, st, ctx) {
       ui.next = r.next_runs || [];
     } catch (e) {
       if (!alive || my !== ui.seq) return;
-      ui.errors = [e instanceof ApiError ? e.error || `오류 ${e.status}` : String(e)];
+      ui.errors = [e instanceof ApiError ? (e.need ? '검증은 운영 이상만 할 수 있습니다' : e.error || `오류 ${e.status}`) : String(e)];
       ui.ok = false;
     }
     ui.checked = true;

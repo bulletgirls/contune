@@ -7,6 +7,7 @@ import { el, esc, numUnit, fmtNum, relTime, tabBar, shortExec, info, EMPTY, DASH
 import { lineChart, fmtTime, fmtTick } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
 import { hashWith } from '../tree.js';
+import { gate } from '../auth.js';
 import { bulletSVG, ALERT_MARK } from './dashboard.js';
 
 const SYNC = 'biz';
@@ -500,6 +501,7 @@ function logExplorer(sec, panel) {
   let timer = null;
   search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { text = search.value.trim(); pattern = null; reload(); }, 300); });
   live.addEventListener('change', () => { syncLive(); if (follow) load(false).catch(() => {}); });
+  gate(csv, 'operator');
   csv.addEventListener('click', async () => {
     const { from, to } = tr.current();
     const out = await api(logPath(panel, level, text, from, to, '/export/logs', 0));
@@ -532,7 +534,7 @@ function alertPanel(sec, panel) {
       const target = a.exec_id ? '#run/' + a.exec_id : a.host ? '#host/' + encodeURIComponent(a.host) + '/overview' : null;
       const ack = a.acked_at
         ? el('span', { class: 'acked', text: '확인됨' })
-        : el('button', { type: 'button', class: 'ghost', text: '확인', title: '알림 확인(Ack)', onclick: async (ev) => { ev.preventDefault(); ev.stopPropagation(); await api(`/alerts/${a.id}/ack`, { method: 'POST', body: {} }); load().catch(() => {}); } });
+        : gate(el('button', { type: 'button', class: 'ghost', text: '확인', title: '알림 확인(Ack)', onclick: async (ev) => { ev.preventDefault(); ev.stopPropagation(); await api(`/alerts/${a.id}/ack`, { method: 'POST', body: {} }); load().catch(() => {}); } }), 'operator');
       const row = el(target ? 'a' : 'div', { class: `bz-arow ${lv}${a.acked_at ? ' acked' : ''}`, href: target },
         el('span', { class: `am ${lv}`, text: ALERT_MARK[lv], title: LEVEL_TEXT[lv] }),
         el('span', { class: 'at' }, el('span', { class: 'amsg', text: a.message }), el('span', { class: 'ameta', text: [a.host, relTime(a.ts)].filter(Boolean).join(' · ') })),

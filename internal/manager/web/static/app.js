@@ -1,7 +1,8 @@
 // 라우터 · 위 막대 · 시계 · 알림 종 · 테마.
-import { api, poll, stopScope, onHealth, isHealthy } from './api.js';
+import { api, poll, stopScope, onHealth, isHealthy, onAuthRequired, onForbidden } from './api.js';
 import { createTree, parseRoute } from './tree.js';
-import { fmtClock } from './ui.js';
+import { fmtClock, toast } from './ui.js';
+import { loadMe, logout, showLogin, drawUser, roleName } from './auth.js';
 
 const PAGES = {
   dashboard: './pages/dashboard.js',
@@ -67,8 +68,44 @@ function initTop() {
   }, 5000, { global: true });
 }
 
-initTheme();
-initTop();
-const tree = createTree(document.getElementById('tree'), { onBoards: (b) => { boards = b; } });
-window.addEventListener('hashchange', route);
-tree.ready.finally(route);
+// 로그인 화면을 띄우고, 로그인하면 사용자 칸을 채우고 현재 해시의 화면을 다시 그린다.
+let relogin = null;
+function askLogin(note) {
+  if (relogin) return relogin;
+  stopScope();
+  if (current && current.dispose) { try { current.dispose(); } catch (e) { console.error(e); } }
+  current = null;
+  document.getElementById('page').replaceChildren();
+  relogin = (async () => {
+    await showLogin(note);
+    await loadMe();
+    drawUser(document.getElementById('user'), doLogout);
+    relogin = null;
+    route();
+  })();
+  return relogin;
+}
+async function doLogout() {
+  await logout();
+  askLogin('');
+}
+
+function start() {
+  initTop();
+  const tree = createTree(document.getElementById('tree'), { onBoards: (b) => { boards = b; } });
+  onAuthRequired(() => askLogin('세션이 끝났습니다. 다시 로그인해 주세요'));
+  onForbidden((need) => toast(`권한이 없습니다(${roleName(need)} 이상)`));
+  window.addEventListener('hashchange', route);
+  tree.ready.finally(route);
+}
+
+async function boot() {
+  initTheme();
+  if ((await loadMe()) === 'login') {
+    await showLogin();
+    await loadMe();
+  }
+  drawUser(document.getElementById('user'), doLogout);
+  start();
+}
+boot();

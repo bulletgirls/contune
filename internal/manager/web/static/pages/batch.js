@@ -4,6 +4,7 @@
 import { api, poll, ApiError } from '../api.js';
 import { el, table, badgeHTML, fmtDuration, toast, openDrawer, closeDrawer, confirmBox, DASH, esc, relTime, shortExec } from '../ui.js';
 import { flowState } from '../tree.js';
+import { gate } from '../auth.js';
 import { renderFlowGraph, flowColumns } from '../flowgraph.js';
 
 const p2 = (n) => String(n).padStart(2, '0');
@@ -298,20 +299,20 @@ async function renderFlow(host, params, query) {
     const segs = (f.board || board).split('/').filter(Boolean);
     crumb.replaceChildren(el('a', { href: '#board/', text: '배치' }));
     segs.forEach((s, i) => crumb.append(el('span', { class: 'bt-sep', text: '›' }), el('a', { href: hashOfBoard(segs.slice(0, i + 1).join('/')), text: s })));
-    const btns = [el('button', { type: 'button', class: 'primary', text: '▶ 지금 실행', onclick: async () => {
+    const btns = [gate(el('button', { type: 'button', class: 'primary', text: '▶ 지금 실행', onclick: async () => {
       if (!(await confirmBox({ title: '지금 실행', message: `${f.id}의 새 실행을 시작합니다.`, okText: '실행' })).ok) return;
       const r = await act('실행을 시작함', () => api(`/flows/${encodeURIComponent(f.id)}/run`, { method: 'POST' }));
       if (r) { S.sel = ''; keepQuery(); }
-    } })];
+    } }), 'operator')];
     if (edit) {
       btns.push(
         el('a', { class: 'bt-btn', href: '#edit/' + encodeURIComponent(f.id), text: '편집' }),
         el('a', { class: 'bt-btn', href: '#edit/new?from=' + encodeURIComponent(f.id), text: '복제' }),
-        el('button', { type: 'button', class: 'danger', text: '삭제', onclick: async () => {
+        gate(el('button', { type: 'button', class: 'danger', text: '삭제', onclick: async () => {
           if (!(await confirmBox({ title: '플로우 삭제', message: `${f.id} 정의 파일을 지웁니다. 실행 이력은 남습니다.`, okText: '삭제' })).ok) return;
           const r = await act('삭제함', () => api(`/flows/${encodeURIComponent(f.id)}`, { method: 'DELETE' }));
           if (r !== null) location.hash = hashOfBoard(f.board || board);
-        } }));
+        } }), 'admin'));
     }
     titleRow.replaceChildren(el('h2', { class: 'bt-h' }, el('span', { text: f.id })), titleState, el('span', { class: 'bt-sp' }), ...btns);
   }
@@ -576,7 +577,7 @@ async function renderFlow(host, params, query) {
       const res = await act(label, () => api(path, { method: 'POST', body: withReason ? { reason: c.reason } : undefined }));
       if (res && res.exec_id && res.exec_id !== run.exec_id) goExec(res.exec_id); else reload().catch(() => {});
     };
-    const btn = (text, ok, why, onclick, cls = '') => el('button', { type: 'button', class: cls, text, disabled: !ok, title: ok ? '' : why, onclick });
+    const btn = (text, ok, why, onclick, cls = '') => gate(el('button', { type: 'button', class: cls, text, disabled: !ok, title: ok ? '' : why, onclick }), 'operator');
     // 같은 플로우 실행 안의 이 스텝 시도들
     const fr = S.frs.find((f) => f.id === run.flow_run_id);
     const tries = (fr && fr.steps[run.step_id]) || [];

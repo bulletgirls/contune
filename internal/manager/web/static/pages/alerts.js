@@ -2,6 +2,7 @@
 import { api, poll } from '../api.js';
 import { el, esc, relTime, fmtClock, table, badgeHTML, toast, DASH, LEVEL_TEXT as LV } from '../ui.js';
 import { alertTarget, panelsInScope } from './dashboard.js';
+import { gate } from '../auth.js';
 
 // ---- 순수 함수 (DOM 없이 호출) ----
 export const KIND_TEXT = { host: '서버', run: '실행', tile: '업무', log: '로그', risk: '장애 위험도' };
@@ -57,10 +58,10 @@ export function render(root, params, query) {
   const ackCell = (a) => {
     if (a.acked_at) return el('span', { class: 'acked', text: `✓ ${fmtClock(a.acked_at)}` });
     if (a.state !== 'firing') return DASH;
-    return el('button', { type: 'button', text: '확인', onclick: async (e) => {
+    return gate(el('button', { type: 'button', text: '확인', onclick: async (e) => {
       e.target.disabled = true;
       try { await api(`/alerts/${a.id}/ack`, { method: 'POST' }); a.acked_at = Date.now(); draw(); refreshBell(); } catch (err) { e.target.disabled = false; toast('확인하지 못함'); }
-    } });
+    } }), 'operator');
   };
   const drawBar = () => {
     bar.replaceChildren(
