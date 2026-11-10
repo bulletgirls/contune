@@ -182,4 +182,4 @@ button.cw-chip.num { padding:1px 10px; }
 .cw-mstat { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:13px; font-variant-numeric:tabular-nums; }
 .cw-warnt { color:var(--warn); }
 .cw-exp { margin-left:auto; }
-                                                             
+.cl-mcell { align-items:center; }
