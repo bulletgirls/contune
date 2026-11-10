@@ -196,7 +196,19 @@ func (a *API) writeCSV(w http.ResponseWriter, r *http.Request, q model.AuditQuer
 			safeCell(e.Actor), safeCell(e.Action), safeCell(e.Target), safeCell(e.Detail)})
 	}
 	cw.Flush()
-	Record(r, a.d.State, a.d.Now, actionExport, "audit", fmt.Sprintf("%d~%d %d건", q.From, q.To, len(list)))
+	// 화면에서 읽히게 매니저 시간대 시각과 거른 조건을 남긴다.
+	const layout = "2006-01-02 15:04"
+	detail := time.UnixMilli(q.From).In(tz).Format(layout) + " ~ " + time.UnixMilli(q.To).In(tz).Format(layout)
+	if k := r.URL.Query().Get("kind"); k != "" {
+		detail += " kind=" + k
+	}
+	if q.Actor != "" {
+		detail += " actor=" + q.Actor
+	}
+	if q.Q != "" {
+		detail += " q=" + q.Q
+	}
+	Record(r, a.d.State, a.d.Now, actionExport, "audit", fmt.Sprintf("%s %d건", detail, len(list)))
 }
 
 // safeCell은 수식으로 읽힐 칸 앞에 '를 붙인다(CSV 수식 주입 방지).
