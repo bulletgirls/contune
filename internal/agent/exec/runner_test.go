@@ -26,6 +26,9 @@ type fakeManager struct {
 
 	commands    func(poll int) []model.Command // poll은 1부터
 	eventStatus func(post int) int             // post는 1부터. 0이면 200
+
+	revs  []string                                                       // 롱폴링의 rev 질의(L2), 없으면 "-"
+	extra func(poll int) (configRev string, reqs []model.CollectRequest) // 롱폴링 응답의 config_rev·requests
 }
 
 func newFakeManager(t *testing.T) *fakeManager {
@@ -37,7 +40,12 @@ func newFakeManager(t *testing.T) *fakeManager {
 			m.mu.Lock()
 			m.polls++
 			n := m.polls
-			fn := m.commands
+			fn, extra := m.commands, m.extra
+			if q := r.URL.Query(); q.Has("rev") {
+				m.revs = append(m.revs, q.Get("rev"))
+			} else {
+				m.revs = append(m.revs, "-")
+			}
 			m.mu.Unlock()
 			var cmds []model.Command
 			if fn != nil {
@@ -46,7 +54,11 @@ func newFakeManager(t *testing.T) *fakeManager {
 			if cmds == nil {
 				cmds = []model.Command{}
 			}
-			json.NewEncoder(w).Encode(api.CommandsResponse{Commands: cmds})
+			resp := api.CommandsResponse{Commands: cmds}
+			if extra != nil {
+				resp.ConfigRev, resp.Requests = extra(n)
+			}
+			json.NewEncoder(w).Encode(resp)
 		case "/api/v1/agent/events":
 			var e api.EventReport
 			if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
@@ -472,5 +484,62 @@ func TestSeenSetBounded(t *testing.T) {
 	}
 	if s.add("d") || s.add("c") {
 		t.Error("최근 것은 기억해야 함")
+	}
+}
+
+// TestPollRevHandoff: 롱폴링에 본 판(rev)을 붙이고, 응답의 config_rev·requests를 넘긴다(L2).
+// ConfigRev·OnPoll이 nil이면 rev를 붙이지 않는다(지금과 같음).
+func TestPollRevHandoff(t *testing.T) {
+	m := newFakeManager(t)
+	m.extra = func(n int) (string, []model.CollectRequest) {
+		if n == 1 {
+			return "R2", []model.CollectRequest{{ID: "q1", Kind: "peek", Path: "{log_dir}/a.log", Lines: 5}}
+		}
+		return "R2", nil
+	}
+	var mu sync.Mutex
+	rev := "none"
+	var got []string
+	var reqs []model.CollectRequest
+	r := NewRunner(api.NewClient(m.srv.URL, "tok"), "h1", &fakeTracker{}, RunnerOptions{
+		LogDir: t.TempDir(), WorkDir: t.TempDir(), PollWait: 50 * time.Millisecond, Now: time.Now,
+		ConfigRev: func() string { mu.Lock(); defer mu.Unlock(); return rev },
+		OnPoll: func(configRev string, rs []model.CollectRequest) {
+			mu.Lock()
+			defer mu.Unlock()
+			got = append(got, configRev)
+			reqs = append(reqs, rs...)
+			rev = configRev // 본 판을 바꾼다
+		},
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); r.Run(ctx) }()
+	if !waitFor(t, 5*time.Second, func() bool { p, _, _ := m.snapshot(); return p >= 2 }) {
+		t.Fatal("롱폴링이 두 번 오지 않음")
+	}
+	cancel()
+	<-done
+	m.mu.Lock()
+	revs := append([]string(nil), m.revs...)
+	m.mu.Unlock()
+	if len(revs) < 2 || revs[0] != "none" || revs[1] != "R2" {
+		t.Errorf("rev 질의 %v, [none R2 …]이어야 함", revs)
+	}
+	mu.Lock()
+	if len(got) < 1 || got[0] != "R2" || len(reqs) != 1 || reqs[0].ID != "q1" || reqs[0].Lines != 5 {
+		t.Errorf("넘겨받은 것 %v %+v", got, reqs)
+	}
+	mu.Unlock()
+
+	m2 := newFakeManager(t)
+	startRunner(t, m2, nil)
+	if !waitFor(t, 5*time.Second, func() bool { p, _, _ := m2.snapshot(); return p >= 1 }) {
+		t.Fatal("롱폴링이 오지 않음")
+	}
+	m2.mu.Lock()
+	defer m2.mu.Unlock()
+	if m2.revs[0] != "-" {
+		t.Errorf("ConfigRev가 없으면 rev를 붙이지 않음: %v", m2.revs)
 	}
 }

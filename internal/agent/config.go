@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"time"
 
@@ -34,6 +35,18 @@ type Config struct {
 
 	// FaultSilentAfter가 0이 아니면 그 시간 뒤 지표 전송을 멈춘다(시연용 고장 주입). 명령 수신과 실행은 계속.
 	FaultSilentAfter time.Duration `yaml:"fault_silent_after"`
+
+	// Remote는 원격 수집 설정(카드 L-collect)이다. 무엇을 수집할지는 매니저 화면에서 받고,
+	// 켜는 것과 읽어도 되는 폴더는 이 YAML에만 둔다.
+	Remote RemoteConfig `yaml:"remote"`
+}
+
+// RemoteConfig는 에이전트 YAML의 remote 블록이다.
+type RemoteConfig struct {
+	// Enabled가 참일 때만 매니저 화면의 출처를 받아 적용하고, 파일 찾기·미리보기 요청에 답한다(기본 꺼짐).
+	Enabled bool `yaml:"enabled"`
+	// ReadRoots는 원격 출처·파일 찾기·미리보기가 읽어도 되는 폴더다(실제 경로 기준). 기본 [log_dir], 절대 경로로 정리한다.
+	ReadRoots []string `yaml:"read_roots"`
 }
 
 // defaultLogs는 logs를 적지 않았을 때의 출처(스텝 실행 로그의 (E) 줄)다.
@@ -75,6 +88,24 @@ func (c *Config) applyDefaults() {
 	if len(c.Logs) == 0 {
 		c.Logs = defaultLogs()
 	}
+	var roots []string
+	for _, r := range c.Remote.ReadRoots {
+		if r != "" {
+			roots = append(roots, absPath(r))
+		}
+	}
+	if len(roots) == 0 {
+		roots = []string{absPath(c.LogDir)}
+	}
+	c.Remote.ReadRoots = roots
+}
+
+// absPath는 경로를 절대 경로로 정리한다(filepath.Abs가 실패하면 Clean만).
+func absPath(p string) string {
+	if a, err := filepath.Abs(p); err == nil {
+		return a
+	}
+	return filepath.Clean(p)
 }
 
 var varRe = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)

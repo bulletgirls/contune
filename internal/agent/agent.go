@@ -13,6 +13,7 @@ import (
 	"eum/internal/agent/logtail"
 	"eum/internal/agent/probe"
 	"eum/internal/agent/profile"
+	"eum/internal/agent/remote"
 	"eum/internal/agent/ship"
 	"eum/internal/api"
 	"eum/internal/model"
@@ -56,16 +57,23 @@ func Run(ctx context.Context, cfg Config) error {
 		MaxSamples: 100000, MaxBatch: 5000, MaxProfiles: 60, MaxLogs: 10000, Interval: cfg.Interval,
 	})
 	tracker := exec.NewTracker(cfg.Host, exec.TrackerOptions{})
-	runner := exec.NewRunner(client, cfg.Host, tracker, exec.RunnerOptions{
-		LogDir: cfg.LogDir, WorkDir: cfg.WorkDir, Vars: cfg.Vars,
-		PollWait: 25 * time.Second, KillGrace: 5 * time.Second, Now: time.Now, Allow: allow,
-	})
 	tailer, err := logtail.New(cfg.Host, cfg.LogDir, cfg.Logs, logtail.Options{
 		Now: time.Now, ScanEvery: 5 * time.Second, MaxLinesPerTick: 1000, MaxLineBytes: 4096,
+		ReadRoots: cfg.Remote.ReadRoots,
 	})
 	if err != nil {
 		return fmt.Errorf("agent %s logs: %w", cfg.Host, err)
 	}
+	// 원격 수집 설정(카드 L-collect): 꺼져 있어도 상태(disabled)는 보고하고 요청은 거절한다.
+	rem := remote.New(client, tailer, remote.Options{
+		Host: cfg.Host, Group: cfg.Group, LogDir: cfg.LogDir, WorkDir: cfg.WorkDir,
+		Enabled: cfg.Remote.Enabled, ReadRoots: cfg.Remote.ReadRoots, Local: cfg.Logs, Now: time.Now,
+	})
+	runner := exec.NewRunner(client, cfg.Host, tracker, exec.RunnerOptions{
+		LogDir: cfg.LogDir, WorkDir: cfg.WorkDir, Vars: cfg.Vars,
+		PollWait: 25 * time.Second, KillGrace: 5 * time.Second, Now: time.Now, Allow: allow,
+		ConfigRev: rem.Rev, OnPoll: rem.OnPoll,
+	})
 	profiler, err := profile.Build(cfg.Profiler)
 	if err != nil {
 		return fmt.Errorf("agent %s profiler: %w", cfg.Host, err)
@@ -89,6 +97,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	start("ship", shipper.Run)
 	start("runner", runner.Run)
+	start("remote", rem.Run)
 	if loop != nil {
 		start("profile", loop.Run)
 	}
@@ -100,7 +109,8 @@ func Run(ctx context.Context, cfg Config) error {
 		defer t.Stop()
 	}
 
-	log.Info("agent 시작", "manager", cfg.Manager, "probes", len(probes), "profiler", profiler != nil, "allow", len(allow))
+	log.Info("agent 시작", "manager", cfg.Manager, "probes", len(probes), "profiler", profiler != nil, "allow", len(allow),
+		"remote", cfg.Remote.Enabled)
 	collect(ctx, log, probes, tracker, tailer, shipper)
 	tick := time.NewTicker(cfg.Interval)
 	defer tick.Stop()

@@ -21,6 +21,12 @@ type RunnerOptions struct {
 	Now             func() time.Time
 	// Allow는 에이전트 허용 목록이다(보안 S3, CompileAllow). 비면 모두 실행한다. run 명령만 검사하고 kill은 검사하지 않는다.
 	Allow []*regexp.Regexp
+	// ConfigRev는 롱폴링에 붙일, 에이전트가 본 원격 수집 설정 판(rev)을 준다(카드 L-collect).
+	// nil이거나 ""를 주면 붙이지 않는다(원격 설정을 쓰지 않음).
+	ConfigRev func() string
+	// OnPoll은 롱폴링 응답의 config_rev·requests를 넘겨받는다. nil이면 버린다.
+	// 명령 수신을 막지 않도록 바로 돌아와야 한다(오래 걸리는 일은 따로 돌린다).
+	OnPoll func(configRev string, reqs []model.CollectRequest)
 }
 
 const (
@@ -76,7 +82,11 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	backoff := pollBackoffMin
 	for ctx.Err() == nil {
-		resp, err := r.c.GetCommands(ctx, r.host, r.o.PollWait)
+		rev := ""
+		if r.o.ConfigRev != nil {
+			rev = r.o.ConfigRev()
+		}
+		resp, err := r.c.GetCommandsRev(ctx, r.host, r.o.PollWait, rev)
 		if ctx.Err() != nil {
 			break
 		}
@@ -89,6 +99,9 @@ func (r *Runner) Run(ctx context.Context) error {
 			continue
 		}
 		backoff = pollBackoffMin
+		if r.o.OnPoll != nil {
+			r.o.OnPoll(resp.ConfigRev, resp.Requests)
+		}
 		if r.dispatch(resp.Commands) == 0 && !sleepCtx(ctx, idlePause) {
 			break
 		}

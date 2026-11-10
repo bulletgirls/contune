@@ -2,11 +2,17 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"eum/internal/model"
 )
 
 func TestAgentConfig(t *testing.T) {
@@ -129,4 +135,121 @@ allow:
 	if err := Run(context.Background(), Config{Host: "x", CA: filepath.Join(dir, "missing.pem"), LogDir: dir, WorkDir: dir}); err == nil {
 		t.Error("없는 ca 파일은 Run 에러")
 	}
+}
+
+// TestAgentConfigRemote는 원격 수집 설정 블록이다(L2): 기본은 꺼짐, read_roots 기본은 [log_dir], 절대 경로로.
+func TestAgentConfigRemote(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "a.yaml")
+	os.WriteFile(p, []byte("host: x\nlog_dir: /var/lib/eum/logs\n"), 0o644)
+	c, err := LoadConfig(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Remote.Enabled || len(c.Remote.ReadRoots) != 1 || c.Remote.ReadRoots[0] != "/var/lib/eum/logs" {
+		t.Errorf("기본 remote %+v", c.Remote)
+	}
+
+	os.WriteFile(p, []byte("host: x\nlog_dir: /var/lib/eum/logs\nremote:\n  enabled: true\n  read_roots: [/var/log/app/, '', rel/logs, /data//x/../y]\n"), 0o644)
+	c, err = LoadConfig(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wd, _ := os.Getwd()
+	want := []string{"/var/log/app", filepath.Join(wd, "rel/logs"), "/data/y"}
+	if !c.Remote.Enabled || strings.Join(c.Remote.ReadRoots, ",") != strings.Join(want, ",") {
+		t.Errorf("remote %+v, read_roots %v이어야 함", c.Remote, want)
+	}
+
+	c = Config{Host: "x"}
+	c.applyDefaults()
+	if len(c.Remote.ReadRoots) != 1 || c.Remote.ReadRoots[0] != filepath.Join(wd, "logs") {
+		t.Errorf("기본 log_dir ./logs의 절대 경로: %v", c.Remote.ReadRoots)
+	}
+}
+
+// TestRunRemoteWiring은 조립이다(L2): 켜져 있으면 롱폴링에 본 판을 붙이고 바뀐 판을 받아 적용·보고하며,
+// 꺼져 있어도 상태(disabled)는 보고하고 판은 붙이지 않는다.
+func TestRunRemoteWiring(t *testing.T) {
+	var mu sync.Mutex
+	revs := map[string][]string{} // host → rev 질의("-"는 없음)
+	var statuses []model.AgentConfigStatus
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/agent/commands":
+			q := r.URL.Query()
+			rev := "-"
+			if q.Has("rev") {
+				rev = q.Get("rev")
+			}
+			mu.Lock()
+			revs[q.Get("host")] = append(revs[q.Get("host")], rev)
+			mu.Unlock()
+			json.NewEncoder(w).Encode(map[string]any{"commands": []any{}, "config_rev": "R9"})
+		case "/api/v1/agent/config":
+			json.NewEncoder(w).Encode(model.AgentConfig{Rev: "R9", Logs: []model.LogSource{
+				{Name: "app", Path: "{log_dir}/app.log", Match: []model.LogMatch{{Re: "x", Level: "warn"}}}}})
+		case "/api/v1/agent/config-status":
+			var s model.AgentConfigStatus
+			json.NewDecoder(r.Body).Decode(&s)
+			mu.Lock()
+			statuses = append(statuses, s)
+			mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	run := func(host string, enabled bool) func() {
+		dir := t.TempDir()
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() {
+			done <- Run(ctx, Config{Host: host, Group: "g", Manager: srv.URL, LogDir: filepath.Join(dir, "logs"),
+				WorkDir: filepath.Join(dir, "work"), Allow: []string{"^x$"}, Remote: RemoteConfig{Enabled: enabled}})
+		}()
+		return func() {
+			cancel()
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Errorf("Run %s: %v", host, err)
+				}
+			case <-time.After(10 * time.Second):
+				t.Errorf("Run %s가 끝나지 않음", host)
+			}
+		}
+	}
+	stopOn, stopOff := run("on-1", true), run("off-1", false)
+	defer stopOff()
+	defer stopOn()
+	ok := func() bool { mu.Lock(); defer mu.Unlock(); return bothReported(statuses) }
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline) && !ok(); {
+		time.Sleep(20 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !bothReported(statuses) {
+		t.Fatalf("상태 보고 %+v", statuses)
+	}
+	if r := revs["on-1"]; len(r) == 0 || r[0] != "none" {
+		t.Errorf("켜진 에이전트의 첫 rev 질의 %v, none이어야 함", r)
+	}
+	for _, r := range revs["off-1"] {
+		if r != "-" {
+			t.Errorf("꺼진 에이전트가 rev를 붙임: %v", revs["off-1"])
+			break
+		}
+	}
+}
+
+// bothReported는 TestRunRemoteWiring이 기다리는 두 보고(on-1 applied R9, off-1 disabled)가 모두 있는지 본다.
+func bothReported(ss []model.AgentConfigStatus) bool {
+	var on, off bool
+	for _, s := range ss {
+		on = on || s.Host == "on-1" && s.State == model.ConfigApplied && s.Rev == "R9"
+		off = off || s.Host == "off-1" && s.State == model.ConfigDisabled && s.Rev == ""
+	}
+	return on && off
 }
