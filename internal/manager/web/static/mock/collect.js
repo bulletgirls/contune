@@ -30,9 +30,9 @@ function state(now) {
     errors: [{ file: 'group-사후처리.yaml', msg: 'logs[0].match[1].re: 정규식 오류(missing closing ): `^(E`)' }],
     pendingUntil: {}, seen: {},
     audit: [
-      { id: 3, ts: now - 95 * MIN, actor: 'user:admin', action: 'collect.save', target: 'group:매매/체결', detail: `group-매매-체결.yaml ${hex('g0')} → ${hex('g1')} 출처 1개` },
-      { id: 2, ts: now - 26 * 60 * MIN, actor: 'user:operator', action: 'collect.save', target: 'all', detail: `all.yaml ${hex('a0')} → ${hex('a1')} 출처 1개` },
-      { id: 1, ts: now - 30 * 60 * MIN, actor: 'user:admin', action: 'collect.save', target: 'all', detail: `all.yaml - → ${hex('a0')} 출처 1개` },
+      { id: 3, ts: now - 95 * MIN, actor: 'user:admin', action: 'collect.save', target: 'group:매매/체결', detail: `group-매매-체결.yaml ${hex('g0')} → ${hex('g1')} 로그 파일 1개` },
+      { id: 2, ts: now - 26 * 60 * MIN, actor: 'user:operator', action: 'collect.save', target: 'all', detail: `all.yaml ${hex('a0')} → ${hex('a1')} 로그 파일 1개` },
+      { id: 1, ts: now - 30 * 60 * MIN, actor: 'user:admin', action: 'collect.save', target: 'all', detail: `all.yaml - → ${hex('a0')} 로그 파일 1개` },
     ],
     auditSeq: 3,
   };
@@ -149,11 +149,11 @@ function markPending(s, c, scope) {
 function put(c) {
   const s = state(c.now);
   const scope = c.q.get('scope') || '';
-  if (!validScope(scope)) return err(400, '범위 형식이 맞지 않음');
+  if (!validScope(scope)) return err(400, '적용 대상 형식이 맞지 않음');
   const b = c.json();
   if (!b || !Array.isArray(b.logs)) return err(400, '본문이 맞지 않음');
   const probs = problems(b.logs);
-  if (probs.length) return err(400, '수집 설정에 문제가 있음', { problems: probs });
+  if (probs.length) return err(400, '로그 수집 설정에 문제가 있음', { problems: probs });
   const cur = s.sets.find((x) => x.scope === scope);
   if (cur && (b.if_match || '') !== cur.sha) return err(409, '다른 곳에서 먼저 고쳤음', { sha: cur.sha });
   if (!cur && b.if_match) return err(409, '다른 곳에서 먼저 지웠음', { sha: '' });
@@ -163,14 +163,14 @@ function put(c) {
   const set = cur || { scope, file: fileFor(s, scope), logs: [], sha: '' };
   set.logs = b.logs; set.sha = sha;
   if (!cur) s.sets.push(set);
-  pushAudit(s, c, 'collect.save', scope, `${set.file} ${old} → ${sha.slice(0, 8)} 출처 ${b.logs.length}개`);
+  pushAudit(s, c, 'collect.save', scope, `${set.file} ${old} → ${sha.slice(0, 8)} 로그 파일 ${b.logs.length}개`);
   return ok({ scope, file: set.file, sha, logs: set.logs });
 }
 function del(c) {
   const s = state(c.now);
   const scope = c.q.get('scope') || '';
   const i = s.sets.findIndex((x) => x.scope === scope);
-  if (i < 0) return err(404, '그 범위의 설정이 없음');
+  if (i < 0) return err(404, '그 적용 대상의 설정이 없음');
   if ((c.q.get('if_match') || '') !== s.sets[i].sha) return err(409, '다른 곳에서 먼저 고쳤음', { sha: s.sets[i].sha });
   markPending(s, c, scope);
   const [gone] = s.sets.splice(i, 1);

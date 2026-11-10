@@ -81,7 +81,7 @@ function afterSave(scope, host, reload) {
     reload();
   });
 }
-const AUDIT_TEXT = { 'collect.save': '수집 설정 저장', 'collect.delete': '수집 설정 삭제', 'collect.reload': '다시 읽음' };
+const AUDIT_TEXT = { 'collect.save': '변경', 'collect.delete': '삭제', 'collect.reload': '다시 읽음' };
 const fmtAt = (ts) => {
   const d = new Date(ts); const p = (n) => String(n).padStart(2, '0');
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
@@ -96,10 +96,10 @@ export async function render(root, params, query) {
   dispose();
   root.classList.add('cl');
   const scope = (query && query.s) || 'all';
-  root.replaceChildren(el('h2', { class: 'sec', text: '수집 설정' }));
+  root.replaceChildren(el('h2', { class: 'sec', text: '로그 수집' }));
   const head = el('div', { class: 'cl-head' });
   const notes = el('div', { class: 'cl-notes' });
-  const treeBox = el('nav', { class: 'cl-tree', 'aria-label': '범위' });
+  const treeBox = el('nav', { class: 'cl-tree', 'aria-label': '적용 대상' });
   const srcBox = el('section', { class: 'cl-sec' });
   const stBox = el('section', { class: 'cl-sec' });
   const histBox = el('details', { class: 'cl-hist' });
@@ -114,10 +114,10 @@ export async function render(root, params, query) {
   };
 
   function drawHead() {
-    head.replaceChildren(el('span', { class: 'meta', text: `설정 폴더 ${data.dir || DASH} · 범위 ${data.sets.length}개 · 서버 ${data.hosts.length}대` }),
+    head.replaceChildren(el('span', { class: 'meta', text: `설정 폴더 ${data.dir || DASH} · 적용 대상 ${data.sets.length}개 · 서버 ${data.hosts.length}대` }),
       el('span', { class: 'grow' }),
       el('button', { type: 'button', class: 'ghost', text: '폴더 다시 읽기', title: '손으로 고친 파일을 반영합니다', onclick: async () => {
-        try { const r = await api('/collect/reload', { method: 'POST' }); toast(`다시 읽음: 범위 ${r.sets}개, 읽지 못한 파일 ${(r.errors || []).length}개`); sig = ''; load(); } catch (e) { /* 알림은 api가 한다 */ }
+        try { const r = await api('/collect/reload', { method: 'POST' }); toast(`다시 읽음: 적용 대상 ${r.sets}개, 읽지 못한 파일 ${(r.errors || []).length}개`); sig = ''; load(); } catch (e) { /* 알림은 api가 한다 */ }
       } }));
     gate(head.lastChild, 'admin');
     const n = [];
@@ -132,11 +132,11 @@ export async function render(root, params, query) {
 
   function drawTree() {
     const nodes = scopeTree(data.sets, data.hosts);
-    treeBox.replaceChildren(el('div', { class: 'cl-tt', text: '범위' }), ...nodes.map((n) => {
+    treeBox.replaceChildren(el('div', { class: 'cl-tt', text: '적용 대상' }), ...nodes.map((n) => {
       const set = data.sets.find((s) => s.scope === n.scope);
       return el('a', { class: 'cl-node' + (n.scope === scope ? ' sel' : '') + (n.kind === 'host' ? ' host' : ''), href: hashWith('collect', { s: n.scope === 'all' ? '' : n.scope }), style: `padding-left:${8 + n.depth * 14}px`, title: scopeName(n.scope) },
         el('span', { class: 'tl', text: n.kind === 'host' ? `▫ ${n.label}` : n.label }),
-        set ? el('span', { class: 'cnt', title: '이 범위가 정한 출처 수', text: String(set.logs.length) }) : el('span', { class: 'cnt none', text: DASH }));
+        set ? el('span', { class: 'cnt', title: '여기서 정한 로그 파일 수', text: String(set.logs.length) }) : el('span', { class: 'cnt none', text: DASH }));
     }));
   }
 
@@ -162,29 +162,29 @@ export async function render(root, params, query) {
     const lockTip = !data.editable ? LOCKED_TIP : '관리 계정만 할 수 있습니다';
     const lock = (b) => { if (locked) { b.disabled = true; b.title = lockTip; } return b; };
     const t = table({
-      empty: '이 범위에서 보이는 출처가 없습니다',
+      empty: '여기에 걸린 로그 파일이 없습니다',
       rows,
       columns: [
         { key: 'name', label: '이름', render: (r) => el('span', { class: 'cl-name', text: r.name }) },
         { key: 'path', label: '경로', render: (r) => el('code', { class: 'cl-path', text: r.path }) },
         { key: 'match', label: '규칙', render: (r) => rulesCell(r.match) },
-        { key: 'scope', label: '정한 곳', render: (r) => (r.own ? (r.overrides ? el('span', { class: 'badge warn', text: '덮어씀', title: '더 넓은 범위의 같은 이름 출처를 이 범위가 바꿈' }) : el('span', { class: 'meta', text: '이 범위' })) : el('span', { class: 'meta', text: `${scopeName(r.scope)}에서 받음` })) },
+        { key: 'scope', label: '정한 곳', render: (r) => (r.own ? (r.overrides ? el('span', { class: 'badge warn', text: '덮어씀', title: '더 넓은 적용 대상의 같은 이름 로그 파일을 여기서 바꿈' }) : el('span', { class: 'meta', text: '여기' })) : el('span', { class: 'meta', text: `${scopeName(r.scope)}에서 받음` })) },
         { key: 'x', label: '', render: (r) => (r.own ? el('span', { class: 'cl-act' },
           lock(el('button', { type: 'button', text: '편집', onclick: () => openAdd({ scope, source: { name: r.name, path: r.path, match: r.match } }) })),
           lock(el('button', { type: 'button', class: 'ghost', text: '삭제', onclick: () => del(set, r) }))) : '') },
       ],
     });
     t.querySelectorAll('tbody tr').forEach((tr, i) => { if (rows[i] && !rows[i].own) tr.classList.add('inh'); });
-    const add = lock(el('button', { type: 'button', class: 'primary', text: '+ 출처 추가', onclick: () => openAdd(null) }));
-    if (!hostsOfScope().length) { add.disabled = true; add.title = '이 범위에 걸린 서버가 없어 파일을 찾을 수 없습니다'; }
+    const add = lock(el('button', { type: 'button', class: 'primary', text: '+ 로그 파일 추가', onclick: () => openAdd(null) }));
+    if (!hostsOfScope().length) { add.disabled = true; add.title = '이 적용 대상에 걸린 서버가 없어 파일을 찾을 수 없습니다'; }
     srcBox.replaceChildren(
-      el('h3', { class: 'sec' }, `출처 · ${scopeName(scope)} `, el('span', { class: 'meta', text: set ? `${set.file} · 이 범위가 정한 출처 ${set.logs.length}개` : '이 범위의 설정 파일이 아직 없습니다' })),
+      el('h3', { class: 'sec' }, `로그 파일 · ${scopeName(scope)} `, el('span', { class: 'meta', text: set ? `${set.file} · 여기서 정한 로그 파일 ${set.logs.length}개` : '이 적용 대상의 설정 파일이 아직 없습니다' })),
       t, el('div', { class: 'cl-addrow' }, add));
   }
   async function del(set, r) {
     if (!set) return;
     const n = hostsOfScope().length;
-    const { ok } = await confirmBox({ title: `출처 '${r.name}' 삭제`, message: `${scopeName(scope)} 설정에서 지웁니다. 이 범위의 서버 ${n}대가 이 출처를 더 이상 수집하지 않습니다.`, okText: '삭제' });
+    const { ok } = await confirmBox({ title: `로그 파일 '${r.name}' 삭제`, message: `${scopeName(scope)} 설정에서 지웁니다. 서버 ${n}대가 이 로그 파일을 더 이상 수집하지 않습니다.`, okText: '삭제' });
     if (!ok) return;
     try {
       await saveLogs(set, set.logs.filter((l) => l.name !== r.name));
@@ -203,13 +203,13 @@ export async function render(root, params, query) {
     const sum = Object.keys(STATE_TEXT).filter((k) => cs[k]).map((k) => el('span', { class: 'cl-sum' }, stateBadge(k), ` ${cs[k]}`));
     const chk = el('label', { class: 'cl-only' }, el('input', { type: 'checkbox', checked: onlyBad, onchange: (e) => { onlyBad = e.target.checked; drawStatus(); } }), ' 이상만 보기');
     const t = table({
-      empty: all.length ? '모두 적용됨' : '이 범위에 걸린 서버가 없습니다', rows,
+      empty: all.length ? '모두 적용됨' : '이 적용 대상에 걸린 서버가 없습니다', rows,
       onRow: (h) => { location.hash = `#host/${encodeURIComponent(h.host)}/collect`; },
       columns: [
         { key: 'host', label: '서버', render: (h) => el('span', { class: 'hid', text: h.host }) },
         { key: 'group', label: '그룹' },
         { key: 'state', label: '상태', render: (h) => stateBadge(h.state) },
-        { key: 'rev', label: '원하는 판 / 적용된 판', render: (h) => el('code', { class: 'cl-rev' + (h.state === 'pending' ? ' diff' : '') }, `${shortRev(h.want_rev)} / ${shortRev(h.rev)}`) },
+        { key: 'rev', label: '원하는 버전 / 적용된 버전', render: (h) => el('code', { class: 'cl-rev' + (h.state === 'pending' ? ' diff' : '') }, `${shortRev(h.want_rev)} / ${shortRev(h.rev)}`) },
         { key: 'error', label: '오류', render: (h) => (h.error ? el('span', { class: 'wrap cl-skip', text: h.error }) : DASH) },
         { key: 'ts', label: '마지막 보고', render: (h) => (h.ts ? relTime(h.ts) : '보고 없음') },
       ],
@@ -229,7 +229,7 @@ export async function render(root, params, query) {
       try {
         const r = await api(`/collect/history?scope=${encodeURIComponent(scope)}&limit=50`);
         body.replaceChildren(table({
-          empty: '이 범위의 변경 기록이 없습니다', rows: r.entries || [],
+          empty: '이 적용 대상의 변경 기록이 없습니다', rows: r.entries || [],
           columns: [
             { key: 'ts', label: '시각', render: (e) => fmtAt(e.ts) },
             { key: 'actor', label: '사용자', render: (e) => String(e.actor).replace(/^user:/, '') },
@@ -260,9 +260,9 @@ export function drawHostCollect(body, hostId) {
   function band(d) {
     const st = d.status;
     const kids = [stateBadge(d.state), ' '];
-    if (d.state === 'applied') kids.push(`판 ${shortRev(st && st.rev)} 적용 · 마지막 보고 ${relTime(st && st.ts)}`);
-    else if (d.state === 'pending') kids.push(`원하는 판 ${shortRev(d.want_rev)} · 에이전트는 아직 ${shortRev(st && st.rev)}. 에이전트가 다음 롱폴링에서 받아 갑니다.`);
-    else if (d.state === 'partial') kids.push(`판 ${shortRev(st && st.rev)} 일부만 적용 — 건너뛴 출처가 있습니다. ${(st && st.error) || ''}`);
+    if (d.state === 'applied') kids.push(`버전 ${shortRev(st && st.rev)} 적용 · 마지막 보고 ${relTime(st && st.ts)}`);
+    else if (d.state === 'pending') kids.push(`원하는 버전 ${shortRev(d.want_rev)} · 에이전트는 아직 ${shortRev(st && st.rev)}. 에이전트가 다음 롱폴링에서 받아 갑니다.`);
+    else if (d.state === 'partial') kids.push(`버전 ${shortRev(st && st.rev)} 일부만 적용 — 건너뛴 로그 파일이 있습니다. ${(st && st.error) || ''}`);
     else if (d.state === 'failed') kids.push(`적용하지 못함: ${(st && st.error) || '사유 없음'} (이전 설정으로 계속 수집 중)`);
     else if (d.state === 'disabled') kids.push('이 서버의 에이전트에서 원격 설정이 꺼져 있습니다. 에이전트 YAML에 아래를 더하고 다시 시작하세요.');
     else kids.push('아직 이 서버에서 상태 보고가 없습니다. 에이전트가 원격 설정을 지원하는 버전인지, 켜졌는지 확인하세요.');
@@ -273,7 +273,7 @@ export function drawHostCollect(body, hostId) {
 
   function draw(d, all) {
     const rows = hostSourceRows(d);
-    const add = el('button', { type: 'button', class: 'primary', text: '+ 출처 추가', onclick: () => {
+    const add = el('button', { type: 'button', class: 'primary', text: '+ 로그 파일 추가', onclick: () => {
       const me = [{ id: hostId, group: d.group }];
       openWizard({ hosts: me, allHosts: hostList(all), host: hostId, hostFixed: true, scope: 'host:' + hostId, sets: all.sets,
         onSaved: (sc, host) => afterSave(sc, host, reload) });
@@ -281,19 +281,19 @@ export function drawHostCollect(body, hostId) {
     if (!all.editable || !can('admin')) { add.disabled = true; add.title = !all.editable ? LOCKED_TIP : '관리 계정만 할 수 있습니다'; }
     else if (d.state === 'disabled') { add.disabled = true; add.title = '원격 설정이 꺼져 있어 파일을 찾을 수 없습니다'; }
     const t = table({
-      empty: '이 서버에서 도는 출처가 없습니다', rows,
+      empty: '이 서버에서 수집하는 로그 파일이 없습니다', rows,
       columns: [
         { key: 'name', label: '이름', render: (r) => el('span', { class: 'cl-name', text: r.name }) },
         { key: 'path', label: '경로', render: (r) => el('code', { class: 'cl-path', text: r.path }) },
         { key: 'match', label: '규칙', render: (r) => rulesCell(r.match) },
-        { key: 'src', label: '출처', render: (r) => (r.local ? el('span', { class: 'badge silent', text: r.src, title: '에이전트 YAML의 logs. 화면에서는 읽기만 됩니다' }) : el('span', { text: r.src })) },
+        { key: 'src', label: '정한 곳', render: (r) => (r.local ? el('span', { class: 'badge silent', text: r.src, title: '에이전트 YAML의 logs. 화면에서는 읽기만 됩니다' }) : el('span', { text: r.src })) },
         { key: 'files', label: '따라가는 파일', num: true, render: (r) => (r.files == null ? DASH : String(r.files)) },
         { key: 'skipped', label: '건너뛴 이유', render: (r) => (r.skipped ? el('span', { class: 'cl-skip', text: r.skipped }) : r.waiting ? el('span', { class: 'meta', text: d.state === 'disabled' ? '원격 꺼짐: 적용 안 됨' : '적용 대기' }) : DASH) },
       ],
     });
     t.querySelectorAll('tbody tr').forEach((tr, i) => { if (rows[i] && rows[i].skipped) tr.classList.add('skipped'); });
-    const link = el('a', { class: 'cl-link', href: hashWith('collect', { s: 'host:' + hostId }), text: '범위별로 보기 →' });
-    body.replaceChildren(band(d), el('div', { class: 'cl-tabhead' }, el('h3', { class: 'sec', text: '이 서버에서 도는 출처' }), el('span', { class: 'grow' }), link, add), t);
+    const link = el('a', { class: 'cl-link', href: hashWith('collect', { s: 'host:' + hostId }), text: '적용 대상별로 보기 →' });
+    body.replaceChildren(band(d), el('div', { class: 'cl-tabhead' }, el('h3', { class: 'sec', text: '이 서버에서 수집하는 로그 파일' }), el('span', { class: 'grow' }), link, add), t);
   }
   return () => { alive = false; stop(); };
 }

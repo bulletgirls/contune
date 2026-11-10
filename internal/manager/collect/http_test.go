@@ -231,8 +231,8 @@ func TestPutNewScope(t *testing.T) {
 	// 감사: 새 파일은 옛 sha -
 	saves := e.audits("collect.save")
 	if len(saves) != 2 || saves[1].Target != "group:매매/체결" || saves[1].Actor != "user:boss" ||
-		saves[1].Detail != "group-매매-체결.yaml - → "+set.SHA[:8]+" 출처 1개" ||
-		saves[0].Detail != "group-매매-체결.yaml "+set.SHA[:8]+" → "+set2.SHA[:8]+" 출처 2개" {
+		saves[1].Detail != "group-매매-체결.yaml - → "+set.SHA[:8]+" 로그 파일 1개" ||
+		saves[0].Detail != "group-매매-체결.yaml "+set.SHA[:8]+" → "+set2.SHA[:8]+" 로그 파일 2개" {
 		t.Fatalf("감사 %+v", saves)
 	}
 }
@@ -370,7 +370,7 @@ func TestReload(t *testing.T) {
 	if len(l.Sets) != 2 || l.Sets[0].Scope != "all" || l.Sets[0].File != "a-first.yaml" || l.Sets[1].Scope != "host:h1" || len(l.Errors) != 1 {
 		t.Fatalf("목록 %+v", l)
 	}
-	if a := e.audits("collect.reload"); len(a) != 1 || a[0].Target != "collect" || a[0].Detail != "범위 2개, 읽지 못한 파일 1개" {
+	if a := e.audits("collect.reload"); len(a) != 1 || a[0].Target != "collect" || a[0].Detail != "적용 대상 2개, 읽지 못한 파일 1개" {
 		t.Fatalf("감사 %+v", a)
 	}
 }

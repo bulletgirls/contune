@@ -211,7 +211,7 @@ func (r *Remote) apply(cfg model.AgentConfig, save bool) bool {
 	if err := r.tl.SetSources(all); err != nil {
 		slog.Warn("원격 수집 설정을 적용하지 못함, 이전 설정 유지", "host", r.o.Host, "rev", cfg.Rev, "err", err)
 		r.mu.Lock()
-		r.state, r.errMsg = model.ConfigFailed, "출처를 적용하지 못함: "+err.Error()
+		r.state, r.errMsg = model.ConfigFailed, "로그 파일 설정을 적용하지 못함: "+err.Error()
 		r.mu.Unlock()
 		return false
 	}

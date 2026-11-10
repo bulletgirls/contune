@@ -109,7 +109,7 @@ func TestEncodeRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(b)
-	if !strings.HasPrefix(s, "# 이음 수집 설정") || !strings.Contains(s, "POST /api/v1/collect/reload") ||
+	if !strings.HasPrefix(s, "# 이음 로그 수집 설정") || !strings.Contains(s, "POST /api/v1/collect/reload") ||
 		!strings.Contains(s, "scope: group:매매/체결\n") || !strings.Contains(s, "- {re: ") {
 		t.Fatalf("파일 모양:\n%s", s)
 	}

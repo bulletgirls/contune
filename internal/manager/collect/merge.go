@@ -53,7 +53,7 @@ func checkScope(s string) error {
 		}
 		return nil
 	}
-	return fmt.Errorf("범위 %q는 all · group:<그룹 경로> · host:<호스트 id> 중 하나여야 합니다", s)
+	return fmt.Errorf("적용 대상 %q는 all · group:<그룹 경로> · host:<호스트 id> 중 하나여야 합니다", s)
 }
 
 // scopeApplies는 범위가 그룹 group의 호스트 host에 걸리는지다. group:매매는 매매와 매매/…에 걸리고 매매2에는 걸리지 않는다.

@@ -153,7 +153,7 @@ func ValidateLogSources(logs []LogSource) []Problem {
 	var ps []Problem
 	add := func(i, r int, field, msg string) { ps = append(ps, Problem{Index: i, Rule: r, Field: field, Msg: msg}) }
 	if len(logs) > MaxLogSources {
-		add(-1, -1, "logs", fmt.Sprintf("출처는 %d개까지입니다", MaxLogSources))
+		add(-1, -1, "logs", fmt.Sprintf("로그 파일은 %d개까지입니다", MaxLogSources))
 	}
 	seen := map[string]int{}
 	for i, s := range logs {

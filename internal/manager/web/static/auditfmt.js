@@ -10,7 +10,7 @@ export const ACTIONS = {
   'risk.train': ['위험 지수 학습'],
   'risk.ack': ['위험 요인 확인 중'], 'risk.accept': ['위험 요인 이상 없음', true], 'risk.release': ['이상 없음 해제'], 'risk.expire': ['이상 없음 자동 해제'],
   'incident.create': ['장애 기록 추가'], 'incident.update': ['장애 기록 수정'], 'incident.confirm': ['자동 장애 기록 확인'], 'incident.import': ['장애 기록 가져오기'],
-  'collect.save': ['수집 설정 저장'], 'collect.delete': ['수집 설정 삭제', true], 'collect.reload': ['수집 설정 다시 읽기'],
+  'collect.save': ['로그 수집 변경'], 'collect.delete': ['로그 수집 삭제', true], 'collect.reload': ['로그 수집 다시 읽기'],
   'collect.discover': ['로그 파일 찾기'], 'collect.peek': ['로그 미리보기'],
   'audit.export': ['감사 기록 내려받기'],
 };
@@ -22,7 +22,7 @@ export const KINDS = [
   ['run', '실행 조작', ['run.']],
   ['alert', '알림', ['alert.']],
   ['risk', '위험 지수', ['risk.', 'incident.']],
-  ['collect', '수집 설정', ['collect.']],
+  ['collect', '로그 수집', ['collect.']],
 ];
 
 export const actionName = (a) => (ACTIONS[a] ? ACTIONS[a][0] : a);

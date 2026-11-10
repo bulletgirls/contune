@@ -185,7 +185,7 @@ export const NAME_RE = /^[a-z0-9][a-z0-9_.-]{0,39}$/;
 export function checkName(name, existing) {
   if (!name) return '이름이 필요합니다';
   if (!NAME_RE.test(name)) return '소문자·숫자·_ . -만, 40자까지, 소문자나 숫자로 시작';
-  if (existing.includes(name)) return '이 범위에 같은 이름이 있습니다';
+  if (existing.includes(name)) return '이 적용 대상에 같은 이름이 있습니다';
   return '';
 }
 
@@ -234,7 +234,7 @@ export const RATE_WARN = 800;
 
 // ====================== 화면 ======================
 
-const STEPS = ['파일', '줄 고르기', '확인', '범위·저장'];
+const STEPS = ['파일', '줄 고르기', '확인', '적용 대상·저장'];
 
 // openWizard({hosts:[{id,group}], host, hostFixed, scope, edit:{scope,source}, sets, onSaved(scope)})
 export function openWizard(opts) {
@@ -253,9 +253,9 @@ export function openWizard(opts) {
   const foot = el('div', { class: 'btns cw-foot' });
   const close = () => bg.remove();
   const bg = el('div', { class: 'modal-bg cw-bg', onclick: (e) => { if (e.target === bg) close(); } },
-    el('div', { class: 'modal cw-modal', role: 'dialog', 'aria-label': opts.edit ? '출처 편집' : '출처 추가' },
+    el('div', { class: 'modal cw-modal', role: 'dialog', 'aria-label': opts.edit ? '로그 파일 편집' : '로그 파일 추가' },
       el('div', { class: 'cw-head' },
-        el('b', { text: opts.edit ? '수집 출처 편집' : '수집 출처 추가' }),
+        el('b', { text: opts.edit ? '로그 파일 편집' : '로그 파일 추가' }),
         el('span', { class: 'cw-host' }, '서버 ', el('b', { id: 'cw-hostname', text: st.host })),
         el('button', { type: 'button', class: 'ghost', text: '✕', title: '닫기', onclick: close })),
       steps, body, foot));
@@ -311,7 +311,7 @@ export function openWizard(opts) {
     }
     kids.push(list);
     const inp = el('input', { type: 'text', class: 'cw-path', value: st.path, placeholder: '{log_dir}/app.{exec_id}.log', spellcheck: 'false', oninput: () => { st.path = inp.value; st.file = ''; } });
-    kids.push(el('div', { class: 'cw-row' }, el('label', { text: '출처 경로' }), inp),
+    kids.push(el('div', { class: 'cw-row' }, el('label', { text: '경로' }), inp),
       el('div', { class: 'meta cw-hint' }, '{log_dir}·{exec_id}·* 를 쓸 수 있습니다. 고른 파일의 제안이 자동으로 들어가며 고칠 수 있습니다.'));
     if (st.err) kids.push(el('div', { class: 'cw-err', role: 'alert', text: st.err }));
     body.replaceChildren(...kids);
@@ -367,7 +367,7 @@ export function openWizard(opts) {
   // 규칙 표(②): 수준 바꾸기·지우기·정규식 직접 수정
   function ruleEditor(counts) {
     const box = el('div', { class: 'cw-rules' });
-    if (!st.rules.length) box.append(el('div', { class: 'empty', text: '규칙이 없습니다. 칩을 누르거나 글자를 골라 만드세요. (규칙이 없으면 이 출처는 아무 줄도 보고하지 않습니다)' }));
+    if (!st.rules.length) box.append(el('div', { class: 'empty', text: '규칙이 없습니다. 칩을 누르거나 글자를 골라 만드세요. (규칙이 없으면 이 로그 파일은 아무 줄도 보고하지 않습니다)' }));
     st.rules.forEach((r, i) => {
       const bad = !compileRe(r.re);
       const row = el('div', { class: 'cw-rule' + (bad ? ' bad' : '') });
@@ -461,7 +461,7 @@ export function openWizard(opts) {
     const set = curSet();
     const others = ((set && set.logs) || []).filter((l) => l.name !== origName).map((l) => l.name);
     const wider = mergeScopes(st.fresh || [], chainTo(st.scope, hostOf().group).slice(0, -1));
-    const nameInp = el('input', { type: 'text', class: 'mono', value: st.name, spellcheck: 'false', 'aria-label': '출처 이름', oninput: () => { st.name = nameInp.value.trim(); upd(); } });
+    const nameInp = el('input', { type: 'text', class: 'mono', value: st.name, spellcheck: 'false', 'aria-label': '이름', oninput: () => { st.name = nameInp.value.trim(); upd(); } });
     const nameMsg = el('span', { class: 'cw-msg' });
     const diffBox = el('pre', { class: 'cw-diff', 'aria-label': '바뀌는 내용' });
     const probBox = el('div', { class: 'cw-probs', role: 'alert' });
@@ -470,7 +470,7 @@ export function openWizard(opts) {
     function upd() {
       const bad = checkName(st.name, others);
       const over = !bad && wider.find((w) => w.name === st.name);
-      nameMsg.textContent = bad || (over ? `${scopeName(over.scope)}의 같은 이름 출처를 덮어씁니다` : '');
+      nameMsg.textContent = bad || (over ? `${scopeName(over.scope)}의 같은 이름 로그 파일을 덮어씁니다` : '');
       nameMsg.className = 'cw-msg' + (bad ? ' bad' : over ? ' note' : '');
       saveBtn.disabled = !!bad || st.busy;
       const before = (set && set.logs) || [];
@@ -484,8 +484,8 @@ export function openWizard(opts) {
     body.replaceChildren(
       el('div', { class: 'cw-cols' },
         el('div', { class: 'cw-col' },
-          el('div', { class: 'cw-sub', text: '적용 범위' }), el('div', { class: 'cw-opts' }, radios),
-          el('div', { class: 'cw-sub', text: '출처 이름' }),
+          el('div', { class: 'cw-sub', text: '적용 대상' }), el('div', { class: 'cw-opts' }, radios),
+          el('div', { class: 'cw-sub', text: '이름' }),
           el('div', { class: 'cw-row' }, nameInp, nameMsg),
           el('div', { class: 'cw-recap' }, el('span', { class: 'meta', text: '경로 ' }), el('code', { text: st.path }), el('span', { class: 'meta', text: ` · 규칙 ${st.rules.length}개` })),
           probBox, msg),

@@ -34,7 +34,7 @@ const SPEC = [
   [240, U, 'risk.train', 'risk', '표본 436건 · 정확도 0.89'],
   [214, U, 'collect.discover', 'host:match-01', '후보 6개'],
   [212, U, 'collect.peek', 'host:match-01', '/data/log/matching_svc.01JC9B2K.log 20줄'],
-  [209, U, 'collect.save', 'group:매매/체결', 'group-매매-체결.yaml 4c1e9a07 → 8b52d3f6 출처 1개'],
+  [209, U, 'collect.save', 'group:매매/체결', 'group-매매-체결.yaml 4c1e9a07 → 8b52d3f6 로그 파일 1개'],
   [190, U, 'flow.save', 'market-open', 'flows/개장준비/market-open.yaml 7b20d4aa → c91e5f08'],
   // 몰림: 3분 사이 5회
   [98, 'web(10.0.3.7)', 'login.fail', 'admin', ''],

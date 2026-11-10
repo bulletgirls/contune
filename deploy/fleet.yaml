@@ -2,7 +2,7 @@
 manager: http://manager:8080
 token: ${EUM_TOKEN}
 interval: 5s
-remote: true                   # 수집 설정을 화면(#collect)에서 받는다(05 §17). 읽기는 서버마다 log_dir 안만
+remote: true                   # 로그 수집 설정을 화면(#collect)에서 받는다(05 §17). 읽기는 서버마다 log_dir 안만
 allow:                         # 모의 서버도 명령을 실제로 실행하므로 deploy/agent-*.yaml과 같은 허용 목록(보안 S3)
   - '^eum burn( |$)'
   - '^\$\{DEMO\}/scripts/[A-Za-z0-9_-]+\.sh( |$)'

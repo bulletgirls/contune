@@ -22,7 +22,7 @@ const (
 	maxHistory   = 1000
 )
 
-const msgDisabled = "수집 설정 편집이 꺼져 있습니다(매니저 설정 collect.enabled)"
+const msgDisabled = "로그 수집 편집이 꺼져 있습니다(매니저 설정 collect.enabled)"
 
 // mountScreen은 화면 API를 붙인다. 권한은 webauth 역할 표 기본값(GET 조회, 나머지 관리)이다.
 func (c *Collect) mountScreen(mux *http.ServeMux) {
@@ -127,7 +127,7 @@ func (c *Collect) handlePut(w http.ResponseWriter, r *http.Request) {
 	if existed {
 		oldSHA = short(old.SHA)
 	}
-	c.audit(r, "collect.save", scope, fmt.Sprintf("%s %s → %s 출처 %d개", file, oldSHA, short(set.SHA), len(set.Logs)))
+	c.audit(r, "collect.save", scope, fmt.Sprintf("%s %s → %s 로그 파일 %d개", file, oldSHA, short(set.SHA), len(set.Logs)))
 	slog.Info("수집 설정 저장", "scope", scope, "file", file, "sha", set.SHA, "sources", len(set.Logs))
 	writeJSON(w, http.StatusOK, set)
 }
@@ -158,7 +158,7 @@ func (c *Collect) handleDelete(w http.ResponseWriter, r *http.Request) {
 	set, ok := c.sets[scope]
 	if !ok {
 		c.mu.Unlock()
-		writeError(w, http.StatusNotFound, "그 범위의 수집 설정이 없습니다")
+		writeError(w, http.StatusNotFound, "그 적용 대상의 로그 수집 설정이 없습니다")
 		return
 	}
 	if q.Get("if_match") != set.SHA {
@@ -195,7 +195,7 @@ func (c *Collect) handleReload(w http.ResponseWriter, r *http.Request) {
 	c.mu.Unlock()
 	c.d.Wake()
 	logLoad(c.d.Cfg.Dir, sets, errs)
-	c.audit(r, "collect.reload", "collect", fmt.Sprintf("범위 %d개, 읽지 못한 파일 %d개", len(sets), len(errs)))
+	c.audit(r, "collect.reload", "collect", fmt.Sprintf("적용 대상 %d개, 읽지 못한 파일 %d개", len(sets), len(errs)))
 	writeJSON(w, http.StatusOK, map[string]any{"sets": len(sets), "errors": errs})
 }
 

@@ -31,7 +31,7 @@ type fileDoc struct {
 
 const (
 	maxFile    = 1 << 20 // 설정 파일 하나의 크기
-	fileHeader = "# 이음 수집 설정 — 화면(#collect)에서 저장하면 이 파일을 다시 쓴다. 손으로 고쳤으면 POST /api/v1/collect/reload"
+	fileHeader = "# 이음 로그 수집 설정 — 화면(#collect)에서 저장하면 이 파일을 다시 쓴다. 손으로 고쳤으면 POST /api/v1/collect/reload"
 )
 
 // shaOf는 바이트의 sha256 hex 앞 16자다(편집기 shaOf와 같은 방식).
@@ -61,7 +61,7 @@ func loadDir(dir string) (map[string]model.CollectSet, []FileError, error) {
 		set, err := readSet(filepath.Join(dir, name))
 		if err == nil {
 			if prev, dup := sets[set.Scope]; dup {
-				err = fmt.Errorf("범위 %s는 %s가 이미 씁니다", set.Scope, prev.File)
+				err = fmt.Errorf("적용 대상 %s는 %s가 이미 씁니다", set.Scope, prev.File)
 			}
 		}
 		if err != nil {

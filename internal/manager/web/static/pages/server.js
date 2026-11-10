@@ -107,7 +107,7 @@ export async function render(root, params, query) {
 
 async function renderList(root, query) {
   const g = query.g || '';
-  root.replaceChildren(el('div', { class: 'srv-lhead' }, el('h2', { class: 'sec', text: '서버' }), el('a', { class: 'srv-clink', href: '#collect', text: '수집 설정', title: '로그 출처·규칙을 범위별로 정하고 적용 상태를 봅니다' })));
+  root.replaceChildren(el('div', { class: 'srv-lhead' }, el('h2', { class: 'sec', text: '서버' }), el('a', { class: 'srv-clink', href: '#collect', text: '로그 수집', title: '수집할 로그 파일과 규칙을 정하고 적용 상태를 봅니다' })));
   const box = el('div', { class: 'srv-list' });
   root.append(box);
   let sortKey = '', sortDir = 'asc', hosts = [], now = Date.now(), th = {};
@@ -170,7 +170,7 @@ async function renderHost(root, params, query) {
   disposers.push(() => tr.destroy());
 
   // 탭 카드
-  const tabs = [{ id: OVERVIEW, title: '개요' }, ...groups, { id: COLLECT, title: '수집' }];
+  const tabs = [{ id: OVERVIEW, title: '개요' }, ...groups, { id: COLLECT, title: '로그 수집' }];
   cardsEl.dataset.n = String(tabs.length);
   const cards = new Map();
   for (const t of tabs) {
@@ -219,7 +219,7 @@ async function renderHost(root, params, query) {
       const d = await api(`/collect/hosts/${encodeURIComponent(id)}`);
       const { STATE_TEXT } = await import('./collect.js');
       c.val.replaceChildren(el('span', { class: 'lv cs-' + d.state, text: STATE_TEXT[d.state] || d.state }));
-      c.spark.replaceChildren(el('span', { class: 'tsub', text: d.status ? `출처 ${d.status.sources.length}개` : '상태 보고 없음' }));
+      c.spark.replaceChildren(el('span', { class: 'tsub', text: d.status ? `로그 파일 ${d.status.sources.length}개` : '상태 보고 없음' }));
     } catch (e) { c.val.replaceChildren(el('span', { class: 'empty', text: DASH })); }
   }
   disposers.push(poll(drawCollectCard, 10000));
