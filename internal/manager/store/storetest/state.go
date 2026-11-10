@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -361,12 +362,67 @@ func RunState(t *testing.T, open func(t *testing.T) store.StateStore) {
 				t.Fatal(err)
 			}
 		}
-		l, _ := s.ListAudit(ctx, 10)
+		l, _ := s.ListAudit(ctx, model.AuditQuery{})
 		if len(l) != 3 || l[0].Target != "t3" || l[2].Target != "t1" || l[0].Detail != "d" {
 			t.Fatalf("%+v", l)
 		}
-		if l, _ := s.ListAudit(ctx, 2); len(l) != 2 || l[0].Target != "t3" {
+		if l, _ := s.ListAudit(ctx, model.AuditQuery{Limit: 2}); len(l) != 2 || l[0].Target != "t3" {
 			t.Fatalf("limit %+v", l)
+		}
+	})
+
+	sub("AuditQuery", func(t *testing.T, s store.StateStore) {
+		add := func(ts int64, actor, action, target, detail string) {
+			t.Helper()
+			if err := s.AddAudit(ctx, model.AuditEntry{TS: ts, Actor: actor, Action: action, Target: target, Detail: detail}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		add(100, "user:a", "login.ok", "a", "role=admin")
+		add(200, "web(1.1.1.1)", "login.fail", "x_y", "")
+		add(300, "user:a", "logout", "a", "")
+		add(400, "user:b", "flow.save", "f1", "F.yaml abc → def")
+		add(500, "user:b", "run.kill", "e1", "f1/s1 100%")
+		add(600, "user:a", "loginXok", "z", "")
+		ids := func(q model.AuditQuery) string {
+			l, err := s.ListAudit(ctx, q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out []string
+			for _, e := range l {
+				out = append(out, e.Target)
+			}
+			return strings.Join(out, ",")
+		}
+		for name, c := range map[string]struct {
+			q    model.AuditQuery
+			want string
+		}{
+			"all":        {model.AuditQuery{}, "z,e1,f1,a,x_y,a"},
+			"range":      {model.AuditQuery{From: 200, To: 500}, "f1,a,x_y"},
+			"actor":      {model.AuditQuery{Actor: "user:b"}, "e1,f1"},
+			"target":     {model.AuditQuery{Target: "a"}, "a,a"},
+			"prefix":     {model.AuditQuery{Prefixes: []string{"login.", "logout"}}, "a,x_y,a"},
+			"underbar":   {model.AuditQuery{Prefixes: []string{"login_"}}, ""},
+			"q case":     {model.AuditQuery{Q: "F.YAML"}, "f1"},
+			"q percent":  {model.AuditQuery{Q: "100%"}, "e1"},
+			"q underbar": {model.AuditQuery{Q: "x_y"}, "x_y"},
+			"q actor":    {model.AuditQuery{Q: "1.1.1.1"}, "x_y"},
+			"before":     {model.AuditQuery{Before: 4, Limit: 2}, "a,x_y"},
+			"limit":      {model.AuditQuery{Limit: 2}, "z,e1"},
+		} {
+			if got := ids(c.q); got != c.want {
+				t.Errorf("%s: got %q want %q", name, got, c.want)
+			}
+		}
+		st, err := s.AuditStats(ctx, 200, 500)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Actions["login.fail"] != 1 || st.Actions["flow.save"] != 1 || st.Actions["login.ok"] != 0 || st.Actions["run.kill"] != 0 ||
+			st.Actors["user:a"] != 1 || st.Actors["user:b"] != 1 || st.Actors["web(1.1.1.1)"] != 1 {
+			t.Errorf("stats %+v", st)
 		}
 	})
 }

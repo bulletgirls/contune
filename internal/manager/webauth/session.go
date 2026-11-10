@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"eum/internal/manager/actor"
-	"eum/internal/model"
+	"eum/internal/manager/audit"
 )
 
 const (
@@ -220,13 +220,7 @@ func recent(times []time.Time, now time.Time) []time.Time {
 }
 
 func (a *Auth) audit(ctx context.Context, who, action, target, detail string) {
-	if a.d.State == nil {
-		return
-	}
-	e := model.AuditEntry{TS: a.d.Now().UnixMilli(), Actor: who, Action: action, Target: target, Detail: detail}
-	if err := a.d.State.AddAudit(ctx, e); err != nil {
-		slog.Warn("화면 인증: 감사 기록 실패", "action", action, "err", err)
-	}
+	audit.Write(ctx, a.d.State, a.d.Now, who, action, target, detail)
 }
 
 // newSessionID는 32바이트 난수의 base64url이다.

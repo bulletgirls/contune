@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 
 	"eum/internal/manager/store"
@@ -251,15 +252,55 @@ func (s *stateStore) AddAudit(ctx context.Context, e model.AuditEntry) error {
 	return nil
 }
 
-func (s *stateStore) ListAudit(ctx context.Context, limit int) ([]model.AuditEntry, error) {
+func (s *stateStore) ListAudit(ctx context.Context, q model.AuditQuery) ([]model.AuditEntry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make([]model.AuditEntry, 0, len(s.audit))
+	needle := strings.ToLower(q.Q)
+	out := make([]model.AuditEntry, 0)
 	for i := len(s.audit) - 1; i >= 0; i-- {
-		out = append(out, s.audit[i])
-	}
-	if limit > 0 && len(out) > limit {
-		out = out[:limit]
+		e := s.audit[i]
+		if q.Before > 0 && e.ID >= q.Before {
+			continue
+		}
+		if q.From > 0 && e.TS < q.From || q.To > 0 && e.TS >= q.To {
+			continue
+		}
+		if q.Actor != "" && e.Actor != q.Actor || q.Target != "" && e.Target != q.Target {
+			continue
+		}
+		if len(q.Prefixes) > 0 {
+			hit := false
+			for _, p := range q.Prefixes {
+				if strings.HasPrefix(e.Action, p) {
+					hit = true
+					break
+				}
+			}
+			if !hit {
+				continue
+			}
+		}
+		if needle != "" && !strings.Contains(strings.ToLower(e.Target+"\n"+e.Detail+"\n"+e.Actor), needle) {
+			continue
+		}
+		out = append(out, e)
+		if q.Limit > 0 && len(out) >= q.Limit {
+			break
+		}
 	}
 	return out, nil
+}
+
+func (s *stateStore) AuditStats(ctx context.Context, from, to int64) (model.AuditStats, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := model.AuditStats{Actions: map[string]int{}, Actors: map[string]int{}}
+	for _, e := range s.audit {
+		if from > 0 && e.TS < from || to > 0 && e.TS >= to {
+			continue
+		}
+		st.Actions[e.Action]++
+		st.Actors[e.Actor]++
+	}
+	return st, nil
 }

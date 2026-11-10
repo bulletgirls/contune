@@ -58,7 +58,7 @@ func TestReopen(t *testing.T) {
 	if l, _ := s.ListAlerts(ctx, model.AlertFilter{}); len(l) != 1 {
 		t.Error("alert")
 	}
-	if l, _ := s.ListAudit(ctx, 5); len(l) != 1 {
+	if l, _ := s.ListAudit(ctx, model.AuditQuery{Limit: 5}); len(l) != 1 {
 		t.Error("audit")
 	}
 	if l, _ := s.ListHosts(ctx); len(l) != 1 {

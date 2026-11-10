@@ -39,10 +39,13 @@ func fastUsers(t *testing.T) []User {
 
 type clock struct{ t time.Time }
 
-func (c *clock) Now() time.Time           { return c.t }
-func (c *clock) add(d time.Duration)      { c.t = c.t.Add(d) }
-func newClock() *clock                    { return &clock{t: time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)} }
-func (e *env) audits() []model.AuditEntry { l, _ := e.st.ListAudit(context.Background(), 0); return l }
+func (c *clock) Now() time.Time      { return c.t }
+func (c *clock) add(d time.Duration) { c.t = c.t.Add(d) }
+func newClock() *clock               { return &clock{t: time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)} }
+func (e *env) audits() []model.AuditEntry {
+	l, _ := e.st.ListAudit(context.Background(), model.AuditQuery{})
+	return l
+}
 
 // env는 Wrap(mux) 아래에 가짜 다음 핸들러를 둔 시험 판이다.
 type env struct {

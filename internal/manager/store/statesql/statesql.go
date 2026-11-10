@@ -48,6 +48,7 @@ CREATE INDEX IF NOT EXISTS ix_alerts_state ON alerts(state, ts);
 CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL,
   target TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS ix_audit_ts ON audit(ts);
 `
 
 // Store는 state.db다. 쓰기 연결은 1개, 읽기는 별도 풀이다.
@@ -454,17 +455,51 @@ func (s *Store) AddAudit(ctx context.Context, e model.AuditEntry) error {
 	return err
 }
 
-func (s *Store) ListAudit(ctx context.Context, limit int) ([]model.AuditEntry, error) {
-	q := `SELECT id,ts,actor,action,target,detail FROM audit ORDER BY id DESC`
-	if limit > 0 {
-		q += fmt.Sprintf(" LIMIT %d", limit)
+func (s *Store) ListAudit(ctx context.Context, f model.AuditQuery) ([]model.AuditEntry, error) {
+	var where []string
+	var args []any
+	if f.From > 0 {
+		where, args = append(where, "ts>=?"), append(args, f.From)
 	}
-	rows, err := s.r.QueryContext(ctx, q)
+	if f.To > 0 {
+		where, args = append(where, "ts<?"), append(args, f.To)
+	}
+	if f.Actor != "" {
+		where, args = append(where, "actor=?"), append(args, f.Actor)
+	}
+	if f.Target != "" {
+		where, args = append(where, "target=?"), append(args, f.Target)
+	}
+	if f.Before > 0 {
+		where, args = append(where, "id<?"), append(args, f.Before)
+	}
+	if len(f.Prefixes) > 0 {
+		var ors []string
+		for _, p := range f.Prefixes {
+			ors = append(ors, "substr(action,1,?)=?")
+			args = append(args, len([]rune(p)), p)
+		}
+		where = append(where, "("+strings.Join(ors, " OR ")+")")
+	}
+	if f.Q != "" {
+		// instr+lower: LIKE의 %·_ 문제를 피한다. lower는 ASCII만 접는다.
+		where = append(where, "instr(lower(target||char(10)||detail||char(10)||actor),lower(?))>0")
+		args = append(args, f.Q)
+	}
+	q := `SELECT id,ts,actor,action,target,detail FROM audit`
+	if len(where) > 0 {
+		q += " WHERE " + strings.Join(where, " AND ")
+	}
+	q += " ORDER BY id DESC"
+	if f.Limit > 0 {
+		q += fmt.Sprintf(" LIMIT %d", f.Limit)
+	}
+	rows, err := s.r.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []model.AuditEntry
+	out := []model.AuditEntry{}
 	for rows.Next() {
 		var e model.AuditEntry
 		if err := rows.Scan(&e.ID, &e.TS, &e.Actor, &e.Action, &e.Target, &e.Detail); err != nil {
@@ -473,4 +508,30 @@ func (s *Store) ListAudit(ctx context.Context, limit int) ([]model.AuditEntry, e
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) AuditStats(ctx context.Context, from, to int64) (model.AuditStats, error) {
+	st := model.AuditStats{Actions: map[string]int{}, Actors: map[string]int{}}
+	for col, m := range map[string]map[string]int{"action": st.Actions, "actor": st.Actors} {
+		rows, err := s.r.QueryContext(ctx, `SELECT `+col+`,COUNT(*) FROM audit WHERE (?=0 OR ts>=?) AND (?=0 OR ts<?) GROUP BY `+col,
+			from, from, to, to)
+		if err != nil {
+			return st, err
+		}
+		for rows.Next() {
+			var k string
+			var n int
+			if err := rows.Scan(&k, &n); err != nil {
+				rows.Close()
+				return st, err
+			}
+			m[k] = n
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return st, err
+		}
+		rows.Close()
+	}
+	return st, nil
 }

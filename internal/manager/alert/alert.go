@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"eum/internal/manager/audit"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -531,12 +532,40 @@ func (w *Watcher) handleAck(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	by := actor.Of(r)
+	detail, found := w.ackDetail(r, id)
+	if !found {
+		http.Error(rw, "없는 알림", http.StatusNotFound)
+		return
+	}
 	switch err := w.d.State.AckAlert(r.Context(), id, w.d.Now().UnixMilli(), by); {
 	case errors.Is(err, store.ErrNotFound):
 		http.Error(rw, "없는 알림", http.StatusNotFound)
 	case err != nil:
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 	default:
+		audit.Record(r, w.d.State, w.d.Now, "alert.ack", strconv.FormatInt(id, 10), detail)
 		rw.WriteHeader(http.StatusNoContent)
 	}
+}
+
+// ackDetail은 확인한 알림의 이름과 서버다: "<이름> @<호스트>"(호스트가 없으면 이름만).
+func (w *Watcher) ackDetail(r *http.Request, id int64) (string, bool) {
+	as, err := w.d.State.ListAlerts(r.Context(), model.AlertFilter{})
+	if err != nil {
+		return "", true // 읽지 못해도 확인 자체는 진행한다
+	}
+	for _, a := range as {
+		if a.ID != id {
+			continue
+		}
+		name := a.Name
+		if name == "" {
+			name = a.Message
+		}
+		if a.Host != "" {
+			name += " @" + a.Host
+		}
+		return name, true
+	}
+	return "", false
 }

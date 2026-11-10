@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"eum/internal/manager/audit"
 	"fmt"
 	"io"
 	"log/slog"
@@ -164,6 +165,7 @@ func New(cfg Config) (*Manager, error) {
 	editor.Mount(m.mux, edDeps)
 	assist.Mount(m.mux, asDeps)
 	m.engine.Mount(m.mux)
+	audit.New(audit.Deps{State: m.state, Now: now, TZ: loc}).Mount(m.mux)
 	m.watcher.Mount(m.mux)
 	web.Mount(m.mux)
 

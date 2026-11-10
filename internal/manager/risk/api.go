@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"eum/internal/manager/actor"
+	"eum/internal/manager/audit"
 	"eum/internal/manager/store"
 	"eum/internal/model"
 )
@@ -314,12 +314,7 @@ func (e *Engine) rangeParams(r *http.Request, def time.Duration) (int64, int64, 
 
 // audit는 감사 기록을 남긴다. actor는 actor.Of(05 §7).
 func (e *Engine) audit(r *http.Request, action, target, detail string) {
-	err := e.d.State.AddAudit(r.Context(), model.AuditEntry{
-		TS: e.d.Now().UnixMilli(), Actor: actor.Of(r), Action: action, Target: target, Detail: detail,
-	})
-	if err != nil {
-		slog.Warn("감사 기록 실패", "action", action, "err", err)
-	}
+	audit.Record(r, e.d.State, e.d.Now, action, target, detail)
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

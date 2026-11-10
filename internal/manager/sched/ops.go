@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"eum/internal/manager/audit"
 	"io"
 	"log/slog"
 	"net/http"
@@ -122,20 +123,26 @@ func (s *Scheduler) handleForceOK(w http.ResponseWriter, r *http.Request) {
 	}
 	execID := r.PathValue("exec_id")
 	s.lock()
-	err := s.forceOKLocked(r.Context(), execID, actorOf(r), strings.TrimSpace(body.Reason))
+	reason := strings.TrimSpace(body.Reason)
+	run, err := s.forceOKLocked(r.Context(), execID, actorOf(r), reason)
 	s.unlock()
 	if err != nil {
 		writeOpError(w, err)
 		return
 	}
+	detail := run.FlowID + "/" + run.StepID
+	if reason != "" {
+		detail += " 사유: " + reason
+	}
+	audit.Record(r, s.d.State, s.d.Now, "run.force_ok", execID, detail)
 	s.kick()
 	writeJSON(w, http.StatusOK, map[string]bool{"applied": true})
 }
 
-func (s *Scheduler) forceOKLocked(ctx context.Context, execID, actor, reason string) error {
+func (s *Scheduler) forceOKLocked(ctx context.Context, execID, actor, reason string) (model.Run, error) {
 	run, err := s.operable(ctx, "강제 OK", execID, forceOKFrom)
 	if err != nil {
-		return err
+		return run, err
 	}
 	now := s.d.Now().UnixMilli()
 	forced := true
@@ -150,33 +157,34 @@ func (s *Scheduler) forceOKLocked(ctx context.Context, execID, actor, reason str
 	ok, err := s.d.State.Transition(ctx, t)
 	if err != nil {
 		slog.Error("강제 OK: 전이 실패", "exec_id", execID, "err", err)
-		return err
+		return run, err
 	}
 	if !ok {
-		return &opError{http.StatusConflict, "상태가 바뀌어 강제 OK를 반영하지 못했습니다"}
+		return run, &opError{http.StatusConflict, "상태가 바뀌어 강제 OK를 반영하지 못했습니다"}
 	}
 	slog.Info("강제 OK", "flow", run.FlowID, "step", run.StepID, "exec_id", execID, "from", run.Status, "actor", actor)
-	return nil
+	return run, nil
 }
 
 // handleRerun은 같은 플로우 실행·스텝에 다음 attempt를 만든다: 201 {"exec_id"} | 404 | 409.
 func (s *Scheduler) handleRerun(w http.ResponseWriter, r *http.Request) {
 	execID := r.PathValue("exec_id")
 	s.lock()
-	newID, err := s.rerunLocked(r.Context(), execID, actorOf(r))
+	run, newID, err := s.rerunLocked(r.Context(), execID, actorOf(r))
 	s.unlock()
 	if err != nil {
 		writeOpError(w, err)
 		return
 	}
+	audit.Record(r, s.d.State, s.d.Now, "run.rerun", execID, run.FlowID+"/"+run.StepID+" → "+newID)
 	s.kick()
 	writeJSON(w, http.StatusCreated, map[string]string{"exec_id": newID})
 }
 
-func (s *Scheduler) rerunLocked(ctx context.Context, execID, actor string) (string, error) {
+func (s *Scheduler) rerunLocked(ctx context.Context, execID, actor string) (model.Run, string, error) {
 	run, err := s.operable(ctx, "재실행", execID, rerunFrom)
 	if err != nil {
-		return "", err
+		return run, "", err
 	}
 	nr := model.Run{
 		ExecID:      s.d.NewID(),
@@ -191,9 +199,9 @@ func (s *Scheduler) rerunLocked(ctx context.Context, execID, actor string) (stri
 	}
 	if err := s.d.State.CreateRuns(ctx, []model.Run{nr}, actor, "rerun of "+execID); err != nil {
 		slog.Error("재실행: 행을 만들지 못함", "exec_id", execID, "err", err)
-		return "", err
+		return run, "", err
 	}
 	slog.Info("재실행", "flow", run.FlowID, "step", run.StepID, "of", execID, "exec_id", nr.ExecID,
 		"attempt", nr.Attempt, "actor", actor)
-	return nr.ExecID, nil
+	return run, nr.ExecID, nil
 }
