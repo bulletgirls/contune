@@ -98,7 +98,12 @@ function riskView(c) {
   const { now, w } = c;
   const idx = riskAt(now, { ...c.sig, exact: true });
   const rule = c.flags.rule;
-  const incidents = rule ? 2 : w.incidents.filter((i) => i.source !== 'auto').length;
+  const labels = w.incidents.filter((i) => i.source !== 'auto' || i.confirmed);
+  const incidents = rule ? 2 : labels.length;
+  const unconfirmed = w.incidents.length - labels.length;
+  // 양성 = 라벨 기록마다 직전 5분, 뺀 창 = 장애 중(끝 창 포함) + 확인 전 자동 기록의 직전 5분
+  const positives = labels.length * 5;
+  const excluded = w.incidents.reduce((n, i) => n + Math.round((i.end - i.start) / MIN) + 1, 0) + unconfirmed * 5;
   const hv = hostsView(w, c.sig);
   const hostVal = (id, k) => { const h = hv.find((x) => x.id === id); return h ? h[k] : 0; };
   let factors;
@@ -149,12 +154,12 @@ function riskView(c) {
     open_level: levelOf(open),
     mode: rule ? 'rule' : 'model',
     model: rule
-      ? { kind: 'rule', trained_at: 0, windows: 0, positives: 0, incidents, auc: 0, lead_sec: 300, weights: weights(RULE_W), prior_offset: 0, false_warn: 0.18, hit_warn: 0.64 }
-      : { kind: 'logreg', trained_at: w.trainedAt, windows: 10080, positives: 61, incidents, auc: 0.93, lead_sec: 300, weights: weights(LOGREG_W), prior_offset: 5.1, false_warn: 0.012, hit_warn: 0.71 },
+      ? { kind: 'rule', trained_at: 0, windows: 0, positives: 0, incidents, unconfirmed, excluded: 0, auc: 0, lead_sec: 300, weights: weights(RULE_W), prior_offset: 0, false_warn: 0.18, hit_warn: 0.64 }
+      : { kind: 'logreg', trained_at: w.trainedAt, windows: 10080 - excluded, positives, incidents, unconfirmed, excluded, auc: 0.91, lead_sec: 300, weights: weights(LOGREG_W), prior_offset: 5.8, false_warn: 0.012, hit_warn: 0.66 },
     factors,
     holds: live,
     incidents: incs.filter((i) => !i.end).sort((a, b) => b.start - a.start),
-    note: rule ? `규칙 기반 · 학습 사례 부족(장애 ${incidents}건)` : '',
+    note: rule ? `규칙 기반 · 학습 사례 부족(장애 ${incidents}건, 최소 3건${unconfirmed ? ` · 확인 안 된 자동 기록 ${unconfirmed}건은 빼고 셈` : ''})` : '',
     history,
     history_open: history.map(([t, v]) => [t, openAt(w, t, v)]),
   };
@@ -168,7 +173,7 @@ function train(c) {
   const v = riskView(c);
   if (!c.flags.rule) c.w.trainedAt = c.now;
   const m = v.model;
-  return ok({ kind: m.kind, trained_at: c.flags.rule ? c.now : c.w.trainedAt, windows: m.windows, positives: m.positives, incidents: m.incidents, auc: m.auc, weights: m.weights, mode: v.mode, note: v.note });
+  return ok({ kind: m.kind, trained_at: c.flags.rule ? c.now : c.w.trainedAt, windows: m.windows, positives: m.positives, incidents: m.incidents, unconfirmed: m.unconfirmed, excluded: m.excluded, auc: m.auc, weights: m.weights, mode: v.mode, note: v.note });
 }
 
 // ---- 위험 요인 확인 표시 ----
@@ -223,7 +228,7 @@ function tsOf(v) {
 
 function incidentList(c) {
   const list = c.w.incidents.map((i) => ({ ...i }));
-  if (c.sig.surge) list.push({ id: 1000, start: c.now - 210 * SEC, end: 0, scope: '매매/체결', title: '체결 대기 큐 적체', source: 'auto', note: '' });
+  if (c.sig.surge) list.push({ id: 1000, start: c.now - 210 * SEC, end: 0, scope: '매매/체결', title: '자동: 체결 · 대기 큐 위험', source: 'auto', note: '', confirmed: !!c.w.surgeConfirmed });
   return list;
 }
 
@@ -243,7 +248,7 @@ function addIncident(c) {
   if (!start || Number.isNaN(start)) return err(400, '시작 시각이 필요');
   if (Number.isNaN(end)) return err(400, '끝 시각 형식이 올바르지 않음');
   if (!String(b.title || '').trim()) return err(400, '제목이 필요');
-  const inc = { id: c.w.incSeq++, start, end, scope: String(b.scope || ''), title: String(b.title).trim(), source: 'manual', note: String(b.note || '') };
+  const inc = { id: c.w.incSeq++, start, end, scope: String(b.scope || ''), title: String(b.title).trim(), source: 'manual', note: String(b.note || ''), confirmed: false };
   c.w.incidents.push(inc);
   c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor, action: 'incident.create', target: String(inc.id), detail: inc.title });
   return ok({ id: inc.id }, 201);
@@ -251,9 +256,18 @@ function addIncident(c) {
 
 function patchIncident(c, m) {
   const id = Number(m[1]);
-  const inc = c.w.incidents.find((i) => i.id === id);
-  if (!inc) return id === 1000 ? ok({ ok: true }) : err(404, '장애 기록을 찾을 수 없음');
   const b = c.json() || {};
+  if (id === 1000 && c.sig.surge) { // 진행 중 자동 기록(mock 시나리오)
+    if (b.confirmed !== undefined) c.w.surgeConfirmed = !!b.confirmed;
+    return ok({ ok: true });
+  }
+  const inc = c.w.incidents.find((i) => i.id === id);
+  if (!inc) return err(404, '장애 기록을 찾을 수 없음');
+  if (b.confirmed !== undefined && !!b.confirmed !== !!inc.confirmed) {
+    if (inc.source !== 'auto') return err(400, '자동 기록만 확인합니다(직접·가져옴·시연 기록은 이미 학습 라벨)');
+    inc.confirmed = !!b.confirmed;
+    c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor, action: 'incident.confirm', target: `incident:${id}`, detail: `${inc.title} · ${inc.confirmed ? '장애로 확인' : '확인 취소'}` });
+  }
   if (b.end !== undefined) {
     const e = b.end ? tsOf(b.end) : 0;
     if (Number.isNaN(e)) return err(400, '끝 시각 형식이 올바르지 않음');
@@ -261,7 +275,7 @@ function patchIncident(c, m) {
   }
   if (b.title !== undefined) inc.title = String(b.title);
   if (b.note !== undefined) inc.note = String(b.note);
-  c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor, action: 'incident.update', target: String(id), detail: '' });
+  if (b.end !== undefined || b.title !== undefined || b.note !== undefined) c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor, action: 'incident.update', target: String(id), detail: '' });
   return ok({ ok: true });
 }
 
@@ -277,7 +291,7 @@ function importIncidents(c) {
     if (!start || Number.isNaN(start) || Number.isNaN(end)) return err(400, `${i + 1}번째 줄: 시각 형식이 올바르지 않음`);
     rows.push({ start, end, scope: p[2].trim(), title: p.slice(3).join(',').trim() });
   }
-  for (const r of rows) c.w.incidents.push({ id: c.w.incSeq++, ...r, source: 'import', note: '' });
+  for (const r of rows) c.w.incidents.push({ id: c.w.incSeq++, ...r, source: 'import', note: '', confirmed: false });
   if (rows.length) c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor, action: 'incident.import', target: '', detail: String(rows.length) });
   return ok({ imported: rows.length });
 }

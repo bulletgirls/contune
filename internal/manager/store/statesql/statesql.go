@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS run_events (
   PRIMARY KEY (exec_id, seq));
 CREATE TABLE IF NOT EXISTS incidents (
   id INTEGER PRIMARY KEY, start_ts INTEGER NOT NULL, end_ts INTEGER NOT NULL DEFAULT 0,
-  scope TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, source TEXT NOT NULL, note TEXT NOT NULL DEFAULT '');
+  scope TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, source TEXT NOT NULL, note TEXT NOT NULL DEFAULT '',
+  confirmed INTEGER NOT NULL DEFAULT 0);
 CREATE INDEX IF NOT EXISTS ix_incidents_start ON incidents(start_ts);
 CREATE TABLE IF NOT EXISTS risk_holds (
   id INTEGER PRIMARY KEY AUTOINCREMENT, feature TEXT NOT NULL, kind TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '',
@@ -76,7 +77,11 @@ func Open(path string) (*Store, error) {
 		w.Close()
 		return nil, fmt.Errorf("state.db DDL: %w", err)
 	}
-	if err := migrateForced(w); err != nil {
+	if err := addColumn(w, "runs", "forced", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		w.Close()
+		return nil, err
+	}
+	if err := addColumn(w, "incidents", "confirmed", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		w.Close()
 		return nil, err
 	}
@@ -88,8 +93,9 @@ func Open(path string) (*Store, error) {
 	return &Store{w: w, r: r}, nil
 }
 
-func migrateForced(db *sql.DB) error {
-	rows, err := db.Query(`PRAGMA table_info(runs)`)
+// addColumn은 예전 state.db에 없는 열 col을 더한다(있으면 그대로).
+func addColumn(db *sql.DB, table, col, def string) error {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
 	if err != nil {
 		return err
 	}
@@ -102,7 +108,7 @@ func migrateForced(db *sql.DB) error {
 			rows.Close()
 			return err
 		}
-		if name == "forced" {
+		if name == col {
 			has = true
 		}
 	}
@@ -111,8 +117,8 @@ func migrateForced(db *sql.DB) error {
 		return err
 	}
 	if !has {
-		if _, err := db.Exec(`ALTER TABLE runs ADD COLUMN forced INTEGER NOT NULL DEFAULT 0`); err != nil {
-			return fmt.Errorf("runs.forced 추가: %w", err)
+		if _, err := db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + col + ` ` + def); err != nil {
+			return fmt.Errorf("%s.%s 추가: %w", table, col, err)
 		}
 	}
 	return nil
@@ -353,8 +359,8 @@ func (s *Store) ListHosts(ctx context.Context) ([]model.Host, error) {
 }
 
 func (s *Store) CreateIncident(ctx context.Context, in model.Incident) (int64, error) {
-	res, err := s.w.ExecContext(ctx, `INSERT INTO incidents(start_ts,end_ts,scope,title,source,note) VALUES(?,?,?,?,?,?)`,
-		in.Start, in.End, in.Scope, in.Title, in.Source, in.Note)
+	res, err := s.w.ExecContext(ctx, `INSERT INTO incidents(start_ts,end_ts,scope,title,source,note,confirmed) VALUES(?,?,?,?,?,?,?)`,
+		in.Start, in.End, in.Scope, in.Title, in.Source, in.Note, in.Confirmed)
 	if err != nil {
 		return 0, err
 	}
@@ -362,8 +368,8 @@ func (s *Store) CreateIncident(ctx context.Context, in model.Incident) (int64, e
 }
 
 func (s *Store) UpdateIncident(ctx context.Context, in model.Incident) error {
-	res, err := s.w.ExecContext(ctx, `UPDATE incidents SET start_ts=?,end_ts=?,scope=?,title=?,source=?,note=? WHERE id=?`,
-		in.Start, in.End, in.Scope, in.Title, in.Source, in.Note, in.ID)
+	res, err := s.w.ExecContext(ctx, `UPDATE incidents SET start_ts=?,end_ts=?,scope=?,title=?,source=?,note=?,confirmed=? WHERE id=?`,
+		in.Start, in.End, in.Scope, in.Title, in.Source, in.Note, in.Confirmed, in.ID)
 	if err != nil {
 		return err
 	}
@@ -374,7 +380,7 @@ func (s *Store) UpdateIncident(ctx context.Context, in model.Incident) error {
 }
 
 func (s *Store) ListIncidents(ctx context.Context, from, to int64) ([]model.Incident, error) {
-	q := `SELECT id,start_ts,end_ts,scope,title,source,note FROM incidents WHERE (end_ts=0 OR end_ts>?)`
+	q := `SELECT id,start_ts,end_ts,scope,title,source,note,confirmed FROM incidents WHERE (end_ts=0 OR end_ts>?)`
 	args := []any{from}
 	if to != 0 {
 		q += ` AND start_ts<?`
@@ -389,7 +395,7 @@ func (s *Store) ListIncidents(ctx context.Context, from, to int64) ([]model.Inci
 	var out []model.Incident
 	for rows.Next() {
 		var in model.Incident
-		if err := rows.Scan(&in.ID, &in.Start, &in.End, &in.Scope, &in.Title, &in.Source, &in.Note); err != nil {
+		if err := rows.Scan(&in.ID, &in.Start, &in.End, &in.Scope, &in.Title, &in.Source, &in.Note, &in.Confirmed); err != nil {
 			return nil, err
 		}
 		out = append(out, in)

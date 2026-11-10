@@ -49,6 +49,8 @@ func printReport(w io.Writer, res trainResult, path string) error {
 	fmt.Fprintf(tw, "창\t%d\n", rep.Windows)
 	fmt.Fprintf(tw, "양성 창\t%d\n", rep.Positives)
 	fmt.Fprintf(tw, "장애\t%d\n", rep.Incidents)
+	fmt.Fprintf(tw, "확인 안 된 자동 기록\t%d\n", rep.Unconfirmed)
+	fmt.Fprintf(tw, "뺀 창(장애 중 등)\t%d\n", rep.Excluded)
 	fmt.Fprintf(tw, "AUC\t%.3f\n", rep.AUC)
 	fmt.Fprintf(tw, "절편 보정\t%.3f\n", rep.PriorOffset)
 	fmt.Fprintf(tw, "평시 경고 비율\t%.2f%%\n", rep.FalseWarn*100)

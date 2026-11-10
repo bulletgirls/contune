@@ -33,6 +33,7 @@ S4·S5는 쓰는 경로가 겹치지 않으므로 동시에 진행한다. S5는 
 | `alert` (**새로**) | `alert.ack` | 알림 확인 | | 알림 id | 알림 이름·서버 |
 | `risk` | `risk.train` | 위험 지수 학습 | | `risk` | 학습 결과 |
 | | `incident.create` / `.update` / `.import` | 장애 기록 추가 / 수정 / 가져오기 | | `incident:<n>` / `incidents` | 제목 / 건수 |
+| | `incident.confirm` (2026-11-10, 05 §6.1) | 자동 장애 기록 확인 | | `incident:<n>` | `<제목> · 장애로 확인` 또는 `· 확인 취소` |
 | `audit` (**새로**) | `audit.export` | 감사 기록 내려받기 | | `audit` | 구간·건수 |
 
 kind → action 앞부분: `login`=[`login.`, `logout`], `flow`=[`flow.`], `run`=[`run.`], `alert`=[`alert.`], `risk`=[`risk.`, `incident.`], `audit`=[`audit.`].

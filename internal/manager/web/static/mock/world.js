@@ -395,7 +395,12 @@ function buildIncidents(base) {
     [d(2, 11, 25, 17), '매매/체결', '체결 지연'],
     [d(1, 17, 5, 22), '대외정보/대외연계', '대외 전송 실패'],
   ];
-  return seeds.map(([[s, e], scope, title], i) => ({ id: i + 1, start: s, end: e, scope, title, source: 'seed', note: '' }));
+  const list = seeds.map(([[s, e], scope, title], i) => ({ id: i + 1, start: s, end: e, scope, title, source: 'seed', note: '', confirmed: false }));
+  // 알림 규칙이 연 자동 기록: 하나는 사람이 장애로 확인했고, 하나는 아직(학습 라벨 아님, 05 §6.1)
+  const [as, ae] = d(3, 13, 48, 6), [bs, be] = d(1, 10, 2, 4);
+  list.push({ id: list.length + 1, start: as, end: ae, scope: '매매/체결', title: '자동: 체결 · 대기 큐 위험', source: 'auto', note: '', confirmed: true });
+  list.push({ id: list.length + 1, start: bs, end: be, scope: '', title: '자동: match-01 CPU 92%, match-03 CPU 91%', source: 'auto', note: '', confirmed: false });
+  return list;
 }
 
 export const PANELS = [
@@ -451,6 +456,7 @@ export function getWorld(now) {
   buildHistory(w, w.flows, base);
   buildPast(w, w.flows);
   w.incidents = buildIncidents(base);
+  w.incSeq = w.incidents.length + 1;
   W = w;
   return w;
 }

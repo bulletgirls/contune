@@ -57,7 +57,7 @@ func TestRiskAPI(t *testing.T) {
 	}
 	var mi map[string]any
 	json.Unmarshal(r["model"], &mi)
-	for _, k := range []string{"kind", "trained_at", "windows", "positives", "incidents", "auc", "lead_sec",
+	for _, k := range []string{"kind", "trained_at", "windows", "positives", "incidents", "unconfirmed", "excluded", "auc", "lead_sec",
 		"prior_offset", "false_warn", "hit_warn"} {
 		if _, ok := mi[k]; !ok {
 			t.Errorf("model에 %s 없음: %s", k, r["model"])
@@ -99,6 +99,15 @@ func TestRiskAPI(t *testing.T) {
 	if resp, _ = do("PATCH", "/api/v1/incidents/999", `{"note":"x"}`); resp.StatusCode != 404 {
 		t.Errorf("없는 장애 고치기 %d", resp.StatusCode)
 	}
+	// 확인은 자동 기록만
+	if resp, b = do("PATCH", "/api/v1/incidents/"+strconv.FormatInt(created.ID, 10), `{"confirmed":true}`); resp.StatusCode != 400 {
+		t.Errorf("직접 기록 확인 %d %s", resp.StatusCode, b)
+	}
+	autoID, _ := st.CreateIncident(ctx, model.Incident{Start: now.Add(-3 * time.Hour).UnixMilli(), End: now.Add(-170 * time.Minute).UnixMilli(), Title: "자동: 큐", Source: "auto"})
+	resp, b = do("PATCH", "/api/v1/incidents/"+strconv.FormatInt(autoID, 10), `{"confirmed":true}`)
+	if resp.StatusCode != 200 || !strings.Contains(string(b), `"confirmed":true`) {
+		t.Errorf("자동 기록 확인 %d %s", resp.StatusCode, b)
+	}
 	resp, b = do("GET", "/api/v1/incidents", "")
 	var list struct {
 		Incidents []struct {
@@ -107,11 +116,13 @@ func TestRiskAPI(t *testing.T) {
 			Title      string
 			Source     string
 			Note       string
+			Confirmed  bool
 		}
 	}
 	json.Unmarshal(b, &list)
-	if resp.StatusCode != 200 || len(list.Incidents) != 1 || list.Incidents[0].End != end ||
-		list.Incidents[0].Source != "manual" || list.Incidents[0].Note != "원인: 큐 적체" || list.Incidents[0].Title != "체결 지연" {
+	if resp.StatusCode != 200 || len(list.Incidents) != 2 || list.Incidents[0].End != end ||
+		list.Incidents[0].Source != "manual" || list.Incidents[0].Note != "원인: 큐 적체" || list.Incidents[0].Title != "체결 지연" ||
+		list.Incidents[1].Source != "auto" || !list.Incidents[1].Confirmed {
 		t.Errorf("목록 %d %s", resp.StatusCode, b)
 	}
 
@@ -130,7 +141,7 @@ func TestRiskAPI(t *testing.T) {
 			t.Errorf("actor = %q", a.Actor)
 		}
 	}
-	for _, a := range []string{"risk.train", "incident.create", "incident.update", "incident.import"} {
+	for _, a := range []string{"risk.train", "incident.create", "incident.update", "incident.confirm", "incident.import"} {
 		if !acts[a] {
 			t.Errorf("감사 %s 없음: %+v", a, audit)
 		}

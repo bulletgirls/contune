@@ -13,6 +13,11 @@ import {
 // ---- 순수 함수 (DOM 없이 호출) ----
 export const WARN_LINE = 30, CRIT_LINE = 60;
 export const SOURCE_TEXT = { manual: '직접', import: '가져옴', auto: '자동', seed: '시연' };
+// 출처 칸. 자동 기록은 확인 여부까지(확인 전에는 학습 라벨이 아님, 05 §6.1)
+export function sourceText(i) {
+  const s = SOURCE_TEXT[i.source] || i.source;
+  return i.source === 'auto' ? `${s} · ${i.confirmed ? '확인함' : '확인 전'}` : s;
+}
 export const FEATURE_TEXT = {
   cpu_max: '최대 서버 CPU 사용률', mem_max: '최대 메모리 사용률', hosts_hot: 'CPU 70% 초과 서버 수', queue: '대기 큐',
   p99: 'p99 응답 시간', lag: '처리량 부족(유입 − 처리)', log_errors: '오류 로그 수', runs_failed: '실패한 배치 실행 수',
@@ -41,7 +46,8 @@ export function isRule(risk) { return !!risk && (risk.mode === 'rule' || !risk.m
 export function trainLine(r) {
   const m = r.mode === 'rule' ? '규칙 기반' : (KIND_TEXT[r.kind] || r.kind);
   const auc = r.auc ? ` · AUC ${fmtNum(r.auc, 2)}` : '';
-  return `${m} · 창 ${fmtNum(r.windows)} · 양성 ${fmtNum(r.positives)} · 장애 ${fmtNum(r.incidents)}건${auc}`;
+  const un = r.unconfirmed ? `(확인 전 자동 ${fmtNum(r.unconfirmed)}건 뺌)` : '';
+  return `${m} · 창 ${fmtNum(r.windows)} · 양성 ${fmtNum(r.positives)} · 장애 ${fmtNum(r.incidents)}건${un}${auc}`;
 }
 export const pctText = (v) => (v == null ? DASH : `${fmtNum(v * 100, v < 0.1 ? 1 : 0)}%`);
 // 'YYYY-MM-DDTHH:mm'(datetime-local) → ms, 비어 있으면 0
@@ -73,7 +79,7 @@ function summaryBox(risk) {
   side.append(el('div', { class: 'rsum-main', text: acc && risk.index > ov
     ? `미확인 지수 · 전체 ${fmtNum(risk.index, 0)} 중 용인한 요인 ${acc}개를 뺀 값`
     : acc ? `미확인 지수 · 용인한 요인 ${acc}개를 빼도 남은 요인만으로 ${fmtNum(ov, 0)}`
-    : isRule(risk) ? '장애 위험 지수 · 규칙 기반(요인을 정해진 범위로 나눠 가중 합한 0~100)' : '장애 위험 지수 · 5분 안에 장애가 날(또는 장애 중인) 확률 %' }));
+    : isRule(risk) ? '장애 위험 지수 · 규칙 기반(요인을 정해진 범위로 나눠 가중 합한 0~100)' : `장애 위험 지수 · ${fmtNum((risk.model.lead_sec || 300) / 60)}분 안에 장애가 시작될 확률 %` }));
   const mode = isRule(risk) ? (risk.note || '규칙 기반') : `${KIND_TEXT[risk.model.kind] || risk.model.kind} · ${clockText(risk.model.trained_at, now)} 학습`;
   side.append(el('div', { class: 'rnote', text: mode }));
   box.append(el('div', { class: 'rsum-row' }, idx, side));
@@ -205,14 +211,17 @@ function modelBox(risk, onTrained) {
   const box = el('section', { class: 'rbox mcard' }, el('h2', { class: 'sec', text: '모델' }));
   if (!risk) { box.append(el('p', { class: 'empty', text: DASH })); return box; }
   const m = risk.model || {};
+  const lead = fmtNum((m.lead_sec || 0) / 60);
   const rates = [['평시 경고 비율', pctText(m.false_warn), '학습 구간의 평시 창 중 지수가 경고선을 넘은 비율. 높으면 이상이 없어도 빨간불이 자주 뜹니다.'],
-    ['장애 전 경고 비율', pctText(m.hit_warn), '장애 직전·중 창 중 경고선을 넘은 비율. 낮으면 장애를 놓칩니다.']];
+    ['장애 전 경고 비율', pctText(m.hit_warn), `장애 시작 전 ${lead}분 창 중 경고선을 넘은 비율. 낮으면 장애를 미리 알리지 못합니다.`]];
   if (isRule(risk)) box.append(el('div', { class: 'rnote', text: risk.note || '규칙 기반' }));
   const dl = el('dl');
   const items = isRule(risk) ? [] : [['종류', KIND_TEXT[m.kind] || m.kind], ['학습', fmtDateTime(m.trained_at)], ['창', fmtNum(m.windows)], ['양성', fmtNum(m.positives)],
-    ['장애', `${fmtNum(m.incidents)}건`], ['AUC', fmtNum(m.auc, 2)], ['lead', `${fmtNum((m.lead_sec || 0) / 60)}분`],
-    ['절편 보정', m.prior_offset ? `−${fmtNum(m.prior_offset, 2)}` : DASH]];
-  for (const [k, v] of items) dl.append(el('dt', { text: k }), el('dd', { text: v }));
+    ['장애', `${fmtNum(m.incidents)}건`], ['AUC', fmtNum(m.auc, 2)], ['lead', `${lead}분`],
+    ['절편 보정', m.prior_offset ? `−${fmtNum(m.prior_offset, 2)}` : DASH],
+    ['확인 전 자동', `${fmtNum(m.unconfirmed || 0)}건`, '알림 규칙이 자동으로 연 장애 기록 중 사람이 장애로 확인하지 않은 것. 확인 전에는 학습 라벨로 쓰지 않습니다.'],
+    ['뺀 창', fmtNum(m.excluded || 0), '학습에서 뺀 1분 창. 장애 중 창(“곧 장애”를 맞히는 문제라 양성에 넣지 않음)과 확인 전 자동 기록의 직전·중 창입니다.']];
+  for (const [k, v, tip] of items) dl.append(el('dt', {}, k, ...(tip ? [' ', info(tip)] : [])), el('dd', { text: v }));
   for (const [k, v, tip] of rates) dl.append(el('dt', {}, k, ' ', info(tip)), el('dd', { text: v }));
   box.append(dl);
   const res = el('span', { class: 'mres' });
@@ -231,8 +240,24 @@ function modelBox(risk, onTrained) {
   return box;
 }
 
-function incidentBox(incidents, reload) {
-  const box = el('section', { class: 'rbox' }, el('h2', { class: 'sec', text: '장애 기록' }));
+function incidentBox(incidents, leadSec, reload) {
+  const lead = fmtNum((leadSec || 300) / 60);
+  const box = el('section', { class: 'rbox' }, el('h2', { class: 'sec', text: '장애 기록' }),
+    el('p', { class: 'ihelp', text: `학습 라벨은 직접·가져옴·시연 기록과 장애로 확인한 자동 기록입니다. 장애 시작 전 ${lead}분이 “곧 장애”로 학습되고, 장애 중 구간과 확인 전 자동 기록은 학습에서 뺍니다.` }));
+  const confirm = async (i, yes) => {
+    try {
+      await api(`/incidents/${i.id}`, { method: 'PATCH', body: { confirmed: yes } });
+      toast(yes ? '장애로 확인함 · 다음 학습부터 라벨로 씁니다' : '확인 취소함 · 다음 학습부터 라벨에서 뺍니다');
+      reload();
+    } catch (e) { toast(`${yes ? '확인' : '확인 취소'}하지 못함 · ${errText(e)}`); }
+  };
+  const sourceCell = (i) => {
+    if (i.source !== 'auto') return sourceText(i);
+    const btn = i.confirmed
+      ? el('button', { type: 'button', class: 'ilink', text: '확인 취소', onclick: () => confirm(i, false) })
+      : el('button', { type: 'button', text: '장애로 확인', title: '실제 장애였다면 확인 — 학습 라벨이 됩니다', onclick: () => confirm(i, true) });
+    return el('span', { class: i.confirmed ? '' : 'iunconf' }, sourceText(i), ' ', gate(btn, 'operator'));
+  };
   const endCell = (i) => {
     if (i.end) return fmtDateTime(i.end);
     const inp = el('input', { type: 'datetime-local', 'aria-label': '끝 시각' });
@@ -245,7 +270,7 @@ function incidentBox(incidents, reload) {
   box.append(table({ rows: sortIncidents(incidents), columns: [
     { label: '시작', render: (i) => fmtDateTime(i.start) }, { label: '끝', render: endCell },
     { label: '범위', render: (i) => i.scope || DASH }, { label: '제목', key: 'title' },
-    { label: '출처', render: (i) => SOURCE_TEXT[i.source] || i.source }] }));
+    { label: '출처', render: sourceCell }] }));
 
   const f = el('form', { class: 'iform' });
   const s = el('input', { type: 'datetime-local', name: 'start', required: true, 'aria-label': '시작' });
@@ -320,10 +345,13 @@ export function render(root, params, query) {
   const drawSum = () => sum.replaceChildren(summaryBox(risk));
   const drawCheck = () => check.replaceChildren(checkBox(risk, ctx, act, formFeature));
   const drawLower = () => lower.replaceChildren(holdsBox(holds), modelBox(risk, loadAll));
-  const drawBot = () => bot.replaceChildren(incidentBox(incidents, loadInc));
+  const leadOf = () => (risk && risk.model ? risk.model.lead_sec : undefined);
+  let drawnLead;
+  const drawBot = () => { drawnLead = leadOf(); bot.replaceChildren(incidentBox(incidents, drawnLead, loadInc)); };
   const loadRisk = async () => {
     risk = await api('/risk').catch(() => null);
     drawSum();
+    if (leadOf() !== drawnLead) drawBot(); // 안내 문구의 lead. 입력 중인 폼을 지우지 않게 바뀔 때만
     drawLower();
     if (!formFeature) drawCheck(); // 용인 폼을 쓰는 동안은 다시 그리지 않는다
   };

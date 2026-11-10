@@ -140,33 +140,36 @@ logs:
 
 - 같은 키의 firing 알림이 있으면 새로 만들지 않는다. 조건이 풀리면 그 알림을 `resolved`로 바꾼다(`log`·`run`은 60초 뒤 자동 resolved).
 - 매니저가 재시작하면 Watcher는 state.db의 firing 알림을 읽어 상태를 이어받는다.
-- **장애 자동 기록:** 타일 crit이나 위험 서버 2대 이상이 `alerts.incident_after`(30초) 넘게 이어지면 `incidents`에 `source: auto` 행을 연다. 모두 풀린 지 `alerts.incident_clear`(60초)가 지나면 닫는다(`end_ts`). 위험 지수는 자동 기록의 조건으로 쓰지 않는다(학습 라벨이 자기 출력을 다시 먹지 않게).
+- **장애 자동 기록:** 타일 crit이나 위험 서버 2대 이상이 `alerts.incident_after`(30초) 넘게 이어지면 `incidents`에 `source: auto` 행을 연다. 모두 풀린 지 `alerts.incident_clear`(60초)가 지나면 닫는다(`end_ts`). 위험 지수는 자동 기록의 조건으로 쓰지 않는다(학습 라벨이 자기 출력을 다시 먹지 않게). 자동 기록은 **사람이 장애로 확인하기 전에는 학습 라벨이 아니다**(§6.1). 자동 기록의 조건(CPU·메모리·타일 임계값)이 지수 특징과 같은 지표라, 확인 없이 라벨로 쓰면 모델이 장애가 아니라 알림 규칙을 다시 배운다.
 - 확인(ack): 화면에서 확인하면 `acked_at`, `acked_by`가 남는다. 확인해도 조건이 풀릴 때까지 firing이다.
 
 ## 6. 장애 기록과 장애 위험 지수
 
 ### 6.1 장애 기록 (`incidents`)
 
-"기존의 장애 기록"이 학습 라벨이다. 세 길로 들어온다.
+"기존의 장애 기록"이 학습 라벨이다. 네 길로 들어온다.
 
-| 출처 `source` | 방법 |
-|---|---|
-| `manual` | 화면(`#risk`)에서 시작·끝·범위·제목 입력, `POST /api/v1/incidents` |
-| `import` | 과거 장애 대장 CSV: `POST /api/v1/incidents/import`, `eum incident import --data <dir> <file.csv>`. 열: `start,end,scope,title`(시각은 RFC3339 또는 `YYYY-MM-DD HH:MM`, 매니저 `tz`) |
-| `auto` | §5의 자동 기록 |
-| `seed` | 시연용 이력 생성기 `eum seed`(E5) |
+| 출처 `source` | 방법 | 학습 라벨 |
+|---|---|---|
+| `manual` | 화면(`#risk`)에서 시작·끝·범위·제목 입력, `POST /api/v1/incidents` | 그대로 |
+| `import` | 과거 장애 대장 CSV: `POST /api/v1/incidents/import`, `eum incident import --data <dir> <file.csv>`. 열: `start,end,scope,title`(시각은 RFC3339 또는 `YYYY-MM-DD HH:MM`, 매니저 `tz`) | 그대로 |
+| `auto` | §5의 자동 기록 | **`confirmed`일 때만**. 화면 장애 기록 표의 `장애로 확인`(operator 이상) = `PATCH /api/v1/incidents/{id}` `{"confirmed":true}`, 되돌리기는 `false`. 감사 `incident.confirm`. 다른 출처에 확인을 보내면 400 |
+| `seed` | 시연용 이력 생성기 `eum seed`(E5) | 그대로 |
+
+확인 전 자동 기록은 양성도 평시도 아니라 그 직전·중 창을 학습에서 뺀다(2026-11-10). 확인·취소는 다음 학습부터 반영된다.
 
 ### 6.2 지수 계산
 
 | 단계 | 내용 |
 |---|---|
 | 특징 | 1분 창마다 특징 벡터 하나. 특징은 표로 정의한다(`risk.DefaultFeatures()`, 아래). 새 특징은 표에 한 줄 |
-| 라벨 | 창 `[t, t+60s)`가 장애 `[start − lead, end]`와 겹치면 1(**`lead` 기본 5분: "곧 장애"를 맞히는 문제**). 끝나지 않은 장애는 end = 지금 |
+| 라벨 | **"곧 장애"를 맞히는 문제라 장애 직전만 양성이다**(2026-11-10). 창 `[t, t+60s)`가 (1) 어느 기록이든 장애 중 `[start, end]`와 겹치면 **학습에서 뺀다**(끝나지 않은 장애는 end = 지금), (2) 확인 전 자동 기록의 `[start − lead, start)`와 겹쳐도 뺀다, (3) 라벨 기록(§6.1)의 `[start − lead, start)`와 겹치면 1, (4) 나머지는 0(평시). `lead` 기본 5분, 0 이하면 5분. 장애 범위(`scope`)는 보지 않는다(전체 지수 하나). 예전 규칙(`[start − lead, end]` 전부 1)은 양성 대부분이 장애 중 창이라 "이미 났나"를 배웠고 AUC·장애 전 경고 비율도 그만큼 부풀었다 — 시드 7일 기준 양성 155개 중 125개가 장애 중이었다 |
+| 학습 데이터 | 뺀 창은 학습·AUC·평시 중앙값·경고 비율·꺼내기 CSV 모두에서 없다. 점수 때의 특징 벡터(최근 60초)는 라벨과 무관해 장애 중에도 그대로 만든다 |
 | 학습 | `train_every`(10분)마다 최근 `train_window`(7일) 창으로 `RiskModel.Fit`. 기본 모델 `logreg`: 표준화 → L2(λ 0.01) 로지스틱 회귀, 양성 가중치 n/(2·n_pos), 경사 하강 1,000회(0에서 시작해 결정적). 시간순 뒤 20%로 AUC를 재 보고서에 남김. **절편 보정**(2026-11-10): 양성 가중치로 학습한 로짓은 ln(n_neg/n_pos)만큼 위로 밀려 있어(King & Zeng 2001) 점수 때 그만큼 뺀다(`prior_offset`). 그래야 지수가 실제 확률이다. 같은 입력에서 보정 전후: 분포가 겹치는 양성 2% 시험 데이터의 평시 창 평균 0.31 → 0.017, 시연 seed(7일, 장애 6건)는 `prior_offset` 4.16 · 평시 창 중 경고선 이상 0.07% · 장애 창 중 경고선 이상 95.5% |
-| 사례 부족 | 장애 `min_incidents`(3건) 미만이거나 양성 창 10개 미만이면 **`rule` 모델**로 계산하고 화면에 "규칙 기반 · 학습 사례 부족(장애 n건)"을 표시 |
+| 사례 부족 | 라벨 장애(§6.1, 확인 전 자동 기록 제외) `min_incidents`(3건) 미만이거나 양성 창(장애 직전) 10개 미만이면 **`rule` 모델**로 계산하고 화면에 "규칙 기반 · 학습 사례 부족(장애 n건, 최소 3건)"을 표시. 확인 전 자동 기록이 있으면 " · 확인 안 된 자동 기록 k건은 빼고 셈"을 붙인다 |
 | 점수 | `score_every`(10초)마다 최근 60초로 같은 특징 벡터를 만들어 `Score` → 지수 0~100(`100 × P(장애)`), 기여 양수 전부(`w_i × z_i`, 최대 8개, 기여순. 화면은 가장 큰 기여의 5% 이상이고 0.05 이상인 것만 "확인할 것"으로 보인다). 수준: < `warn`(30) 정상, < `crit`(60) 경고, 이상 위험 |
-| 저장 | 지수는 지표 `risk.index`(호스트 `_eum`)로, 미확인 지수(§6.4)는 `risk.index_open`으로 metrics.db에 쌓인다(SQL·차트에 그대로). 모델은 `<data>/risk/model.json`(특징, 평균·표준편차, 가중치, 절편 보정, 학습 시각, 창·양성·장애 수, AUC, 평시 중앙값, 경고선 기준 평시·장애 창 비율)에 공개 형식으로 둔다 |
-| 꺼내기 | 학습 데이터 그대로: `GET /api/v1/export/risk-dataset?from=&to=` CSV(`ts, 특징…, label`). 사내 분석 팀이 같은 데이터로 다른 모델을 돌린다(데이터 주권) |
+| 저장 | 지수는 지표 `risk.index`(호스트 `_eum`)로, 미확인 지수(§6.4)는 `risk.index_open`으로 metrics.db에 쌓인다(SQL·차트에 그대로). 모델은 `<data>/risk/model.json`(특징, 평균·표준편차, 가중치, 절편 보정, 학습 시각, 창·양성·장애 수, 확인 전 자동 기록 수 `unconfirmed`, 뺀 창 수 `excluded`, AUC, 평시 중앙값, 경고선 기준 평시·장애 직전 창 비율)에 공개 형식으로 둔다 |
+| 꺼내기 | 학습 데이터 그대로: `GET /api/v1/export/risk-dataset?from=&to=` CSV(`ts, 특징…, label`, 뺀 창 없음). 사내 분석 팀이 같은 데이터로 다른 모델을 돌린다(데이터 주권) |
 
 | 특징 `name` | 표시 이름 | 계산(서버 묶기 → 창 안 묶기) | 규칙 모델 정규화 lo~hi |
 |---|---|---|---|
@@ -294,8 +297,9 @@ logs:
 // GET /api/v1/risk
 {"now":1761534000000,"index":72,"level":"crit","mode":"model",            // mode: model | rule
  "open_index":43,"open_level":"warn",                                    // 용인한 요인을 뺀 값(§6.4). 화면 색·알림은 이것
- "model":{"kind":"logreg","trained_at":1761533400000,"windows":10080,"positives":61,"incidents":6,"auc":0.93,"lead_sec":300,
-          "prior_offset":5.1,"false_warn":0.012,"hit_warn":0.71},
+ "model":{"kind":"logreg","trained_at":1761533400000,"windows":9946,"positives":35,"incidents":7,"auc":0.91,"lead_sec":300,
+          "unconfirmed":1,"excluded":134,                                // 확인 전 자동 기록 수, 학습에서 뺀 창 수(§6.2)
+          "prior_offset":5.8,"false_warn":0.012,"hit_warn":0.66},
  "factors":[{"feature":"queue","title":"대기 큐","value":2240,"contrib":1.9,"baseline":380,
              "check":"유입이 늘었나, 처리가 줄었나(처리량 부족과 같이 본다)",
              "where":[{"kind":"host","id":"match-01","label":"","value":2240}],
@@ -303,8 +307,8 @@ logs:
                      "at":1761533900000,"by":"user:operator","until":1761548300000,"ended_at":0,"ended_by":"","end_note":""}},
             {"feature":"p99","title":"p99 응답 시간","value":385,"contrib":1.2,"baseline":92,"check":"…","where":[…],"hold":null}],
  "holds":[{…위 hold…}],
- "incidents":[{"id":1000,"start":1761533790000,"end":0,"scope":"매매/체결","title":"체결 대기 큐 적체","source":"auto","note":""}],
- "note":"",                                                              // 예: "규칙 기반 · 학습 사례 부족(장애 2건)"
+ "incidents":[{"id":1000,"start":1761533790000,"end":0,"scope":"매매/체결","title":"자동: 체결 · 대기 큐 위험","source":"auto","note":"","confirmed":false}],
+ "note":"",                                                              // 예: "규칙 기반 · 학습 사례 부족(장애 2건, 최소 3건)"
  "history":[[1761530400000,8],[1761530410000,9]], "history_open":[[1761530400000,8],[1761530410000,9]]}
 
 // GET /api/v1/risk/holds
@@ -312,7 +316,10 @@ logs:
  "from":1760929200000, "to":1761534000000}
 
 // GET /api/v1/incidents
-{"incidents":[{"id":3,"start":1761533700000,"end":0,"scope":"매매/체결","title":"체결 지연","source":"auto","note":""}]}
+{"incidents":[{"id":3,"start":1761533700000,"end":0,"scope":"매매/체결","title":"체결 지연","source":"auto","note":"","confirmed":false}]}
+
+// PATCH /api/v1/incidents/{id}   본문 필드는 모두 선택: end, title, note, confirmed(자동 기록만)
+{"confirmed":true}
 ```
 
 - `/api/v1/flows` 응답의 `last.steps.<id>`와 `/runs`의 항목에 `forced`를 더한다. 정의 파일 읽기 에러는 `GET /api/v1/editor`의 `load_errors`로 나간다(화면은 배치 탭 위에 경고 띠).
@@ -364,7 +371,8 @@ type Alert struct {
 }
 type AlertFilter struct { State, Kind string; Since int64; Limit int }
 
-type Incident struct { ID, Start, End int64; Scope, Title, Source, Note string } // End 0 = 진행 중
+type Incident struct { ID, Start, End int64; Scope, Title, Source, Note string; Confirmed bool } // End 0 = 진행 중. Confirmed: 자동 기록 확인(§6.1)
+func (Incident) IsLabel() bool // 학습 라벨인가: source != auto || Confirmed
 type AuditEntry struct { ID, TS int64; Actor, Action, Target, Detail string }
 
 type MetricDef struct { Name, Title, Unit, Chart string; Procfs bool }
@@ -453,7 +461,8 @@ ALTER TABLE runs ADD COLUMN forced INTEGER NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS incidents (
   id INTEGER PRIMARY KEY, start_ts INTEGER NOT NULL, end_ts INTEGER NOT NULL DEFAULT 0,
-  scope TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, source TEXT NOT NULL, note TEXT NOT NULL DEFAULT '');
+  scope TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, source TEXT NOT NULL, note TEXT NOT NULL DEFAULT '',
+  confirmed INTEGER NOT NULL DEFAULT 0);   -- 자동 기록을 사람이 장애로 확인(§6.1). 기존 DB는 Open 때 ALTER
 CREATE INDEX IF NOT EXISTS ix_incidents_start ON incidents(start_ts);
 
 CREATE TABLE IF NOT EXISTS alerts (

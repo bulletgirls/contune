@@ -106,3 +106,38 @@ INSERT INTO runs(exec_id,flow_run_id,flow_id,step_id,host,trigger,attempt,status
 		t.Fatal("forced 갱신 실패")
 	}
 }
+
+// TestMigrateIncidentConfirmed: confirmed 열이 없는 예전 incidents에 열이 더해지고, 예전 행은 미확인이다.
+func TestMigrateIncidentConfirmed(t *testing.T) {
+	ctx := context.Background()
+	p := filepath.Join(t.TempDir(), "state.db")
+	db, err := sql.Open("sqlite", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`CREATE TABLE incidents (
+  id INTEGER PRIMARY KEY, start_ts INTEGER NOT NULL, end_ts INTEGER NOT NULL DEFAULT 0,
+  scope TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, source TEXT NOT NULL, note TEXT NOT NULL DEFAULT '');
+INSERT INTO incidents(start_ts,end_ts,title,source) VALUES(100,200,'자동: 큐','auto');`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	s, err := statesql.Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	l, err := s.ListIncidents(ctx, 0, 0)
+	if err != nil || len(l) != 1 || l[0].Confirmed || l[0].IsLabel() {
+		t.Fatalf("%+v %v", l, err)
+	}
+	in := l[0]
+	in.Confirmed = true
+	if err := s.UpdateIncident(ctx, in); err != nil {
+		t.Fatal(err)
+	}
+	if l, _ := s.ListIncidents(ctx, 0, 0); !l[0].Confirmed || !l[0].IsLabel() {
+		t.Fatalf("확인 갱신 실패 %+v", l)
+	}
+}

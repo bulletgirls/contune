@@ -76,6 +76,9 @@ func TestEngineFallback(t *testing.T) {
 	if res.Mode != "rule" || !strings.Contains(res.Note, "학습 사례 부족") || !strings.Contains(res.Note, "장애 1건") {
 		t.Errorf("결과 = %+v", res)
 	}
+	if strings.Contains(res.Note, "자동 기록") {
+		t.Errorf("자동 기록이 없는데 노트 = %q", res.Note)
+	}
 	if res.Report.Baseline == nil || res.Report.PriorOffset != 0 { // 규칙 모드에서도 평시 값은 채운다
 		t.Errorf("규칙 모드 보고서 = %+v", res.Report)
 	}
@@ -132,13 +135,20 @@ func TestEngineTrainAndScore(t *testing.T) {
 	if res.Mode != "model" || res.Report.Kind != "logreg" || res.Report.AUC <= 0.8 || res.Report.Incidents != 5 {
 		t.Fatalf("학습 결과 = %+v", res)
 	}
+	// 양성은 장애마다 직전 5분(창 5개), 장애 중 10분(끝 창 포함 11개)은 뺀다
+	if res.Report.Positives != 25 || res.Report.Excluded != 55 {
+		t.Errorf("양성 %d · 뺀 창 %d, want 25 · 55", res.Report.Positives, res.Report.Excluded)
+	}
 	if _, err := os.Stat(filepath.Join(e.d.DataDir, "risk", "model.json")); err != nil {
 		t.Errorf("model.json: %v", err)
 	}
 
-	// 장애 모양의 최근 60초
+	// 장애 모양의 최근 60초. 장애가 진행 중이어도 점수는 그 60초 특징 그대로다(장애 중 창 빼기는 학습에만)
 	t1 := now.Add(10 * time.Minute)
 	if err := m.Write(ctx, shape(ms(t1.Add(-30*time.Second)), true, r)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateIncident(ctx, model.Incident{Start: ms(t1.Add(-2 * time.Minute)), Title: "진행 중", Source: "manual"}); err != nil {
 		t.Fatal(err)
 	}
 	c.Set(t1)
@@ -249,5 +259,30 @@ func TestTrainOffline(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "모드") || !strings.Contains(out.String(), "rule") || !strings.Contains(out.String(), "학습 사례 부족") {
 		t.Errorf("출력 = %s", out.String())
+	}
+}
+
+// TestTrainUnconfirmedAuto: 확인 안 된 자동 기록은 장애 수에 들지 않고 노트에 따로 보인다. 확인하면 라벨이 된다.
+func TestTrainUnconfirmedAuto(t *testing.T) {
+	ctx := context.Background()
+	m, st := memstore.NewMetric(), memstore.NewState()
+	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	c := &clock{t: now}
+	st.CreateIncident(ctx, model.Incident{Start: ms(now.Add(-5 * time.Hour)), End: ms(now.Add(-4 * time.Hour)), Title: "x", Source: "manual"})
+	id, _ := st.CreateIncident(ctx, model.Incident{Start: ms(now.Add(-2 * time.Hour)), End: ms(now.Add(-time.Hour)), Title: "자동: 큐", Source: "auto"})
+	e := newTestEngine(t, m, st, c)
+	res, err := e.train(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep := res.Report; rep.Incidents != 1 || rep.Unconfirmed != 1 || rep.Positives != 5 || !strings.Contains(res.Note, "확인 안 된 자동 기록 1건") {
+		t.Fatalf("확인 전 = %+v %q", rep, res.Note)
+	}
+	if err := st.UpdateIncident(ctx, model.Incident{ID: id, Start: ms(now.Add(-2 * time.Hour)), End: ms(now.Add(-time.Hour)), Title: "자동: 큐", Source: "auto", Confirmed: true}); err != nil {
+		t.Fatal(err)
+	}
+	res, _ = e.train(ctx)
+	if rep := res.Report; rep.Incidents != 2 || rep.Unconfirmed != 0 || rep.Positives != 10 || strings.Contains(res.Note, "자동 기록") {
+		t.Fatalf("확인 뒤 = %+v %q", rep, res.Note)
 	}
 }

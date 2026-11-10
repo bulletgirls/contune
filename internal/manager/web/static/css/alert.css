@@ -15,6 +15,9 @@
 .mres { margin-left:8px; font-size:13px; color:var(--t2); }
 .wtbl { max-width:320px; }
 .iform { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:8px 0; }
+.ihelp { margin:2px 0 8px; font-size:12px; color:var(--t3); }
+.iunconf { color:var(--warn); }
+.ilink { background:none; border:none; padding:0; color:var(--accent); font-size:12px; cursor:pointer; }
 .iform input[type=text] { min-width:140px; }
 .icsv textarea { width:100%; min-height:72px; font-family:monospace; box-sizing:border-box; }
 .irow { display:flex; gap:8px; align-items:center; margin-top:4px; flex-wrap:wrap; }

@@ -44,6 +44,8 @@ type riskModelInfo struct {
 	Windows     int     `json:"windows"`
 	Positives   int     `json:"positives"`
 	Incidents   int     `json:"incidents"`
+	Unconfirmed int     `json:"unconfirmed"`
+	Excluded    int     `json:"excluded"`
 	AUC         float64 `json:"auc"`
 	LeadSec     int64   `json:"lead_sec"`
 	PriorOffset float64 `json:"prior_offset"`
@@ -113,7 +115,7 @@ func (e *Engine) handleRisk(w http.ResponseWriter, r *http.Request) {
 		Now: now, Index: s.Index, Level: lv, Mode: mode, OpenIndex: open, OpenLevel: openLv,
 		Model: riskModelInfo{
 			Kind: rep.Kind, TrainedAt: rep.TrainedAt, Windows: rep.Windows, Positives: rep.Positives,
-			Incidents: rep.Incidents, AUC: rep.AUC, LeadSec: int64(e.cfg.Lead / time.Second),
+			Incidents: rep.Incidents, Unconfirmed: rep.Unconfirmed, Excluded: rep.Excluded, AUC: rep.AUC, LeadSec: int64(e.cfg.Lead / time.Second),
 			PriorOffset: rep.PriorOffset, FalseWarn: rep.FalseWarn, HitWarn: rep.HitWarn,
 		},
 		Factors: factors, Holds: holdList(holds), Incidents: ongoing,
@@ -203,6 +205,7 @@ func (e *Engine) handlePatchIncident(w http.ResponseWriter, r *http.Request) {
 	var p struct {
 		End         *int64
 		Title, Note *string
+		Confirmed   *bool // 자동 기록을 장애로 확인(학습 라벨로 올림)·확인 취소
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, maxBody)).Decode(&p); err != nil {
 		writeErr(w, http.StatusBadRequest, "본문을 읽지 못함: "+err.Error())
@@ -227,6 +230,14 @@ func (e *Engine) handlePatchIncident(w http.ResponseWriter, r *http.Request) {
 	if p.Note != nil {
 		inc.Note = *p.Note
 	}
+	confirmChanged := false
+	if p.Confirmed != nil && *p.Confirmed != inc.Confirmed {
+		if inc.Source != "auto" {
+			writeErr(w, http.StatusBadRequest, "자동 기록만 확인합니다(직접·가져옴·시연 기록은 이미 학습 라벨)")
+			return
+		}
+		inc.Confirmed, confirmChanged = *p.Confirmed, true
+	}
 	if msg := checkIncident(inc); msg != "" {
 		writeErr(w, http.StatusBadRequest, msg)
 		return
@@ -238,7 +249,17 @@ func (e *Engine) handlePatchIncident(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	e.audit(r, "incident.update", "incident:"+strconv.FormatInt(id, 10), inc.Title)
+	target := "incident:" + strconv.FormatInt(id, 10)
+	if confirmChanged {
+		detail := inc.Title + " · 장애로 확인"
+		if !inc.Confirmed {
+			detail = inc.Title + " · 확인 취소"
+		}
+		e.audit(r, "incident.confirm", target, detail)
+	}
+	if p.End != nil || p.Title != nil || p.Note != nil {
+		e.audit(r, "incident.update", target, inc.Title)
+	}
 	writeJSON(w, http.StatusOK, inc)
 }
 
@@ -306,7 +327,7 @@ func (e *Engine) handleExport(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// writeDatasetCSV는 ts,<특징…>,label 형식으로 쓴다.
+// writeDatasetCSV는 ts,<특징…>,label 형식으로 쓴다. 학습에서 뺀 창(장애 중 등)은 학습 데이터와 같이 없다.
 func writeDatasetCSV(w io.Writer, ds Dataset) error {
 	cw := csv.NewWriter(w)
 	head := append(append([]string{"ts"}, ds.Names...), "label")

@@ -261,7 +261,7 @@ func RunState(t *testing.T, open func(t *testing.T) store.StateStore) {
 		if !(id1 < id2 && id2 < id3) {
 			t.Fatalf("id 증가 아님 %d %d %d", id1, id2, id3)
 		}
-		if err := s.UpdateIncident(ctx, model.Incident{ID: id2, Start: 300, End: 400, Title: "b", Source: "auto", Scope: "g", Note: "n"}); err != nil {
+		if err := s.UpdateIncident(ctx, model.Incident{ID: id2, Start: 300, End: 400, Title: "b", Source: "auto", Scope: "g", Note: "n", Confirmed: true}); err != nil {
 			t.Fatal(err)
 		}
 		if err := s.UpdateIncident(ctx, model.Incident{ID: 9999, Title: "x"}); !errors.Is(err, store.ErrNotFound) {
@@ -271,7 +271,7 @@ func RunState(t *testing.T, open func(t *testing.T) store.StateStore) {
 		if len(all) != 3 || all[0].Title != "c" || all[1].Title != "b" || all[2].Title != "a" {
 			t.Fatalf("%+v", all)
 		}
-		if all[1].End != 400 || all[1].Scope != "g" || all[1].Note != "n" {
+		if all[1].End != 400 || all[1].Scope != "g" || all[1].Note != "n" || !all[1].Confirmed || all[2].Confirmed {
 			t.Fatalf("%+v", all[1])
 		}
 		titles := func(from, to int64) string {

@@ -59,7 +59,7 @@ const (
 	riskMetric = "risk.index"
 	// riskOpenMetric는 용인된 요인을 뺀 미확인 지수다(05 §6.4).
 	riskOpenMetric = "risk.index_open"
-	// minPositives는 학습에 필요한 양성 창(장애 직전·중) 수다.
+	// minPositives는 학습에 필요한 양성 창(장애 직전 lead 안) 수다.
 	minPositives = 10
 	// firstTrain은 시작 뒤 첫 학습까지의 시간이다.
 	firstTrain = time.Minute
@@ -78,8 +78,8 @@ func withDefaults(c Config) Config {
 	if c.TrainWindow <= 0 {
 		c.TrainWindow = 168 * time.Hour
 	}
-	if c.Lead < 0 {
-		c.Lead = 0
+	if c.Lead <= 0 {
+		c.Lead = 5 * time.Minute // 양성은 장애 직전 lead 안의 창뿐이라 0이면 학습할 사례가 없다
 	}
 	if c.MinIncidents <= 0 {
 		c.MinIncidents = 3
@@ -276,8 +276,19 @@ func (e *Engine) train(ctx context.Context) (trainResult, error) {
 		return trainResult{}, err
 	}
 	rep, _ := e.rule.Fit(ctx, ds)
-	rep.TrainedAt, rep.Incidents = to, len(incs)
+	rep.TrainedAt, rep.Excluded = to, ds.Excluded
+	for _, in := range incs {
+		if in.IsLabel() {
+			rep.Incidents++
+		} else {
+			rep.Unconfirmed++
+		}
+	}
 	rep.Baseline = baseline(ds)
+	unconf := ""
+	if rep.Unconfirmed > 0 {
+		unconf = fmt.Sprintf(" · 확인 안 된 자동 기록 %d건은 빼고 셈", rep.Unconfirmed)
+	}
 	res := trainResult{Mode: "rule"}
 	var fitted RiskModel
 	switch {
@@ -287,9 +298,9 @@ func (e *Engine) train(ctx context.Context) (trainResult, error) {
 	case e.cfg.Model == "rule":
 		res.Note = noteRuleConfig
 	case rep.Incidents < e.cfg.MinIncidents:
-		res.Note = fmt.Sprintf("규칙 기반 · 학습 사례 부족(장애 %d건, 최소 %d건)", rep.Incidents, e.cfg.MinIncidents)
+		res.Note = fmt.Sprintf("규칙 기반 · 학습 사례 부족(장애 %d건, 최소 %d건%s)", rep.Incidents, e.cfg.MinIncidents, unconf)
 	case rep.Positives < minPositives:
-		res.Note = fmt.Sprintf("규칙 기반 · 학습 사례 부족(장애 %d건, 장애 직전·중 창 %d개, 최소 %d개)", rep.Incidents, rep.Positives, minPositives)
+		res.Note = fmt.Sprintf("규칙 기반 · 학습 사례 부족(장애 %d건, 장애 직전 창 %d개, 최소 %d개%s)", rep.Incidents, rep.Positives, minPositives, unconf)
 	default:
 		m, err := Build(e.cfg.Model, nil, e.d.Env)
 		if err != nil {
@@ -323,7 +334,7 @@ func (e *Engine) train(ctx context.Context) (trainResult, error) {
 	}
 	e.mu.Unlock()
 	slog.Info("위험 모델 학습", "mode", res.Mode, "kind", rep.Kind, "windows", rep.Windows,
-		"positives", rep.Positives, "incidents", rep.Incidents, "auc", rep.AUC,
+		"positives", rep.Positives, "incidents", rep.Incidents, "unconfirmed", rep.Unconfirmed, "excluded", rep.Excluded, "auc", rep.AUC,
 		"prior_offset", rep.PriorOffset, "false_warn", rep.FalseWarn, "hit_warn", rep.HitWarn)
 	return res, nil
 }
@@ -356,7 +367,7 @@ func baseline(ds Dataset) map[string]float64 {
 	return out
 }
 
-// warnRates는 ds를 m으로 매겨 평시 창 중 경고선 이상 비율(false)과 장애 창 중 경고선 이상 비율(hit)을 잰다.
+// warnRates는 ds를 m으로 매겨 평시 창 중 경고선 이상 비율(false)과 장애 직전 창 중 경고선 이상 비율(hit)을 잰다.
 func (e *Engine) warnRates(ctx context.Context, m RiskModel, ds Dataset) (falseWarn, hitWarn float64) {
 	var neg, pos, fw, hw int
 	for i, x := range ds.X {
@@ -423,7 +434,7 @@ func (e *Engine) save(m RiskModel, rep FitReport) error {
 func (e *Engine) score(ctx context.Context) error {
 	now := e.d.Now()
 	to := now.UnixMilli()
-	ds, err := buildDataset(ctx, e.d.Metrics, e.d.State, e.feats, to-windowMS, to, e.cfg.Lead, time.Minute)
+	ds, err := buildFeatures(ctx, e.d.Metrics, e.d.State, e.feats, to-windowMS, to, time.Minute)
 	if err != nil {
 		return err
 	}

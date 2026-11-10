@@ -271,7 +271,12 @@ type Incident struct {
 	Title  string `json:"title"`
 	Source string `json:"source"` // manual | import | auto | seed
 	Note   string `json:"note"`
+	// Confirmed는 자동 기록(auto)을 사람이 장애로 확인했다는 표시다. 확인 전 자동 기록은 학습 라벨이 아니다(05 §6.1).
+	Confirmed bool `json:"confirmed"`
 }
+
+// IsLabel은 이 기록이 위험 지수 학습 라벨인지다: 사람이 남긴 기록(manual·import·seed)과 확인한 자동 기록.
+func (in Incident) IsLabel() bool { return in.Source != "auto" || in.Confirmed }
 
 // RiskHold는 위험 요인 하나에 사람이 단 확인 표시다(05 §6.4).
 // Kind ack = 확인 중(지수 그대로), accept = 용인(미확인 지수에서 그 요인을 뺀다).

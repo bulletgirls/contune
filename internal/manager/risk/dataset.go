@@ -15,15 +15,64 @@ const windowMS = 60_000
 var failedStatuses = []model.RunStatus{model.StatusFailed, model.StatusTimeout, model.StatusKilled, model.StatusLost}
 
 // BuildDataset은 [from, to)를 1분 창으로 나눠 창마다 특징 벡터와 라벨을 만든다(05 §6.2).
-// 라벨은 창 [t, t+60s)가 장애 [start − lead, end]와 겹치면 1이다. 끝나지 않은 장애는 end = to.
+// "곧 장애"를 맞히는 문제라 라벨은 장애 직전만 본다. 창 [t, t+60s)가
+//   - 어느 장애 기록이든 장애 중 [start, end]와 겹치면 학습에서 뺀다(끝나지 않은 장애는 end = to).
+//   - 확인 안 된 자동 기록(model.Incident.IsLabel이 false)의 직전 [start − lead, start)와 겹쳐도 뺀다.
+//   - 라벨 기록의 직전 [start − lead, start)와 겹치면 1, 나머지는 0(평시)이다.
+//
+// 뺀 창 수는 Dataset.Excluded다. 남은 창은 시각순이다.
 func BuildDataset(ctx context.Context, m store.MetricStore, st store.StateStore, feats []FeatureDef, from, to int64, lead time.Duration) (Dataset, error) {
-	return buildDataset(ctx, m, st, feats, from, to, lead, time.Minute)
+	ds, err := buildFeatures(ctx, m, st, feats, from, to, time.Minute)
+	if err != nil {
+		return ds, err
+	}
+	incs, err := st.ListIncidents(ctx, from, to+lead.Milliseconds())
+	if err != nil {
+		return ds, err
+	}
+	labelDataset(&ds, incs, to, lead.Milliseconds())
+	return ds, nil
 }
 
-// buildDataset은 BuildDataset과 같고, 지표를 step 구간 평균으로 받는다.
-// 창 안에서는 step 구간마다 서버 묶기(HostAgg) → 구간들을 창 묶기(TimeAgg)한다.
+// labelDataset은 ds에 라벨을 매기고 뺄 창을 걸러낸다(BuildDataset 규칙).
+func labelDataset(ds *Dataset, incs []model.Incident, to, leadMS int64) {
+	keep := 0
+	for i, t := range ds.TS {
+		y, drop := windowLabel(incs, t, to, leadMS)
+		if drop {
+			ds.Excluded++
+			continue
+		}
+		ds.TS[keep], ds.X[keep], ds.Y[keep] = t, ds.X[i], y
+		keep++
+	}
+	ds.TS, ds.X, ds.Y = ds.TS[:keep], ds.X[:keep], ds.Y[:keep]
+}
+
+// windowLabel은 창 [t, t+60s) 하나의 라벨이다. drop이면 학습에서 뺀다.
+func windowLabel(incs []model.Incident, t, to, leadMS int64) (y float64, drop bool) {
+	for _, in := range incs {
+		end := in.End
+		if end == 0 {
+			end = to
+		}
+		if t <= end && t+windowMS > in.Start {
+			return 0, true // 장애 중
+		}
+		if t < in.Start && t+windowMS > in.Start-leadMS {
+			if !in.IsLabel() {
+				return 0, true // 확인 안 된 자동 기록의 직전: 장애인지 모른다
+			}
+			y = 1
+		}
+	}
+	return y, false
+}
+
+// buildFeatures는 [from, to)를 1분 창으로 나눠 창마다 특징 벡터를 만든다(라벨 없음, Y는 0).
+// 지표는 step 구간 평균으로 받아, 창 안에서 step 구간마다 서버 묶기(HostAgg) → 구간들을 창 묶기(TimeAgg)한다.
 // step이 1분이면 창 안 구간이 하나라 TimeAgg는 그 값 그대로다.
-func buildDataset(ctx context.Context, m store.MetricStore, st store.StateStore, feats []FeatureDef, from, to int64, lead, step time.Duration) (Dataset, error) {
+func buildFeatures(ctx context.Context, m store.MetricStore, st store.StateStore, feats []FeatureDef, from, to int64, step time.Duration) (Dataset, error) {
 	ds := Dataset{Names: featureNames(feats)}
 	if to <= from {
 		return ds, nil
@@ -78,23 +127,6 @@ func buildDataset(ctx context.Context, m store.MetricStore, st store.StateStore,
 		}
 		for i := range n {
 			ds.X[i][j] = col[i]
-		}
-	}
-
-	incs, err := st.ListIncidents(ctx, from, to+lead.Milliseconds())
-	if err != nil {
-		return ds, err
-	}
-	for i, t := range ds.TS {
-		for _, in := range incs {
-			end := in.End
-			if end == 0 {
-				end = to
-			}
-			if t <= end && t+windowMS > in.Start-lead.Milliseconds() {
-				ds.Y[i] = 1
-				break
-			}
 		}
 	}
 	return ds, nil

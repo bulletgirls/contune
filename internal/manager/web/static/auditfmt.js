@@ -9,7 +9,7 @@ export const ACTIONS = {
   'alert.ack': ['알림 확인'],
   'risk.train': ['위험 지수 학습'],
   'risk.ack': ['위험 요인 확인 중'], 'risk.accept': ['위험 요인 용인', true], 'risk.release': ['용인 해제'], 'risk.expire': ['용인 자동 해제'],
-  'incident.create': ['장애 기록 추가'], 'incident.update': ['장애 기록 수정'], 'incident.import': ['장애 기록 가져오기'],
+  'incident.create': ['장애 기록 추가'], 'incident.update': ['장애 기록 수정'], 'incident.confirm': ['자동 장애 기록 확인'], 'incident.import': ['장애 기록 가져오기'],
   'audit.export': ['감사 기록 내려받기'],
 };
 // 분류(kind) → action 앞부분

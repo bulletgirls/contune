@@ -19,12 +19,14 @@ type RiskModel interface {
 	Restore(b []byte) error
 }
 
-// Dataset은 학습 데이터다: 창마다 특징 벡터 X와 라벨 Y.
+// Dataset은 학습 데이터다: 창마다 특징 벡터 X와 라벨 Y(1 = 장애 직전, 0 = 평시).
 type Dataset struct {
 	Names []string
 	TS    []int64
 	X     [][]float64
 	Y     []float64
+	// Excluded는 학습에서 뺀 창 수다(장애 중, 확인 안 된 자동 기록의 직전).
+	Excluded int
 }
 
 // Vector는 점수를 매길 특징 벡터 하나다.
@@ -61,16 +63,19 @@ type Place struct {
 
 // FitReport는 학습 보고서다.
 type FitReport struct {
-	Kind      string             `json:"kind"`
-	TrainedAt int64              `json:"trained_at"`
-	Windows   int                `json:"windows"`
-	Positives int                `json:"positives"`
-	Incidents int                `json:"incidents"`
-	AUC       float64            `json:"auc"`
-	Weights   map[string]float64 `json:"weights"`
+	Kind      string `json:"kind"`
+	TrainedAt int64  `json:"trained_at"`
+	Windows   int    `json:"windows"`
+	Positives int    `json:"positives"`
+	Incidents int    `json:"incidents"` // 학습 라벨 장애 수(확인 안 된 자동 기록 제외)
+	// Unconfirmed는 학습 구간의 확인 안 된 자동 기록 수, Excluded는 학습에서 뺀 창 수다(장애 중·확인 안 된 자동 기록의 직전).
+	Unconfirmed int                `json:"unconfirmed"`
+	Excluded    int                `json:"excluded"`
+	AUC         float64            `json:"auc"`
+	Weights     map[string]float64 `json:"weights"`
 	// PriorOffset는 점수 때 로짓에서 빼는 ln(평시 창 수/장애 창 수)다(양성 가중치 보정, logreg만).
 	PriorOffset float64 `json:"prior_offset"`
-	// FalseWarn·HitWarn은 학습 데이터 전체를 그 모드의 모델로 매겼을 때 평시 창·장애 창 중 경고선 이상 비율이다.
+	// FalseWarn·HitWarn은 학습 데이터 전체를 그 모드의 모델로 매겼을 때 평시 창·장애 직전 창 중 경고선 이상 비율이다.
 	FalseWarn float64 `json:"false_warn"`
 	HitWarn   float64 `json:"hit_warn"`
 	// Baseline은 특징별 평시 창(라벨 0) 중앙값이다. 평시 창이 없으면 nil.
