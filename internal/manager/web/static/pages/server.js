@@ -31,9 +31,10 @@ export function sortHosts(hosts, key, dir) {
     return (dir === 'desc' ? -c : c) || severeOrder(a, b);
   });
 }
+export const COLLECT = 'collect'; // 카탈로그에 없는 탭: 이 서버의 수집 설정(pages/collect.js)
 export function resolveTab(tab, groups) {
   const t = TAB_ALIAS[tab] || tab;
-  return t === OVERVIEW || groups.some((g) => g.id === t) ? t : OVERVIEW;
+  return t === OVERVIEW || t === COLLECT || groups.some((g) => g.id === t) ? t : OVERVIEW;
 }
 // 그룹의 차트 정의와 그 항목. scope ''은 서버 전체, 'job'은 실행 하나.
 export function chartsOf(group, scope = '') {
@@ -106,7 +107,7 @@ export async function render(root, params, query) {
 
 async function renderList(root, query) {
   const g = query.g || '';
-  root.replaceChildren(el('h2', { class: 'sec', text: '서버' }));
+  root.replaceChildren(el('div', { class: 'srv-lhead' }, el('h2', { class: 'sec', text: '서버' }), el('a', { class: 'srv-clink', href: '#collect', text: '수집 설정', title: '로그 출처·규칙을 범위별로 정하고 적용 상태를 봅니다' })));
   const box = el('div', { class: 'srv-list' });
   root.append(box);
   let sortKey = '', sortDir = 'asc', hosts = [], now = Date.now(), th = {};
@@ -169,7 +170,8 @@ async function renderHost(root, params, query) {
   disposers.push(() => tr.destroy());
 
   // 탭 카드
-  const tabs = [{ id: OVERVIEW, title: '개요' }, ...groups];
+  const tabs = [{ id: OVERVIEW, title: '개요' }, ...groups, { id: COLLECT, title: '수집' }];
+  cardsEl.dataset.n = String(tabs.length);
   const cards = new Map();
   for (const t of tabs) {
     const val = el('span', { class: 'tv' }), spark = el('span', { class: 'tsp' });
@@ -210,6 +212,17 @@ async function renderHost(root, params, query) {
     ov.val.replaceChildren(el('span', { class: 'lv ' + h.state, text: LEVEL_TEXT[h.state] || h.state }));
     ov.spark.replaceChildren(el('span', { class: 'tsub', text: (h.reasons || []).length ? (h.reasons || []).join(' · ') : '이상 없음' }));
   }
+  // 수집 탭 카드: 적용 상태 한 줄
+  async function drawCollectCard() {
+    const c = cards.get(COLLECT);
+    try {
+      const d = await api(`/collect/hosts/${encodeURIComponent(id)}`);
+      const { STATE_TEXT } = await import('./collect.js');
+      c.val.replaceChildren(el('span', { class: 'lv cs-' + d.state, text: STATE_TEXT[d.state] || d.state }));
+      c.spark.replaceChildren(el('span', { class: 'tsub', text: d.status ? `출처 ${d.status.sources.length}개` : '상태 보고 없음' }));
+    } catch (e) { c.val.replaceChildren(el('span', { class: 'empty', text: DASH })); }
+  }
+  disposers.push(poll(drawCollectCard, 10000));
   disposers.push(poll(drawHead, 5000));
 
   // 카드 값: 그룹 대표 지표의 마지막 값과 구간 추이
@@ -238,8 +251,10 @@ async function renderHost(root, params, query) {
 
   async function draw() {
     stopLive();
+    bar.hidden = tabId === COLLECT; // 수집 탭에는 시간 구간이 없다
     const ctx = { hostId: id, tr, goTab: selectTab };
-    if (tabId === OVERVIEW) live = await drawCharts(body, overviewCharts(groups), ctx, { titleLink: true });
+    if (tabId === COLLECT) { const m = await import('./collect.js'); live = m.drawHostCollect(body, id); }
+    else if (tabId === OVERVIEW) live = await drawCharts(body, overviewCharts(groups), ctx, { titleLink: true });
     else if (tabId === 'proc') live = await drawProc(body, groups.find((g) => g.id === 'proc'), ctx);
     else live = await drawCharts(body, chartsOf(groups.find((g) => g.id === tabId)), ctx);
   }

@@ -9,11 +9,11 @@ const PAGES = {
   hosts: './pages/server.js', host: './pages/server.js',
   board: './pages/batch.js', runs: './pages/runs.js',
   edit: './pages/editor.js', biz: './pages/biz.js',
-  audit: './pages/audit.js',
+  audit: './pages/audit.js', collect: './pages/collect.js',
   run: './pages/tm.js', alerts: './pages/alerts.js', risk: './pages/risk.js',
   'dev/flame': './pages/devflame.js',
 };
-const MENU = { dashboard: 'dashboard', hosts: 'hosts', host: 'hosts', board: 'board', edit: 'board', biz: 'biz', runs: 'runs', run: 'runs' };
+const MENU = { dashboard: 'dashboard', hosts: 'hosts', host: 'hosts', collect: 'hosts', board: 'board', edit: 'board', biz: 'biz', runs: 'runs', run: 'runs' };
 
 let boards = new Set();
 let current = null;

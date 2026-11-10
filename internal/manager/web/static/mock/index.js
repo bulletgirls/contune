@@ -10,8 +10,9 @@ import * as biz from './biz.js';
 import * as alert from './alert.js';
 import * as auth from './auth.js';
 import * as audit from './audit.js';
+import * as collect from './collect.js';
 
-const ROUTES = [auth, audit, core, server, ops, editor, biz, alert].flatMap((m) => m.routes);
+const ROUTES = [auth, audit, core, server, ops, editor, biz, alert, collect].flatMap((m) => m.routes);
 
 function pageFlags(opts, q) {
   const s = new URLSearchParams(opts.search ?? (typeof location !== 'undefined' ? location.search : ''));
@@ -29,6 +30,7 @@ function pageFlags(opts, q) {
 
 export function reset() {
   resetWorld();
+  collect.reset();
 }
 
 export async function handle(path, opts = {}) {

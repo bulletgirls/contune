@@ -88,6 +88,7 @@ export function parseRoute(hash, boards = new Set()) {
     case 'alerts': break;
     case 'risk': break;
     case 'audit': break;
+    case 'collect': break;
     case 'dev': name = segs[1] === 'flame' ? 'dev/flame' : 'dashboard'; break;
     default: name = 'dashboard';
   }
