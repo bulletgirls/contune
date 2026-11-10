@@ -13,18 +13,27 @@ import (
 	"eum/internal/manager/alert"
 	"eum/internal/manager/editor"
 	"eum/internal/manager/risk"
+	"eum/internal/manager/webauth"
 	"eum/internal/model"
 )
 
 // Config는 매니저 설정이다(02 §6.2, 05 §11.2). 기간은 "5s", "10m" 같은 time.ParseDuration 문자열이다.
 type Config struct {
-	Listen    string               `yaml:"listen"`
-	Data      string               `yaml:"data"`   // metrics.db, state.db, risk/
-	Flows     string               `yaml:"flows"`  // 배치판 폴더들
-	Panels    string               `yaml:"panels"` // 업무 패널 YAML
-	Token     string               `yaml:"token"`  // ${VAR}는 환경변수로 바꿈
-	TZ        string               `yaml:"tz"`     // cron 해석 시간대
-	Store     string               `yaml:"store"`  // sqlite | memory
+	Listen string `yaml:"listen"`
+	Data   string `yaml:"data"`   // metrics.db, state.db, risk/
+	Flows  string `yaml:"flows"`  // 배치판 폴더들
+	Panels string `yaml:"panels"` // 업무 패널 YAML
+	Token  string `yaml:"token"`  // 공유 에이전트 토큰(호스트 묶음 없음). ${VAR}는 환경변수로 바꿈
+	// AgentTokens는 호스트별 에이전트 토큰(host → token, 보안 S3). 이 토큰으로 온 요청은 그 호스트 이름으로만 말할 수 있다.
+	AgentTokens map[string]string `yaml:"agent_tokens"`
+	// TLS는 매니저 HTTPS(보안 S3). Cert·Key가 둘 다 있으면 HTTPS로 듣는다.
+	TLS struct {
+		Cert string `yaml:"cert"`
+		Key  string `yaml:"key"`
+	} `yaml:"tls"`
+	WebAuth   webauth.Config       `yaml:"web_auth"` // 화면 로그인(보안 S1). 기본 꺼짐
+	TZ        string               `yaml:"tz"`       // cron 해석 시간대
+	Store     string               `yaml:"store"`    // sqlite | memory
 	HostState model.HostThresholds `yaml:"host_state"`
 	Retention time.Duration        `yaml:"retention"`
 	Notify    struct {

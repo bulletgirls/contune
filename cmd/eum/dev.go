@@ -22,6 +22,7 @@ import (
 	"eum/internal/fleet"
 	"eum/internal/manager"
 	"eum/internal/manager/editor"
+	"eum/internal/manager/webauth"
 )
 
 // devToken은 eum dev의 매니저·에이전트 공용 토큰이다.
@@ -33,6 +34,26 @@ var devAllow = []string{
 	`^\$\{DEMO\}/scripts/[A-Za-z0-9_-]+\.sh( |$)`,
 	`^sleep [0-9]+$`,
 	`^echo( |$)`,
+}
+
+// devUsers는 eum dev의 시연 계정이다(아이디, 비밀번호, 역할). 시작 로그와 demo/README.md에 적는다.
+var devUsers = [][3]string{
+	{"admin", "eum-admin", webauth.RoleAdmin},
+	{"operator", "eum-operator", webauth.RoleOperator},
+	{"viewer", "eum-viewer", webauth.RoleViewer},
+}
+
+// devWebAuth는 시연 계정으로 화면 로그인을 켠 설정이다.
+func devWebAuth() (webauth.Config, error) {
+	c := webauth.Config{Enabled: true}
+	for _, u := range devUsers {
+		h, err := webauth.HashPassword(u[1])
+		if err != nil {
+			return c, err
+		}
+		c.Users = append(c.Users, webauth.User{ID: u[0], Hash: h, Role: u[2]})
+	}
+	return c, nil
 }
 
 // devSetup은 eum dev가 한 프로세스에 띄울 것이다.
@@ -88,6 +109,11 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 		cfg = manager.DefaultConfig()
 		cfg.Token = devToken
 		cfg.Editor = editor.Config{Enabled: true, Allow: append([]string(nil), devAllow...)}
+		wa, err := devWebAuth()
+		if err != nil {
+			return devSetup{}, err
+		}
+		cfg.WebAuth = wa
 		for _, n := range []string{"listen", "data", "store", "flows", "panels"} {
 			set[n] = true
 		}

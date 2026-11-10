@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"eum/internal/manager/actor"
 	"eum/internal/manager/live"
 	"eum/internal/manager/notify"
 	"eum/internal/manager/query"
@@ -529,7 +530,7 @@ func (w *Watcher) handleAck(rw http.ResponseWriter, r *http.Request) {
 		http.Error(rw, "잘못된 id", http.StatusBadRequest)
 		return
 	}
-	by := "user:web(" + r.RemoteAddr + ")"
+	by := actor.Of(r)
 	switch err := w.d.State.AckAlert(r.Context(), id, w.d.Now().UnixMilli(), by); {
 	case errors.Is(err, store.ErrNotFound):
 		http.Error(rw, "없는 알림", http.StatusNotFound)

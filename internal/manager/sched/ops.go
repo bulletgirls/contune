@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"eum/internal/manager/actor"
 	"eum/internal/manager/store"
 	"eum/internal/model"
 )
@@ -107,8 +108,8 @@ func hasStatus(list []model.RunStatus, v model.RunStatus) bool {
 	return false
 }
 
-// actorOf는 운영자 조작의 actor다(05 §7).
-func actorOf(r *http.Request) string { return "user:web(" + remoteAddr(r) + ")" }
+// actorOf는 운영자 조작의 actor다(05 §7, actor 패키지 한 곳에서 만든다).
+func actorOf(r *http.Request) string { return actor.Of(r) }
 
 // handleForceOK는 실행을 SUCCEEDED(forced)로 바꾼다: 200 {"applied":true} | 400 | 404 | 409.
 func (s *Scheduler) handleForceOK(w http.ResponseWriter, r *http.Request) {

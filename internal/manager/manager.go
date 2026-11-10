@@ -33,6 +33,7 @@ import (
 	"eum/internal/manager/store/metricsql"
 	"eum/internal/manager/store/statesql"
 	"eum/internal/manager/web"
+	"eum/internal/manager/webauth"
 	"eum/internal/model"
 )
 
@@ -48,6 +49,7 @@ type Manager struct {
 	sched   *sched.Scheduler
 	engine  *risk.Engine
 	watcher *alert.Watcher
+	auth    *webauth.Auth
 
 	mu   sync.Mutex
 	addr string // Run이 듣기 시작한 주소
@@ -143,7 +145,15 @@ func New(cfg Config) (*Manager, error) {
 		RiskWarn: cfg.Risk.Warn, RiskCrit: cfg.Risk.Crit, Cfg: alertCfg, Now: now,
 	})
 
+	// 화면 인증(보안 S1). TLS를 켜면 세션 쿠키에 Secure를 단다.
+	webCfg := cfg.WebAuth
+	webCfg.Secure = cfg.TLS.Cert != "" && cfg.TLS.Key != ""
+	if m.auth, err = webauth.New(webCfg, webauth.Deps{State: m.state, Now: now}); err != nil {
+		return nil, fmt.Errorf("web_auth: %w", err)
+	}
+
 	// 경로
+	m.auth.Mount(m.mux)
 	ingest.Mount(m.mux, ingest.Deps{Metrics: m.metrics, State: m.state, Live: lv, Now: now})
 	query.Mount(m.mux, query.Deps{
 		Metrics: m.metrics, State: m.state, Live: lv, Panels: panels,
@@ -160,9 +170,10 @@ func New(cfg Config) (*Manager, error) {
 	return m, nil
 }
 
-// Handler는 매니저의 HTTP 핸들러다. /api/v1/agent/ 경로만 Bearer 토큰을 확인한다(auth.go, 여기 한 곳).
+// Handler는 매니저의 HTTP 핸들러다. 바깥부터: 화면 인증·보안 헤더(webauth, /api/v1/agent/ 제외) →
+// 에이전트 토큰(auth.go, /api/v1/agent/만) → 경로. 인증 판단은 이 두 곳뿐이다.
 func (m *Manager) Handler() http.Handler {
-	return requireAgentToken(m.cfg.Token, m.mux)
+	return m.auth.Wrap(requireAgentToken(m.cfg.Token, m.mux))
 }
 
 // Run은 HTTP 서버와 레지스트리 감시·스케줄러·위험 엔진·알림 감시자를 함께 돌린다.

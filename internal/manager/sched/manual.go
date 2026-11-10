@@ -2,7 +2,6 @@ package sched
 
 import (
 	"log/slog"
-	"net"
 	"net/http"
 
 	"eum/internal/model"
@@ -45,19 +44,11 @@ func (s *Scheduler) manualRunLocked(r *http.Request, id string) (string, int, st
 	if len(runs) == 0 {
 		return "", http.StatusConflict, "스텝이 없는 플로우입니다"
 	}
-	actor := "user:web(" + remoteAddr(r) + ")"
-	if err := s.d.State.CreateRuns(r.Context(), runs, actor, "manual"); err != nil {
+	by := actorOf(r)
+	if err := s.d.State.CreateRuns(r.Context(), runs, by, "manual"); err != nil {
 		slog.Error("수동 실행: 행을 만들지 못함", "flow", id, "err", err)
 		return "", http.StatusInternalServerError, "실행을 만들지 못했습니다"
 	}
-	slog.Info("수동 실행", "flow", id, "flow_run_id", runs[0].FlowRunID, "actor", actor)
+	slog.Info("수동 실행", "flow", id, "flow_run_id", runs[0].FlowRunID, "actor", by)
 	return runs[0].FlowRunID, http.StatusCreated, ""
-}
-
-// remoteAddr는 요청의 원격 주소(포트 뺀 호스트)다.
-func remoteAddr(r *http.Request) string {
-	if h, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return h
-	}
-	return r.RemoteAddr
 }

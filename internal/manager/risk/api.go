@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"eum/internal/manager/actor"
 	"eum/internal/manager/store"
 	"eum/internal/model"
 )
@@ -312,14 +312,10 @@ func (e *Engine) rangeParams(r *http.Request, def time.Duration) (int64, int64, 
 	return from, to, nil
 }
 
-// audit는 감사 기록을 남긴다. actor는 user:web(<원격 주소>)(05 §7).
+// audit는 감사 기록을 남긴다. actor는 actor.Of(05 §7).
 func (e *Engine) audit(r *http.Request, action, target, detail string) {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	err = e.d.State.AddAudit(r.Context(), model.AuditEntry{
-		TS: e.d.Now().UnixMilli(), Actor: "user:web(" + host + ")", Action: action, Target: target, Detail: detail,
+	err := e.d.State.AddAudit(r.Context(), model.AuditEntry{
+		TS: e.d.Now().UnixMilli(), Actor: actor.Of(r), Action: action, Target: target, Detail: detail,
 	})
 	if err != nil {
 		slog.Warn("감사 기록 실패", "action", action, "err", err)
