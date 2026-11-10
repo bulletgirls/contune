@@ -287,7 +287,7 @@ export function drawHostCollect(body, hostId) {
         { key: 'path', label: '경로', render: (r) => el('code', { class: 'cl-path', text: r.path }) },
         { key: 'match', label: '규칙', render: (r) => rulesCell(r.match) },
         { key: 'src', label: '정한 곳', render: (r) => (r.local ? el('span', { class: 'badge silent', text: r.src, title: '에이전트 YAML의 logs. 화면에서는 읽기만 됩니다' }) : el('span', { text: r.src })) },
-        { key: 'files', label: '따라가는 파일', num: true, render: (r) => (r.files == null ? DASH : String(r.files)) },
+        { key: 'files', label: '읽는 파일 수', title: '경로에 맞는 파일 중 에이전트가 지금 읽고 있는 수', num: true, render: (r) => (r.files == null ? DASH : String(r.files)) },
         { key: 'skipped', label: '건너뛴 이유', render: (r) => (r.skipped ? el('span', { class: 'cl-skip', text: r.skipped }) : r.waiting ? el('span', { class: 'meta', text: d.state === 'disabled' ? '원격 꺼짐: 적용 안 됨' : '적용 대기' }) : DASH) },
       ],
     });

@@ -144,7 +144,7 @@ export function tabBar(items, active, onSelect) {
 export function table(opts) {
   const { columns, rows, onRow, empty } = opts;
   const t = el('table', { class: 'tbl' });
-  t.append(el('thead', {}, el('tr', {}, columns.map((c) => el('th', { class: c.num ? 'num' : '', text: c.label })))));
+  t.append(el('thead', {}, el('tr', {}, columns.map((c) => el('th', { class: c.num ? 'num' : '', text: c.label, ...(c.title ? { title: c.title } : {}) })))));
   const tb = el('tbody');
   if (!rows.length) tb.append(el('tr', {}, el('td', { colspan: columns.length, class: 'empty', text: empty ?? DASH })));
   for (const r of rows) {
