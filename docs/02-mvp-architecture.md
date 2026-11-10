@@ -303,7 +303,7 @@ func Build(cfgs []map[string]any, env Env) ([]Probe, error)
 | `POST /api/v1/agent/events` | **반드시 전달** (성공할 때까지 재시도, 순서 유지). 매니저는 **상태 비교 후 교체(CAS)** 로 멱등 처리: `started`는 현재 `DISPATCHED`일 때만, `finished`는 `DISPATCHED`·`RUNNING`일 때만 반영. 같은 이벤트가 다시 와도, 모르는 `exec_id`여도 `200 {"applied":false}` | 잡 시작, 종료 보고와 요약(peak, 로그 tail) |
 | `GET /api/v1/agent/commands?host=<id>&wait=25s` | 롱폴링. 매니저는 **그 호스트의 `DISPATCHED` 실행을 `state.db`에서 읽어** 돌려줌(메모리 큐 없음, 매니저가 재시작해도 명령이 남음). 없으면 새 디스패치가 생기거나 `wait`가 끝날 때까지 기다렸다가 빈 목록. 에이전트는 **이미 받은 `exec_id`를 무시** | `run`, `kill`(넓히기) 명령 수신 |
 
-**화면용** (검증판에서는 인증 없음)
+**화면용** (검증판에서는 인증 없음. **→ 05 §16:** `web_auth`를 켜면 로그인 세션과 역할이 필요)
 
 | 메서드 · 경로 | 내용 |
 |---|---|
@@ -630,6 +630,8 @@ type Notifier interface{ Notify(ctx context.Context, a model.Alert) error }
 | `internal/agent/exec` | `ProcessTracker`, `NewTracker(host string, o TrackerOptions) ProcessTracker`, `Start(cmd model.Command, o StartOptions) (*Job, error)`, `(*Job).PID() int`, `(*Job).Wait() Result{Status, ExitCode, LogTail}`, `NewRunner(c *api.Client, host string, t ProcessTracker, o RunnerOptions) *Runner`, `(*Runner).Run(ctx) error` | 에이전트 | K1(stub), A2, A3, A4 |
 | `internal/agent/profile` | `Profiler`, `Register`, `Build`, `Sink interface{ Add(model.Sample); AddProfile(model.Profile) }`, `NewLoop(p Profiler, host string, targets func(minAge time.Duration) map[string][]int, sink Sink, o LoopOptions) *Loop`, `(*Loop).Run(ctx) error` | 에이전트 | K1(stub), A1(파서), A5 |
 | `internal/manager` | `Config`(§6.2), `LoadConfig(path) (Config, error)`, `New(cfg Config) (*Manager, error)`, `(*Manager).Handler() http.Handler`, `(*Manager).Run(ctx) error`, `(*Manager).Close() error`. 토큰 확인은 `/api/v1/agent/` 경로에만, 여기 한 곳에서 | `cmd/eum` manager·dev | K1, K2 |
+| `internal/manager/actor` (05 §16) | `Identity{Kind, ID, Role}`, `With(ctx, Identity)`, `From(ctx)`, `Of(r) string`(감사·전이의 actor), `AgentHostOK(r, host) bool`, `RemoteHost(r)`. 인증 미들웨어만 `With`, 업무 패키지는 `Of`·`AgentHostOK`만 | 매니저 패키지들 | S0 |
+| `internal/manager/webauth` (05 §16) | `Config`, `User`, 역할 상수, `New(cfg, Deps{State, Now}) (*Auth, error)`, `(*Auth).Mount(mux)` → `/login`·`/logout`·`/me`, `(*Auth).Wrap(next)`, `HashPassword`, `VerifyPassword` | 매니저 | S0, S1 |
 | `internal/manager/store` | `MetricStore`, `StateStore`, `ErrNotFound` | 매니저 패키지들 | K1 |
 | `.../store/memstore` | `NewMetric() store.MetricStore`, `NewState() store.StateStore` | dev(`store: memory`), 테스트 | K2(metric), B3(state) |
 | `.../store/metricsql` | `Open(path string) (*Store, error)`, `(*Store).Close() error` | 매니저 | C2 |
@@ -873,7 +875,7 @@ stateDiagram-v2
 |---|---|
 | 검증판 | **에이전트 토큰**(매니저는 토큰이 맞는 에이전트만 받음) · **명령 출처는 리뷰된 YAML뿐**(UI와 API로 임의 명령을 입력하는 기능은 만들지 않음. **→ 05 §8:** 화면 편집기는 허용 목록을 통과한 명령만 YAML 파일에 쓴다) · **에이전트는 비root로 실행** · 상태 전이에 `actor` 기록 · `eum sql`은 읽기 전용 연결 · **프로파일 대상은 이음이 띄운 프로세스뿐**(실행 ID 표식). 접힌 스택에는 함수 이름과 표본 수만 있고 메모리 내용이나 인자 값은 없음 |
 | 운영 조건 | 함수 추적: 운영 서버는 perf 사용 가능(확인). 비root면 `perf_event_paranoid` 2 이하(일반 기본값) 또는 `CAP_PERFMON`, 컨테이너는 `cap_add: [PERFMON]`. 함수 이름은 실행 파일의 심볼로 표시(strip 했다면 디버그 심볼 파일) |
-| 검증판 제외 | 웹 로그인, TLS, 호스트별 토큰, 조작 권한, `run_as_user`(보안 정책 협의 후). 운영에 쓰려면 필요합니다 |
+| 검증판 제외 | 웹 로그인, TLS, 호스트별 토큰, 조작 권한, `run_as_user`(보안 정책 협의 후). 운영에 쓰려면 필요합니다. **→ 05 §16(11-10):** 웹 로그인·역할 3개·CSRF·보안 헤더, 호스트별 토큰, 에이전트 쪽 허용 목록, TLS를 넣었다. `run_as_user`·사내 SSO는 그대로 밖 |
 
 ## 12. 화면 설계
 
