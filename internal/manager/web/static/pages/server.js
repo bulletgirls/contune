@@ -72,6 +72,26 @@ export function sparkSVG(points, from, to, top) {
     `<polyline points="${xy.join(' ')}"/></svg>`;
 }
 
+// 목록의 사용률 막대. 판정과 같은 기준값으로 색을 정하고 경고선에 눈금을 둔다.
+// 정상은 회색이라 경고·위험 줄만 눈에 띈다. 무응답(stale)이면 마지막 값을 흐리게.
+export function levelOf(v, warn, crit) {
+  if (v == null) return 'ok';
+  if (crit != null && v >= crit) return 'crit';
+  if (warn != null && v >= warn) return 'warn';
+  return 'ok';
+}
+export function meterHTML(v, warn, crit, stale) {
+  if (v == null) return DASH;
+  const lv = stale ? 'stale' : levelOf(v, warn, crit);
+  const w = Math.max(0, Math.min(100, v)).toFixed(1);
+  const tick = warn > 0 && warn < 100 ? `<i class="mk" style="left:${warn}%"></i>` : '';
+  const tip = stale ? '수신이 끊겨 마지막 값' : warn != null ? `경고 ${warn}% · 위험 ${crit}%` : '';
+  // 반올림하면 89.99가 "90.0"인데 위험이 아니게 보인다. 내림해서 보이는 값과 판정을 맞춘다.
+  const shown = Math.floor(v * 10 + 1e-9) / 10;
+  return `<span class="meter ${lv}"${tip ? ` title="${tip}"` : ''}><span class="mv">${numUnit(shown, '%', 1)}</span>` +
+    `<span class="mt" aria-hidden="true"><i class="mf" style="width:${w}%"></i>${tick}</span></span>`;
+}
+
 // ---- 화면 ----
 
 let disposers = [];
@@ -87,15 +107,15 @@ export async function render(root, params, query) {
 async function renderList(root, query) {
   const g = query.g || '';
   root.replaceChildren(el('h2', { class: 'sec', text: '서버' }));
-  const box = el('div');
+  const box = el('div', { class: 'srv-list' });
   root.append(box);
-  let sortKey = '', sortDir = 'asc', hosts = [], now = Date.now();
+  let sortKey = '', sortDir = 'asc', hosts = [], now = Date.now(), th = {};
   const cols = [
     { key: 'state', label: '상태', render: (h) => badge(h.state) },
-    { key: 'id', label: '서버' },
+    { key: 'id', label: '서버', render: (h) => el('span', { class: 'hid', text: h.id }) },
     { key: 'group', label: '그룹' },
-    { key: 'cpu', label: 'CPU 사용률', num: true, html: true, render: (h) => numUnit(h.cpu, '%') },
-    { key: 'mem', label: '메모리 사용률', num: true, html: true, render: (h) => numUnit(h.mem, '%') },
+    { key: 'cpu', label: 'CPU 사용률', num: true, html: true, render: (h) => meterHTML(h.cpu, th.cpu_warn, th.cpu_crit, h.state === 'silent') },
+    { key: 'mem', label: '메모리 사용률', num: true, html: true, render: (h) => meterHTML(h.mem, th.mem_warn, th.mem_crit, h.state === 'silent') },
     { key: 'load1', label: '부하 평균', num: true, render: (h) => fmtNum(h.load1, 2) },
     { key: 'disk_mbps', label: '디스크 처리량', num: true, html: true, render: (h) => rateHTML(h.disk_mbps, 'MB/s') },
     { key: 'net_kbps', label: '네트워크 트래픽', num: true, html: true, render: (h) => rateHTML(h.net_kbps, 'KB/s') },
@@ -121,7 +141,7 @@ async function renderList(root, query) {
   }
   disposers.push(poll(async () => {
     const r = await api('/hosts');
-    hosts = r.hosts || []; now = r.now || Date.now();
+    hosts = r.hosts || []; now = r.now || Date.now(); th = r.thresholds || {};
     draw();
   }, 5000));
 }

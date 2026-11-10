@@ -129,7 +129,11 @@ func handleHosts(w http.ResponseWriter, r *http.Request, d Deps) {
 		}
 		return items[i].ID < items[j].ID
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"now": now, "hosts": items})
+	// 기준값은 목록의 사용률 막대(경고선 눈금·색)가 판정과 같은 선을 쓰게 한다
+	th := d.Thresholds
+	writeJSON(w, http.StatusOK, map[string]any{"now": now, "hosts": items, "thresholds": map[string]float64{
+		"cpu_warn": th.CPUWarn, "cpu_crit": th.CPUCrit, "mem_warn": th.MemWarn, "mem_crit": th.MemCrit,
+	}})
 }
 
 type procItem struct {

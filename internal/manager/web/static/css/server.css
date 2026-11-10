@@ -41,3 +41,16 @@
 .srv .tbl { background:var(--surface); }
 .srv .tbl tr.sel { background:color-mix(in srgb, var(--accent) 8%, var(--surface)); }
 .srv h3.sec { margin:16px 0 6px; font-size:14px; }
+
+/* 목록의 사용률 막대: 숫자 + 72px 막대, 경고선 눈금. 정상은 회색, 경고·위험만 색 */
+.srv .meter { display:inline-flex; align-items:center; justify-content:flex-end; gap:8px; white-space:nowrap; }
+.srv .meter .mt { position:relative; flex:none; width:72px; height:6px; border-radius:3px; background:color-mix(in srgb, var(--line) 75%, transparent); }
+.srv .meter .mf { position:absolute; left:0; top:0; bottom:0; border-radius:3px; background:color-mix(in srgb, var(--t3) 65%, transparent); }
+.srv .meter .mk { position:absolute; top:-2px; bottom:-2px; width:1px; margin-left:-.5px; background:var(--t3); opacity:.7; }
+.srv .meter.warn .mf { background:var(--warn); } .srv .meter.crit .mf { background:var(--crit); }
+.srv .meter.warn .num { color:var(--warn); font-weight:600; } .srv .meter.crit .num { color:var(--crit); font-weight:600; }
+.srv .meter.stale .num { color:var(--t3); } .srv .meter.stale .mf { background:var(--silent); opacity:.35; }
+.srv .hid { white-space:nowrap; }
+@media (max-width:1100px) { .srv .meter .mt { width:44px; } }
+/* 목록의 정상 배지는 테두리 없는 회색: 이상(위험·경고·무응답) 배지만 눈에 띄게. 자리는 같게 둔다 */
+.srv-list .badge.ok { color:var(--t3); border-color:transparent; }

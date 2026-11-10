@@ -361,8 +361,9 @@ func TestHostsSort(t *testing.T) {
 	}}
 	mux := newMux(Deps{Live: lv, State: st})
 	var out struct {
-		Now   int64 `json:"now"`
-		Hosts []struct {
+		Now        int64              `json:"now"`
+		Thresholds map[string]float64 `json:"thresholds"`
+		Hosts      []struct {
 			ID      string   `json:"id"`
 			Group   string   `json:"group"`
 			State   string   `json:"state"`
@@ -392,6 +393,9 @@ func TestHostsSort(t *testing.T) {
 	}
 	if out.Hosts[3].Group != "g" || out.Hosts[1].AgentV != "0.1" {
 		t.Errorf("live 우선/저장소 병합: %+v", out.Hosts)
+	}
+	if th := out.Thresholds; th["cpu_warn"] != 70 || th["cpu_crit"] != 90 || th["mem_warn"] != 80 || th["mem_crit"] != 90 {
+		t.Errorf("기준값: %v", th)
 	}
 }
 

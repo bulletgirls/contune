@@ -462,25 +462,28 @@ export function hostLastSeen(h, now) {
   return now - 1000 * (1 + (hash32(h.id + Math.floor(now / 1000)) % 3));
 }
 
+// deploy/manager.yaml의 host_state와 같은 값
+export const HOST_TH = { cpu_warn: 70, cpu_crit: 90, mem_warn: 80, mem_crit: 90 };
+
 export function hostState(h, v, lastSeen, now) {
   if (now - lastSeen > 10 * SEC) return { state: 'silent', reasons: [`수신 없음 ${Math.round((now - lastSeen) / SEC)}초`] };
   const reasons = [];
   let rank = 0;
   const cpu = v['host.cpu.pct'];
   const mem = v['host.mem.used_pct'];
-  if (cpu >= 90) {
+  if (cpu >= HOST_TH.cpu_crit) {
     rank = 2;
-    reasons.push('CPU 사용률 ≥ 90%');
-  } else if (cpu >= 70) {
+    reasons.push(`CPU 사용률 ≥ ${HOST_TH.cpu_crit}%`);
+  } else if (cpu >= HOST_TH.cpu_warn) {
     rank = Math.max(rank, 1);
-    reasons.push('CPU 사용률 ≥ 70%');
+    reasons.push(`CPU 사용률 ≥ ${HOST_TH.cpu_warn}%`);
   }
-  if (mem >= 90) {
+  if (mem >= HOST_TH.mem_crit) {
     rank = 2;
-    reasons.push('메모리 사용률 ≥ 90%');
-  } else if (mem >= 80) {
+    reasons.push(`메모리 사용률 ≥ ${HOST_TH.mem_crit}%`);
+  } else if (mem >= HOST_TH.mem_warn) {
     rank = Math.max(rank, 1);
-    reasons.push('메모리 사용률 ≥ 80%');
+    reasons.push(`메모리 사용률 ≥ ${HOST_TH.mem_warn}%`);
   }
   const state = ['ok', 'warn', 'crit'][rank];
   return { state, reasons };

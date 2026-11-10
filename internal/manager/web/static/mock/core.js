@@ -1,7 +1,7 @@
 // /hosts /flows /runs /runs/{id} /series /panels /profile 와 플로우 수동 실행
 import { MIN, SEC, cronNext, round } from './util.js';
 import {
-  hostsView, groupMatch, flowLevels, flowLast, flowOf, runPublic, procsOf, startFlowRun, PANELS,
+  hostsView, HOST_TH, groupMatch, flowLevels, flowLast, flowOf, runPublic, procsOf, startFlowRun, PANELS,
 } from './world.js';
 import {
   HOST_NAMES, ALL_NAMES, hostAt, serviceAt, batchJobAt, bizAt, logLevelsAt, riskAt, BIZ_NAMES, LOG_NAMES, JOB_NAMES,
@@ -13,7 +13,7 @@ const num = (v) => (v === null || v === '' || Number.isNaN(Number(v)) ? 0 : Numb
 
 function hosts(c) {
   const g = c.q.get('group');
-  return ok({ now: c.now, hosts: hostsView(c.w, c.sig).filter((h) => groupMatch(h.group, g)) });
+  return ok({ now: c.now, thresholds: HOST_TH, hosts: hostsView(c.w, c.sig).filter((h) => groupMatch(h.group, g)) });
 }
 
 export function flowView(c, f) {

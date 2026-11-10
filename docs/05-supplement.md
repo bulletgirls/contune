@@ -238,7 +238,7 @@ logs:
 |---|---|---|
 | `GET /api/v1/catalog` | C4 | §2 카탈로그 |
 | `GET /api/v1/series` 보강 | C4 | `name`에 쉼표 목록(각각 접두사 `*` 가능), `agg=sum|max|avg`면 같은 이름의 서버별 계열을 step 구간마다 하나로 묶어 `host:""`로 |
-| `GET /api/v1/hosts` 보강 | C4 | 항목에 `disk_mbps`(읽기+쓰기), `net_kbps`(수신+송신), `agent_version` |
+| `GET /api/v1/hosts` 보강 | C4 | 항목에 `disk_mbps`(읽기+쓰기), `net_kbps`(수신+송신), `agent_version`. 응답 맨 위에 판정 기준값 `thresholds: {cpu_warn, cpu_crit, mem_warn, mem_crit}`(목록의 사용률 막대가 같은 선을 쓴다) |
 | `GET /api/v1/hosts/{id}/procs` | C4 | 그 서버에서 지금 추적 중인 실행(최근 10초 `job.procs > 0`)과 `job.*` 최신 값, 플로우·스텝 |
 | `GET /api/v1/logs?group=&host=&exec_id=&level=error,warn&q=&from=&to=&limit=` | C4 | 로그 이벤트, 최신순(기본 200, 최대 2000) |
 | `GET /api/v1/export/logs?…` | C5 | 로그 CSV `ts,host,source,exec_id,level,message` |
