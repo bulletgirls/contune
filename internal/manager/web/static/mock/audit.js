@@ -53,9 +53,10 @@ const SPEC = [
 ];
 
 function build(now) {
+  // id는 오래된 것부터 1, 2, …(서버와 같음). 응답은 계약대로 최신 먼저(id 내림차순).
   return SPEC.slice().sort((a, b) => b[0] - a[0]).map((s, i) => ({
     id: i + 1, ts: Math.round(now - s[0] * MIN), actor: s[1], action: s[2], target: s[3], detail: s[4],
-  }));
+  })).reverse();
 }
 
 const num = (v) => (v === null || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
