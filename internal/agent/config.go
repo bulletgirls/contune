@@ -5,12 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"eum/internal/agent/exec"
 	"eum/internal/agent/logtail"
+	"eum/internal/model"
 )
 
 // Config는 에이전트 설정 파일이다(02 §5.3, 05 §11.1).
@@ -71,8 +73,34 @@ func LoadConfig(path string) (Config, error) {
 	if _, err := exec.CompileAllow(c.Allow); err != nil {
 		return Config{}, fmt.Errorf("%s: %w", path, err)
 	}
+	if err := checkLogMetrics(c.Logs); err != nil {
+		return Config{}, fmt.Errorf("%s: %w", path, err)
+	}
 	c.applyDefaults()
 	return c, nil
+}
+
+// checkLogMetrics는 로컬 출처(logs)의 숫자 뽑기 규칙을 원격 수집 설정과 같은 검사(model.ValidateLogSources)로 본다.
+// 지표 규칙의 문제만 거절한다(줄 규칙 쪽은 지금처럼 logtail이 정규식만 본다). 문구는 Problem.Text.
+func checkLogMetrics(logs []logtail.SourceConfig) error {
+	ls := make([]model.LogSource, 0, len(logs))
+	for _, l := range logs {
+		m := make([]model.LogMatch, 0, len(l.Match))
+		for _, x := range l.Match {
+			m = append(m, model.LogMatch{Re: x.Re, Level: x.Level})
+		}
+		ls = append(ls, model.LogSource{Name: l.Name, Path: l.Path, Match: m, Metrics: l.Metrics})
+	}
+	var msgs []string
+	for _, p := range model.ValidateLogSources(ls) {
+		if p.Field == "metrics" || strings.HasPrefix(p.Field, "metric.") {
+			msgs = append(msgs, p.Text(ls))
+		}
+	}
+	if len(msgs) > 0 {
+		return fmt.Errorf("logs: %s", strings.Join(msgs, "; "))
+	}
+	return nil
 }
 
 func (c *Config) applyDefaults() {
