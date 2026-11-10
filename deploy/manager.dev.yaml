@@ -5,6 +5,16 @@ flows: ./flows
 panels: ./panels
 token: demo-token
 tz: Asia/Seoul
+web_auth:                      # 화면 로그인(보안 S1). 시연 계정 admin/eum-admin · operator/eum-operator · viewer/eum-viewer
+  enabled: true                # 운영에서는 계정을 바꾸고 해시는 `printf '%s' '<비밀번호>' | eum passwd`로 만든다
+  session_ttl: 8h
+  users:
+    - { id: admin, role: admin, hash: 'pbkdf2-sha256$210000$gnzDp1ibCWm4uLwwJCBAaQ$TUmbkNdTo7JztLkxDcDZXfZbaoi2HAoHdiLqhtLEkaE' }
+    - { id: operator, role: operator, hash: 'pbkdf2-sha256$210000$VMwGHohNoFBDRNRgtkP8Uw$Uwuioc/Ze7+ZIkXGZcqT7EEakuaaVNO4prvInJVwx3Q' }
+    - { id: viewer, role: viewer, hash: 'pbkdf2-sha256$210000$/R7f/V6GbCFdY9nO9G7G3w$so+U4c1l82o3b4E1Qi/Z+Y+MqraL/IpXIZUuONs3dbo' }
+# agent_tokens:                # 호스트별 에이전트 토큰(보안 S3). 이 토큰으로 온 요청은 그 호스트 이름으로만 말한다
+#   batch-01: ${EUM_TOKEN_BATCH01}
+# tls: { cert: /etc/eum/tls/manager.crt, key: /etc/eum/tls/manager.key }   # 둘 다 있으면 HTTPS
 store: sqlite
 host_state: { cpu_warn: 70, cpu_crit: 90, mem_warn: 80, mem_crit: 90, silent_after: 10s }
 retention: 168h
