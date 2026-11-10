@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"eum/internal/manager/actor"
 	"eum/internal/manager/live"
 	"eum/internal/manager/notify"
 	"eum/internal/manager/store"
@@ -357,5 +359,34 @@ func TestAlertsAPI(t *testing.T) {
 	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/api/v1/alerts/999/ack", nil))
 	if rec.Code != 404 {
 		t.Fatalf("없는 id %d", rec.Code)
+	}
+}
+
+func TestAckAudit(t *testing.T) {
+	e := newEnv(t, 200, nil)
+	ctx := context.Background()
+	id, _ := e.st.AddAlert(ctx, model.Alert{TS: t0, Kind: "host", DedupKey: "a", Level: "crit", State: "firing", Host: "m1", Name: "cpu"})
+	mux := http.NewServeMux()
+	e.w.Mount(mux)
+	post := func(path string) int {
+		req := httptest.NewRequest("POST", path, nil).WithContext(
+			actor.With(ctx, actor.Identity{Kind: actor.KindUser, ID: "op1", Role: "operator"}))
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if c := post("/api/v1/alerts/999/ack"); c != 404 {
+		t.Fatalf("없는 id %d", c)
+	}
+	if l, _ := e.st.ListAudit(ctx, model.AuditQuery{}); len(l) != 0 {
+		t.Fatalf("실패한 확인이 남음: %+v", l)
+	}
+	if c := post("/api/v1/alerts/" + strconv.FormatInt(id, 10) + "/ack"); c != 204 {
+		t.Fatalf("ack %d", c)
+	}
+	l, _ := e.st.ListAudit(ctx, model.AuditQuery{})
+	if len(l) != 1 || l[0].Action != "alert.ack" || l[0].Actor != "user:op1" ||
+		l[0].Target != strconv.FormatInt(id, 10) || l[0].Detail != "cpu @m1" {
+		t.Fatalf("%+v", l)
 	}
 }

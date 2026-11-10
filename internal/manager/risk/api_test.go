@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"eum/internal/model"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -118,7 +119,7 @@ func TestRiskAPI(t *testing.T) {
 	}
 
 	// 감사
-	audit, _ := st.ListAudit(ctx, 0)
+	audit, _ := st.ListAudit(ctx, model.AuditQuery{})
 	acts := map[string]bool{}
 	for _, a := range audit {
 		acts[a.Action] = true

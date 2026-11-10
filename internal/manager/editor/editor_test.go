@@ -189,7 +189,7 @@ func (e *env) do(method, path string, body any) (int, map[string]any) {
 
 func (e *env) audit() []model.AuditEntry {
 	e.t.Helper()
-	a, err := e.state.ListAudit(context.Background(), 0)
+	a, err := e.state.ListAudit(context.Background(), model.AuditQuery{})
 	if err != nil {
 		e.t.Fatal(err)
 	}

@@ -19,7 +19,7 @@ import (
 	"github.com/robfig/cron/v3"
 	"gopkg.in/yaml.v3"
 
-	"eum/internal/manager/actor"
+	"eum/internal/manager/audit"
 	"eum/internal/manager/flowdef"
 	"eum/internal/model"
 )
@@ -557,10 +557,7 @@ func (h *handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) audit(r *http.Request, action, target, detail string) {
-	e := model.AuditEntry{TS: h.d.Now().UnixMilli(), Actor: actor.Of(r), Action: action, Target: target, Detail: detail}
-	if err := h.d.State.AddAudit(r.Context(), e); err != nil {
-		slog.Error("편집기: 감사 기록 실패", "action", action, "target", target, "err", err)
-	}
+	audit.Record(r, h.d.State, h.d.Now, action, target, detail)
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

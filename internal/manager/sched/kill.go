@@ -2,6 +2,7 @@ package sched
 
 import (
 	"context"
+	"eum/internal/manager/audit"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -73,23 +74,24 @@ func (s *Scheduler) pendingKills(host string) []model.Command {
 func (s *Scheduler) handleKill(w http.ResponseWriter, r *http.Request) {
 	execID := r.PathValue("exec_id")
 	s.lock()
-	err := s.killLocked(r.Context(), execID, actorOf(r))
+	run, err := s.killLocked(r.Context(), execID, actorOf(r))
 	s.unlock()
 	if err != nil {
 		writeOpError(w, err)
 		return
 	}
+	audit.Record(r, s.d.State, s.d.Now, "run.kill", execID, run.FlowID+"/"+run.StepID)
 	s.wake() // 기다리는 롱폴링이 바로 kill을 받는다
 	s.kick()
 	writeJSON(w, http.StatusAccepted, map[string]bool{"requested": true})
 }
 
-func (s *Scheduler) killLocked(ctx context.Context, execID, actor string) error {
+func (s *Scheduler) killLocked(ctx context.Context, execID, actor string) (model.Run, error) {
 	run, err := s.operable(ctx, "강제 종료", execID, []model.RunStatus{model.StatusRunning})
 	if err != nil {
-		return err
+		return run, err
 	}
 	s.kills().add(run.Host, execID)
 	slog.Info("강제 종료 요청", "flow", run.FlowID, "step", run.StepID, "exec_id", execID, "host", run.Host, "actor", actor)
-	return nil
+	return run, nil
 }

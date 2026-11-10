@@ -41,5 +41,6 @@ type StateStore interface {
 	AckAlert(ctx context.Context, id, ts int64, by string) error
 	ListAlerts(ctx context.Context, f model.AlertFilter) ([]model.Alert, error)
 	AddAudit(ctx context.Context, e model.AuditEntry) error
-	ListAudit(ctx context.Context, limit int) ([]model.AuditEntry, error)
+	ListAudit(ctx context.Context, q model.AuditQuery) ([]model.AuditEntry, error) // id 내림차순
+	AuditStats(ctx context.Context, from, to int64) (model.AuditStats, error)      // ts [from,to) 안의 action·actor별 건수
 }
