@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"eum/internal/agent"
+	"eum/internal/agent/exec"
 )
 
 // HostRange는 prefix-NN 이름의 서버 from~to(포함)다.
@@ -40,6 +41,8 @@ type Config struct {
 	Interval time.Duration `yaml:"interval"`
 	Hosts    []HostRange   `yaml:"hosts"`
 	Faults   []Fault       `yaml:"faults"`
+	// Allow는 모의 서버 에이전트의 허용 목록이다(보안 S3, agent.Config.Allow와 같다). 모의 서버도 명령을 실제로 실행한다.
+	Allow []string `yaml:"allow"`
 }
 
 var varRe = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
@@ -57,6 +60,9 @@ func LoadConfig(path string) (Config, error) {
 	}
 	if c.Interval <= 0 {
 		c.Interval = 5 * time.Second
+	}
+	if _, err := exec.CompileAllow(c.Allow); err != nil {
+		return Config{}, fmt.Errorf("%s: allow: %w", path, err)
 	}
 	return c, nil
 }
@@ -107,6 +113,7 @@ func BuildAgents(cfg Config, tmp string) []agent.Config {
 				LogDir:           filepath.Join(tmp, "fleet", name, "logs"),
 				WorkDir:          filepath.Join(tmp, "fleet", name, "work"),
 				Vars:             map[string]string{},
+				Allow:            cfg.Allow,
 				FaultSilentAfter: silent,
 			})
 		}

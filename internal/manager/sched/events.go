@@ -25,6 +25,15 @@ func (s *Scheduler) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if !agentHostOK(w, r, ev.Host) {
 		return
 	}
+	// 호스트별 토큰이면 실행 건의 호스트와도 대조한다. 본문 host만 보면 자기 이름을 대고
+	// 다른 호스트 실행 건(exec_id)의 이벤트를 위조할 수 있다.
+	if id, ok := actor.From(r.Context()); ok && id.Kind == actor.KindAgent && id.ID != "" && ev.ExecID != "" {
+		if run, _, err := s.d.State.GetRun(r.Context(), ev.ExecID); err == nil && run.Host != id.ID {
+			slog.Warn("다른 호스트 실행 건의 이벤트라 거절", "token_host", id.ID, "run_host", run.Host, "exec_id", ev.ExecID)
+			writeError(w, http.StatusForbidden, "host mismatch")
+			return
+		}
+	}
 	t, err := eventTransition(ev, s.d.Now().UnixMilli())
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())

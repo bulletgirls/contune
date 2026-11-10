@@ -293,6 +293,9 @@ func runDev(ctx context.Context, args []string) error {
 				return
 			}
 			fc.Manager, fc.Token = "http://"+addr, setup.Manager.Token
+			if len(fc.Allow) == 0 {
+				fc.Allow = append([]string(nil), devAgentAllow...)
+			}
 			if err := fleet.Run(ctx, fc); err != nil && ctx.Err() == nil {
 				slog.Error("fleet이 에러로 끝남", "err", err)
 			}

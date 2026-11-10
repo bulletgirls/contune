@@ -66,6 +66,22 @@ func TestExpandHosts(t *testing.T) {
 	if names["gw-01"] || names["gw-07"] || len(groups) != 8 {
 		t.Errorf("범위/그룹 오류 groups=%d", len(groups))
 	}
+	c.Allow = []string{`^echo( |$)`}
+	for _, a := range BuildAgents(c, t.TempDir()) {
+		if len(a.Allow) != 1 || a.Allow[0] != `^echo( |$)` {
+			t.Fatalf("%s allow %q", a.Host, a.Allow)
+		}
+	}
+}
+
+func TestLoadConfigBadAllow(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "fleet.yaml")
+	if err := os.WriteFile(p, []byte("manager: http://m\nallow: ['(']\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadConfig(p); err == nil {
+		t.Fatal("틀린 정규식은 에러여야 함")
+	}
 }
 
 func TestFaultsApplied(t *testing.T) {

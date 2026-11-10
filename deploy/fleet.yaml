@@ -2,6 +2,12 @@
 manager: http://manager:8080
 token: ${EUM_TOKEN}
 interval: 5s
+allow:                         # 모의 서버도 명령을 실제로 실행하므로 deploy/agent-*.yaml과 같은 허용 목록(보안 S3)
+  - '^eum burn( |$)'
+  - '^\$\{DEMO\}/scripts/[A-Za-z0-9_-]+\.sh( |$)'
+  - '^sleep [0-9]+$'
+  - '^echo( |$)'
+  - '^sh -c echo "\(E\) [^"$`\\]*"; exit [0-9]+$'
 hosts:
   - { group: 매매/주문접수,     prefix: gw,     from: 2, to: 6 }
   - { group: 매매/체결,         prefix: match,  from: 2, to: 8 }

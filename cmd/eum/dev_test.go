@@ -9,6 +9,7 @@ import (
 
 	"eum/internal/agent"
 	"eum/internal/agent/exec"
+	"eum/internal/fleet"
 	"eum/internal/manager/flowdef"
 )
 
@@ -172,6 +173,14 @@ func TestDeployAgentAllow(t *testing.T) {
 		if !slices.Equal(c.Allow, devAgentAllow) {
 			t.Errorf("%s allow %q, want %q", filepath.Base(p), c.Allow, devAgentAllow)
 		}
+	}
+	// 모의 서버 40대도 명령을 실제로 실행하므로 같은 목록을 쓴다.
+	fc, err := fleet.LoadConfig(filepath.Join("..", "..", "deploy", "fleet.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(fc.Allow, devAgentAllow) {
+		t.Errorf("fleet.yaml allow %q, want %q", fc.Allow, devAgentAllow)
 	}
 }
 
