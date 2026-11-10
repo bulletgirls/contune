@@ -36,6 +36,9 @@ type StateStore interface {
 	CreateIncident(ctx context.Context, in model.Incident) (int64, error)
 	UpdateIncident(ctx context.Context, in model.Incident) error                 // ID로, 없으면 ErrNotFound
 	ListIncidents(ctx context.Context, from, to int64) ([]model.Incident, error) // 구간과 겹침, start 내림차순
+	AddRiskHold(ctx context.Context, h model.RiskHold) (int64, error)
+	EndRiskHold(ctx context.Context, id, ts int64, by, note string) error        // 없거나 이미 끝났으면 ErrNotFound
+	ListRiskHolds(ctx context.Context, from, to int64) ([]model.RiskHold, error) // [at, ended_at(0이면 ∞)]가 [from,to)와 겹침(to 0이면 열림), at 내림차순
 	AddAlert(ctx context.Context, a model.Alert) (int64, error)
 	ResolveAlert(ctx context.Context, id, ts int64) error
 	AckAlert(ctx context.Context, id, ts int64, by string) error

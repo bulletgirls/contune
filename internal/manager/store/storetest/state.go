@@ -302,6 +302,66 @@ func RunState(t *testing.T, open func(t *testing.T) store.StateStore) {
 		}
 	})
 
+	sub("RiskHolds", func(t *testing.T, s store.StateStore) {
+		h1 := model.RiskHold{Feature: "queue", Kind: "accept", Reason: "배치 유입", Value: 2240, Limit: 2688, At: 100, By: "user:a", Until: 1000}
+		id1, err := s.AddRiskHold(ctx, h1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id2, _ := s.AddRiskHold(ctx, model.RiskHold{Feature: "p99", Kind: "ack", Value: 80, Limit: 96, At: 200, By: "user:b", Until: 900})
+		id3, _ := s.AddRiskHold(ctx, model.RiskHold{Feature: "cpu_max", Kind: "accept", Reason: "r", Value: 1, Limit: 2, At: 300, By: "user:a", Until: 800})
+		if !(id1 > 0 && id1 < id2 && id2 < id3) {
+			t.Fatalf("id 증가 아님 %d %d %d", id1, id2, id3)
+		}
+		if err := s.EndRiskHold(ctx, id1, 400, "user:b", "해제"); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.EndRiskHold(ctx, id1, 500, "system", "만료"); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("이미 끝난 것 End err=%v", err)
+		}
+		if err := s.EndRiskHold(ctx, 9999, 500, "system", "만료"); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("없는 것 End err=%v", err)
+		}
+		all, err := s.ListRiskHolds(ctx, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(all) != 3 || all[0].ID != id3 || all[1].ID != id2 || all[2].ID != id1 {
+			t.Fatalf("at 내림차순 아님 %+v", all)
+		}
+		want := h1
+		want.ID, want.EndedAt, want.EndedBy, want.EndNote = id1, 400, "user:b", "해제"
+		if all[2] != want {
+			t.Fatalf("got %+v want %+v", all[2], want)
+		}
+		ids := func(from, to int64) string {
+			t.Helper()
+			l, err := s.ListRiskHolds(ctx, from, to)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out []string
+			for _, h := range l {
+				out = append(out, h.Feature)
+			}
+			return strings.Join(out, ",")
+		}
+		for name, c := range map[string]struct {
+			from, to int64
+			want     string
+		}{
+			"끝난 뒤":     {450, 0, "cpu_max,p99"},
+			"끝난 순간":    {400, 450, "cpu_max,p99,queue"},
+			"앞쪽":       {0, 150, "queue"},
+			"to는 열린 끝": {0, 100, ""},
+			"가운데":      {250, 300, "p99,queue"},
+		} {
+			if got := ids(c.from, c.to); got != c.want {
+				t.Errorf("%s [%d,%d): got %q want %q", name, c.from, c.to, got, c.want)
+			}
+		}
+	})
+
 	sub("Alerts", func(t *testing.T, s store.StateStore) {
 		var ids []int64
 		for i, k := range []string{"host", "run", "host"} {

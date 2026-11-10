@@ -76,6 +76,9 @@ func TestEngineFallback(t *testing.T) {
 	if res.Mode != "rule" || !strings.Contains(res.Note, "학습 사례 부족") || !strings.Contains(res.Note, "장애 1건") {
 		t.Errorf("결과 = %+v", res)
 	}
+	if res.Report.Baseline == nil || res.Report.PriorOffset != 0 { // 규칙 모드에서도 평시 값은 채운다
+		t.Errorf("규칙 모드 보고서 = %+v", res.Report)
+	}
 	if err := e.score(ctx); err != nil {
 		t.Fatal(err)
 	}

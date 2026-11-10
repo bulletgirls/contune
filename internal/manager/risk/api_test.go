@@ -49,19 +49,22 @@ func TestRiskAPI(t *testing.T) {
 	if err := json.Unmarshal(b, &r); err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range []string{"now", "index", "level", "mode", "model", "factors", "note", "history"} {
+	for _, k := range []string{"now", "index", "level", "mode", "model", "factors", "note", "history",
+		"open_index", "open_level", "holds", "incidents", "history_open"} {
 		if _, ok := r[k]; !ok {
 			t.Errorf("/risk에 %s 없음: %s", k, b)
 		}
 	}
 	var mi map[string]any
 	json.Unmarshal(r["model"], &mi)
-	for _, k := range []string{"kind", "trained_at", "windows", "positives", "incidents", "auc", "lead_sec"} {
+	for _, k := range []string{"kind", "trained_at", "windows", "positives", "incidents", "auc", "lead_sec",
+		"prior_offset", "false_warn", "hit_warn"} {
 		if _, ok := mi[k]; !ok {
 			t.Errorf("model에 %s 없음: %s", k, r["model"])
 		}
 	}
-	if string(r["mode"]) != `"rule"` || string(r["factors"]) == "null" || string(r["history"]) == "null" {
+	if string(r["mode"]) != `"rule"` || string(r["factors"]) == "null" || string(r["history"]) == "null" ||
+		string(r["holds"]) != "[]" || string(r["incidents"]) != "[]" || string(r["history_open"]) == "null" || string(r["open_level"]) != `"ok"` {
 		t.Errorf("/risk = %s", b)
 	}
 	if mi["lead_sec"].(float64) != 300 {

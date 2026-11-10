@@ -42,7 +42,7 @@ type Deps struct {
 	Panels     []model.Panel
 	Thresholds model.HostThresholds
 	Notifiers  []notify.Notifier
-	Risk       func() (float64, bool)
+	Risk       func() (open, index float64, accepted int, ok bool) // 미확인 지수(용인 뺀 값)·원래 지수·용인 수(05 §6.4)
 	RiskWarn   float64
 	RiskCrit   float64
 	Cfg        Config
@@ -411,7 +411,8 @@ func (w *Watcher) stepRisk(ctx context.Context, now int64) {
 	if w.d.Risk == nil {
 		return
 	}
-	v, ok := w.d.Risk()
+	// 수준은 미확인 지수로 정한다. 용인한 요인 때문에 알림이 계속 울리지 않게.
+	v, all, accepted, ok := w.d.Risk()
 	level, label := "", ""
 	switch {
 	case !ok:
@@ -420,8 +421,11 @@ func (w *Watcher) stepRisk(ctx context.Context, now int64) {
 	case v >= w.d.RiskWarn:
 		level, label = "warn", "경고"
 	}
-	a := model.Alert{Kind: "risk", DedupKey: "risk", Level: level, Name: "risk.index", Value: v,
-		Message: fmt.Sprintf("장애 위험 지수 %.0f (%s)", v, label)}
+	msg := fmt.Sprintf("장애 위험 지수 %.0f (%s)", v, label)
+	if accepted > 0 {
+		msg = fmt.Sprintf("장애 위험 지수 미확인 %.0f (%s) · 전체 %.0f, 용인 %d", v, label, all, accepted)
+	}
+	a := model.Alert{Kind: "risk", DedupKey: "risk", Level: level, Name: "risk.index", Value: v, Message: msg}
 	w.reconcile(ctx, now, a, level != "")
 }
 

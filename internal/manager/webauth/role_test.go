@@ -25,6 +25,8 @@ func TestRequiredRole(t *testing.T) {
 		{"POST", "/api/v1/alerts/a1/ack", RoleOperator},
 		{"POST", "/api/v1/incidents", RoleOperator},
 		{"PATCH", "/api/v1/incidents/7", RoleOperator},
+		{"POST", "/api/v1/risk/holds", RoleOperator},
+		{"DELETE", "/api/v1/risk/holds/3", RoleOperator},
 		{"POST", "/api/v1/flows/validate", RoleOperator},
 		{"POST", "/api/v1/flows/reload", RoleOperator},
 		{"POST", "/api/v1/assist/flow", RoleOperator},

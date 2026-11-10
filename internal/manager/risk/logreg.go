@@ -27,14 +27,25 @@ type logreg struct {
 }
 
 // logregState는 공개 JSON 형식의 모델이다(model.json의 "model").
+// 확률은 σ(w·z + bias − prior_offset)이다.
 type logregState struct {
-	Kind     string    `json:"kind"`
-	Features []string  `json:"features"`
-	Mean     []float64 `json:"mean"`
-	Std      []float64 `json:"std"`
-	Weights  []float64 `json:"weights"`
-	Bias     float64   `json:"bias"`
-	Report   FitReport `json:"report"`
+	Kind        string    `json:"kind"`
+	Features    []string  `json:"features"`
+	Mean        []float64 `json:"mean"`
+	Std         []float64 `json:"std"`
+	Weights     []float64 `json:"weights"`
+	Bias        float64   `json:"bias"`
+	PriorOffset float64   `json:"prior_offset"`
+	Report      FitReport `json:"report"`
+}
+
+// priorOffset는 양성 가중치 n/(2·n_pos)·음성 n/(2·n_neg)로 학습한 로짓이 위로 밀린 양
+// ln(n_neg/n_pos)다(King & Zeng 2001의 사전 보정). 어느 한쪽이 0이면 0.
+func priorOffset(n, npos int) float64 {
+	if npos <= 0 || npos >= n {
+		return 0
+	}
+	return math.Log(float64(n-npos) / float64(npos))
 }
 
 func (m *logreg) Name() string { return "logreg" }
@@ -67,6 +78,9 @@ func (m *logreg) Fit(ctx context.Context, ds Dataset) (FitReport, error) {
 	for j, name := range st.Features {
 		rep.Weights[name] = st.Weights[j]
 	}
+	// 균형 가중치로 학습한 로짓을 실제 장애 비율의 확률로 되돌린다. 순위는 그대로라 AUC는 변하지 않는다.
+	st.PriorOffset = priorOffset(n, rep.Positives)
+	rep.PriorOffset = st.PriorOffset
 	st.Report = rep
 	m.st = st
 	return rep, nil
@@ -113,6 +127,14 @@ func (m *logreg) Restore(b []byte) error {
 	if err := json.Unmarshal(b, &st); err != nil {
 		return fmt.Errorf("logreg: %w", err)
 	}
+	var has struct {
+		PriorOffset *float64 `json:"prior_offset"`
+	}
+	if json.Unmarshal(b, &has) == nil && has.PriorOffset == nil {
+		// 보정 전에 저장한 옛 상태: 보고서의 창·양성 수로 채운다
+		st.PriorOffset = priorOffset(st.Report.Windows, st.Report.Positives)
+		st.Report.PriorOffset = st.PriorOffset
+	}
 	k := len(st.Features)
 	if k == 0 || len(st.Mean) != k || len(st.Std) != k || len(st.Weights) != k {
 		return errors.New("logreg: 모델 상태의 길이가 맞지 않음")
@@ -127,7 +149,7 @@ func (m *logreg) Restore(b []byte) error {
 }
 
 func (st logregState) prob(x []float64) float64 {
-	z := st.Bias
+	z := st.Bias - st.PriorOffset
 	for j, w := range st.Weights {
 		z += w * (x[j] - st.Mean[j]) / st.Std[j]
 	}
@@ -241,7 +263,10 @@ func auc(scores, y []float64) float64 {
 	return (rankSum - float64(npos)*float64(npos+1)/2) / (float64(npos) * float64(nneg))
 }
 
-// topFactors는 기여가 큰 순으로 3개까지 남긴다(같으면 이름순).
+// maxFactors는 Score.Factors의 최대 개수다(기본 특징 표 전부).
+const maxFactors = 8
+
+// topFactors는 기여가 큰 순으로 maxFactors개까지 남긴다(같으면 이름순).
 func topFactors(fs []Factor) []Factor {
 	sort.SliceStable(fs, func(i, j int) bool {
 		if fs[i].Contrib != fs[j].Contrib {
@@ -249,8 +274,8 @@ func topFactors(fs []Factor) []Factor {
 		}
 		return fs[i].Feature < fs[j].Feature
 	})
-	if len(fs) > 3 {
-		fs = fs[:3]
+	if len(fs) > maxFactors {
+		fs = fs[:maxFactors]
 	}
 	if fs == nil {
 		fs = []Factor{}

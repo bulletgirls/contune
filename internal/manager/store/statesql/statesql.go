@@ -38,6 +38,11 @@ CREATE TABLE IF NOT EXISTS incidents (
   id INTEGER PRIMARY KEY, start_ts INTEGER NOT NULL, end_ts INTEGER NOT NULL DEFAULT 0,
   scope TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, source TEXT NOT NULL, note TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS ix_incidents_start ON incidents(start_ts);
+CREATE TABLE IF NOT EXISTS risk_holds (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, feature TEXT NOT NULL, kind TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '',
+  value REAL NOT NULL, lim REAL NOT NULL, at INTEGER NOT NULL, by TEXT NOT NULL DEFAULT '', until INTEGER NOT NULL,
+  ended_at INTEGER NOT NULL DEFAULT 0, ended_by TEXT NOT NULL DEFAULT '', end_note TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS ix_risk_holds_at ON risk_holds(at);
 CREATE TABLE IF NOT EXISTS alerts (
   id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, kind TEXT NOT NULL, dedup_key TEXT NOT NULL,
   level TEXT NOT NULL, state TEXT NOT NULL, host TEXT NOT NULL DEFAULT '', grp TEXT NOT NULL DEFAULT '',
@@ -388,6 +393,51 @@ func (s *Store) ListIncidents(ctx context.Context, from, to int64) ([]model.Inci
 			return nil, err
 		}
 		out = append(out, in)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) AddRiskHold(ctx context.Context, h model.RiskHold) (int64, error) {
+	res, err := s.w.ExecContext(ctx, `INSERT INTO risk_holds(feature,kind,reason,value,lim,at,by,until,ended_at,ended_by,end_note)
+VALUES(?,?,?,?,?,?,?,?,?,?,?)`, h.Feature, h.Kind, h.Reason, h.Value, h.Limit, h.At, h.By, h.Until, h.EndedAt, h.EndedBy, h.EndNote)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) EndRiskHold(ctx context.Context, id, ts int64, by, note string) error {
+	res, err := s.w.ExecContext(ctx, `UPDATE risk_holds SET ended_at=?, ended_by=?, end_note=? WHERE id=? AND ended_at=0`, ts, by, note, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return store.ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) ListRiskHolds(ctx context.Context, from, to int64) ([]model.RiskHold, error) {
+	q := `SELECT id,feature,kind,reason,value,lim,at,by,until,ended_at,ended_by,end_note FROM risk_holds WHERE (ended_at=0 OR ended_at>=?)`
+	args := []any{from}
+	if to != 0 {
+		q += ` AND at<?`
+		args = append(args, to)
+	}
+	q += ` ORDER BY at DESC, id DESC`
+	rows, err := s.r.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.RiskHold
+	for rows.Next() {
+		var h model.RiskHold
+		if err := rows.Scan(&h.ID, &h.Feature, &h.Kind, &h.Reason, &h.Value, &h.Limit, &h.At, &h.By, &h.Until,
+			&h.EndedAt, &h.EndedBy, &h.EndNote); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
 	}
 	return out, rows.Err()
 }

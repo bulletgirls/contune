@@ -39,6 +39,7 @@ func TestReopen(t *testing.T) {
 	s.CreateIncident(ctx, model.Incident{Start: 1, Title: "i", Source: "manual"})
 	s.AddAlert(ctx, model.Alert{TS: 1, Kind: "host", State: "firing", Level: "warn", Message: "m"})
 	s.AddAudit(ctx, model.AuditEntry{TS: 1, Actor: "u", Action: "a", Target: "t"})
+	s.AddRiskHold(ctx, model.RiskHold{Feature: "queue", Kind: "accept", Reason: "r", Value: 1, Limit: 2, At: 1, Until: 9})
 	s.UpsertHost(ctx, model.Host{ID: "h", LastSeen: 1})
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
@@ -60,6 +61,9 @@ func TestReopen(t *testing.T) {
 	}
 	if l, _ := s.ListAudit(ctx, model.AuditQuery{Limit: 5}); len(l) != 1 {
 		t.Error("audit")
+	}
+	if l, _ := s.ListRiskHolds(ctx, 0, 0); len(l) != 1 || l[0].Feature != "queue" || l[0].EndedAt != 0 {
+		t.Error("risk hold")
 	}
 	if l, _ := s.ListHosts(ctx); len(l) != 1 {
 		t.Error("host")

@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"eum/internal/manager/llm"
+	"eum/internal/model"
 )
 
 // RiskModel은 위험 지수 모델이다.
@@ -32,18 +33,30 @@ type Vector struct {
 	Values []float64
 }
 
-// Score는 지수(0~100)와 기여 요인이다.
+// Score는 지수(0~100)와 기여 요인이다. 모델은 기여가 양수인 요인 전부를 기여순으로 돌려준다(최대 8).
 type Score struct {
 	Index   float64  `json:"index"`
 	Factors []Factor `json:"factors"`
 }
 
-// Factor는 기여 요인 하나다.
+// Factor는 기여 요인 하나다. Feature~Contrib는 모델이, 나머지는 엔진이 점수 주기마다 채운다.
 type Factor struct {
-	Feature string  `json:"feature"`
-	Title   string  `json:"title"`
-	Value   float64 `json:"value"`
-	Contrib float64 `json:"contrib"`
+	Feature  string          `json:"feature"`
+	Title    string          `json:"title"`
+	Value    float64         `json:"value"`
+	Contrib  float64         `json:"contrib"`
+	Baseline *float64        `json:"baseline"` // 학습 구간 평시 창의 중앙값. 학습 전이면 nil
+	Check    string          `json:"check"`    // 확인 질문(FeatureDef.Check)
+	Where    []Place         `json:"where"`    // 어디서 나왔나(최근 60초, 값 큰 순)
+	Hold     *model.RiskHold `json:"hold"`     // 살아 있는 확인 표시. 없으면 nil
+}
+
+// Place는 요인이 나온 곳 하나다. Kind host(서버) | log(서버·로그 출처) | run(실행 건).
+type Place struct {
+	Kind  string  `json:"kind"`
+	ID    string  `json:"id"`
+	Label string  `json:"label"`
+	Value float64 `json:"value"`
 }
 
 // FitReport는 학습 보고서다.
@@ -55,6 +68,13 @@ type FitReport struct {
 	Incidents int                `json:"incidents"`
 	AUC       float64            `json:"auc"`
 	Weights   map[string]float64 `json:"weights"`
+	// PriorOffset는 점수 때 로짓에서 빼는 ln(평시 창 수/장애 창 수)다(양성 가중치 보정, logreg만).
+	PriorOffset float64 `json:"prior_offset"`
+	// FalseWarn·HitWarn은 학습 데이터 전체를 그 모드의 모델로 매겼을 때 평시 창·장애 창 중 경고선 이상 비율이다.
+	FalseWarn float64 `json:"false_warn"`
+	HitWarn   float64 `json:"hit_warn"`
+	// Baseline은 특징별 평시 창(라벨 0) 중앙값이다. 평시 창이 없으면 nil.
+	Baseline map[string]float64 `json:"baseline"`
 }
 
 // Env는 모델에 넘기는 부품이다.

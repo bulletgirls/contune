@@ -140,9 +140,10 @@ func New(cfg Config) (*Manager, error) {
 	m.watcher = alert.New(alert.Deps{
 		Metrics: m.metrics, State: m.state, Live: lv, Flows: reg.List,
 		Panels: panels, Thresholds: cfg.HostState, Notifiers: notifiers,
-		Risk: func() (float64, bool) {
-			s, _, ok := engine.Current()
-			return s.Index, ok
+		Risk: func() (float64, float64, int, bool) {
+			s, _, _ := engine.Current()
+			open, _, accepted, ok := engine.Open()
+			return open, s.Index, accepted, ok
 		},
 		RiskWarn: cfg.Risk.Warn, RiskCrit: cfg.Risk.Crit, Cfg: alertCfg, Now: now,
 	})

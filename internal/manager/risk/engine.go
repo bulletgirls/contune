@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -38,6 +39,8 @@ type FeatureDef struct {
 	TimeAgg                      string // avg | max | sum
 	Source                       string // metrics | runs_failed
 	RuleLo, RuleHi, RuleWeight   float64
+	Check                        string // 기본 확인 질문(화면 "확인할 것")
+	Where                        string // 요인 위치 종류: host(빈 값) | log | run
 }
 
 // Deps는 엔진이 쓰는 부품이다.
@@ -54,6 +57,8 @@ type Deps struct {
 const (
 	riskHost   = "_eum"
 	riskMetric = "risk.index"
+	// riskOpenMetric는 용인된 요인을 뺀 미확인 지수다(05 §6.4).
+	riskOpenMetric = "risk.index_open"
 	// minPositives는 학습에 필요한 양성 창(장애 직전·중) 수다.
 	minPositives = 10
 	// firstTrain은 시작 뒤 첫 학습까지의 시간이다.
@@ -107,6 +112,13 @@ type Engine struct {
 	cur       Score
 	level     string
 	has       bool
+	open      float64 // 미확인 지수: 용인된 요인을 벡터에서 빼고 다시 매긴 값과 cur.Index 중 작은 것
+	openLevel string
+	accepted  int    // 미확인 지수를 매길 때 뺀 용인 수
+	vec       Vector // 마지막 점수의 특징 벡터(확인 표시를 걸 때의 값)
+
+	holdMu sync.Mutex                // 확인 표시 변경은 한 번에 하나(저장소 쓰기 포함)
+	holds  map[string]model.RiskHold // 특징 → 살아 있는 확인 표시
 }
 
 // trainResult는 학습 한 번의 결과다(POST /risk/train 응답).
@@ -142,6 +154,7 @@ func New(d Deps) (*Engine, error) {
 	e := &Engine{
 		d: d, cfg: cfg, feats: DefaultFeatures(),
 		mode: "rule", note: noteNotTrained, report: FitReport{Kind: "rule"},
+		openLevel: "ok", holds: map[string]model.RiskHold{},
 	}
 	e.rule = &ruleModel{feats: e.feats}
 	m, err := Build(cfg.Model, nil, d.Env)
@@ -156,6 +169,7 @@ func New(d Deps) (*Engine, error) {
 	default:
 		e.restore(m)
 	}
+	e.loadHolds(context.Background())
 	return e, nil
 }
 
@@ -182,6 +196,22 @@ func (e *Engine) restore(m RiskModel) {
 	if err != nil {
 		slog.Warn("위험 모델을 읽지 못해 규칙 기반으로 시작", "path", e.modelPath(), "err", err)
 		return
+	}
+	var has struct {
+		Report struct {
+			PriorOffset *float64 `json:"prior_offset"`
+		} `json:"report"`
+	}
+	if json.Unmarshal(b, &has) == nil && has.Report.PriorOffset == nil {
+		// 보정 전에 저장한 옛 model.json: 모델이 Restore에서 채운 값을 보고서에도 둔다
+		if st, err := m.State(); err == nil {
+			var ps struct {
+				PriorOffset float64 `json:"prior_offset"`
+			}
+			if json.Unmarshal(st, &ps) == nil {
+				mf.Report.PriorOffset = ps.PriorOffset
+			}
+		}
 	}
 	e.model, e.mode, e.note, e.report = m, "model", "", mf.Report
 	slog.Info("위험 모델을 읽음", "path", e.modelPath(), "kind", mf.Kind, "auc", mf.Report.AUC)
@@ -247,6 +277,7 @@ func (e *Engine) train(ctx context.Context) (trainResult, error) {
 	}
 	rep, _ := e.rule.Fit(ctx, ds)
 	rep.TrainedAt, rep.Incidents = to, len(incs)
+	rep.Baseline = baseline(ds)
 	res := trainResult{Mode: "rule"}
 	var fitted RiskModel
 	switch {
@@ -268,11 +299,21 @@ func (e *Engine) train(ctx context.Context) (trainResult, error) {
 		if err != nil {
 			return trainResult{}, err
 		}
-		rep.Kind, rep.AUC, rep.Weights = r.Kind, r.AUC, r.Weights
-		if err := e.save(m, rep); err != nil {
+		rep.Kind, rep.AUC, rep.Weights, rep.PriorOffset = r.Kind, r.AUC, r.Weights, r.PriorOffset
+		fitted, res.Mode = m, "model"
+	}
+	// 경고 비율은 학습 구간 전체를 이 모드의 모델로 매겨 잰다. llm은 창마다 호출하게 되므로 재지 않는다.
+	if rep.Kind != "llm" {
+		var scorer RiskModel = e.rule
+		if fitted != nil {
+			scorer = fitted
+		}
+		rep.FalseWarn, rep.HitWarn = e.warnRates(ctx, scorer, ds)
+	}
+	if fitted != nil {
+		if err := e.save(fitted, rep); err != nil {
 			slog.Warn("위험 모델 저장 실패", "path", e.modelPath(), "err", err)
 		}
-		fitted, res.Mode = m, "model"
 	}
 	res.Report = rep
 	e.mu.Lock()
@@ -282,9 +323,70 @@ func (e *Engine) train(ctx context.Context) (trainResult, error) {
 	}
 	e.mu.Unlock()
 	slog.Info("위험 모델 학습", "mode", res.Mode, "kind", rep.Kind, "windows", rep.Windows,
-		"positives", rep.Positives, "incidents", rep.Incidents, "auc", rep.AUC)
+		"positives", rep.Positives, "incidents", rep.Incidents, "auc", rep.AUC,
+		"prior_offset", rep.PriorOffset, "false_warn", rep.FalseWarn, "hit_warn", rep.HitWarn)
 	return res, nil
 }
+
+// baseline은 특징별 평시 창(라벨 0)의 중앙값이다. 평시 창이 없으면 nil.
+func baseline(ds Dataset) map[string]float64 {
+	var rows [][]float64
+	for i, y := range ds.Y {
+		if y <= 0.5 {
+			rows = append(rows, ds.X[i])
+		}
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	out := make(map[string]float64, len(ds.Names))
+	col := make([]float64, len(rows))
+	for j, name := range ds.Names {
+		for i, x := range rows {
+			col[i] = x[j]
+		}
+		sort.Float64s(col)
+		k := len(col) / 2
+		med := col[k]
+		if len(col)%2 == 0 {
+			med = (col[k-1] + col[k]) / 2
+		}
+		out[name] = med
+	}
+	return out
+}
+
+// warnRates는 ds를 m으로 매겨 평시 창 중 경고선 이상 비율(false)과 장애 창 중 경고선 이상 비율(hit)을 잰다.
+func (e *Engine) warnRates(ctx context.Context, m RiskModel, ds Dataset) (falseWarn, hitWarn float64) {
+	var neg, pos, fw, hw int
+	for i, x := range ds.X {
+		s, err := m.Score(ctx, Vector{Names: ds.Names, Values: x})
+		if err != nil {
+			return 0, 0
+		}
+		warn := clampIndex(s.Index) >= e.cfg.Warn
+		if ds.Y[i] > 0.5 {
+			pos++
+			if warn {
+				hw++
+			}
+		} else {
+			neg++
+			if warn {
+				fw++
+			}
+		}
+	}
+	if neg > 0 {
+		falseWarn = float64(fw) / float64(neg)
+	}
+	if pos > 0 {
+		hitWarn = float64(hw) / float64(pos)
+	}
+	return falseWarn, hitWarn
+}
+
+func clampIndex(v float64) float64 { return math.Min(100, math.Max(0, v)) }
 
 // save는 model.json을 임시 파일에 쓰고 rename한다.
 func (e *Engine) save(m RiskModel, rep FitReport) error {
@@ -316,9 +418,11 @@ func (e *Engine) save(m RiskModel, rep FitReport) error {
 	return os.Rename(f.Name(), e.modelPath())
 }
 
-// score는 최근 60초로 특징 벡터 하나를 만들어 지수를 매기고 risk.index로 저장한다.
+// score는 최근 60초로 특징 벡터 하나를 만들어 지수를 매긴다. 먼저 확인 표시를 자동으로 풀고(만료·한도 초과),
+// 용인된 요인을 벡터에서 뺀 미확인 지수를 같은 모델로 매겨 risk.index·risk.index_open으로 저장한다.
 func (e *Engine) score(ctx context.Context) error {
-	to := e.d.Now().UnixMilli()
+	now := e.d.Now()
+	to := now.UnixMilli()
 	ds, err := buildDataset(ctx, e.d.Metrics, e.d.State, e.feats, to-windowMS, to, e.cfg.Lead, time.Minute)
 	if err != nil {
 		return err
@@ -327,30 +431,97 @@ func (e *Engine) score(ctx context.Context) error {
 	if len(ds.X) > 0 {
 		v.Values = ds.X[0]
 	}
+	e.expireHolds(ctx, now, v)
+	holds := e.liveHolds()
+
 	e.mu.RLock()
-	mode, m := e.mode, e.model
+	mode, m, base := e.mode, e.model, e.report.Baseline
 	e.mu.RUnlock()
-	var s Score
-	scoreNote := ""
+	var scorer RiskModel = e.rule
 	if mode == "model" && m != nil {
-		if s, err = m.Score(ctx, v); err != nil {
-			slog.Warn("모델 점수 실패, 규칙 기반으로 계산", "model", m.Name(), "err", err)
-			s, _ = e.rule.Score(ctx, v)
-			scoreNote = "규칙 기반으로 대신 계산 · " + m.Name() + " 점수 실패"
-		}
-	} else {
+		scorer = m
+	}
+	s, err := scorer.Score(ctx, v)
+	scoreNote := ""
+	if err != nil {
+		slog.Warn("모델 점수 실패, 규칙 기반으로 계산", "model", scorer.Name(), "err", err)
+		scoreNote = "규칙 기반으로 대신 계산 · " + scorer.Name() + " 점수 실패"
+		scorer = e.rule
 		s, _ = e.rule.Score(ctx, v)
 	}
-	s.Index = math.Min(100, math.Max(0, s.Index))
+	s.Index = clampIndex(s.Index)
+
+	// 용인된 특징을 벡터에서 빼면 모델은 그 특징을 평소로 본다(logreg 평균, rule 0).
+	open, accepted := s.Index, 0
+	var drop []string
+	for f, h := range holds {
+		if h.Kind == holdAccept {
+			drop = append(drop, f)
+		}
+	}
+	if len(drop) > 0 {
+		accepted = len(drop)
+		if so, err := scorer.Score(ctx, without(v, drop)); err == nil {
+			open = math.Min(s.Index, clampIndex(so.Index))
+		}
+	}
+
 	if s.Factors == nil {
 		s.Factors = []Factor{}
 	}
+	for i := range s.Factors {
+		f := &s.Factors[i]
+		if def, ok := featureDef(e.feats, f.Feature); ok {
+			f.Check = def.Check
+		}
+		if b, ok := base[f.Feature]; ok {
+			f.Baseline = &b
+		}
+	}
+	e.where(ctx, s.Factors, to-windowMS, to)
+	s.Factors = withHolds(s.Factors, holds)
+
 	lv := e.levelOf(s.Index)
-	werr := e.d.Metrics.Write(ctx, []model.Sample{{TS: to, Host: riskHost, Name: riskMetric, Value: s.Index}})
+	werr := e.d.Metrics.Write(ctx, []model.Sample{
+		{TS: to, Host: riskHost, Name: riskMetric, Value: s.Index},
+		{TS: to, Host: riskHost, Name: riskOpenMetric, Value: open},
+	})
 	e.mu.Lock()
 	e.cur, e.level, e.has, e.scoreNote = s, lv, true, scoreNote
+	e.open, e.openLevel, e.accepted, e.vec = open, e.levelOf(open), accepted, v
 	e.mu.Unlock()
 	return werr
+}
+
+// without은 v에서 names 특징을 뺀 벡터다.
+func without(v Vector, names []string) Vector {
+	out := Vector{}
+	for i, n := range v.Names {
+		if i < len(v.Values) && !contains(names, n) {
+			out.Names = append(out.Names, n)
+			out.Values = append(out.Values, v.Values[i])
+		}
+	}
+	return out
+}
+
+func contains(ss []string, s string) bool {
+	for _, x := range ss {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+// valueOf는 벡터에서 name 특징의 값이다.
+func valueOf(v Vector, name string) (float64, bool) {
+	for i, n := range v.Names {
+		if n == name && i < len(v.Values) {
+			return v.Values[i], true
+		}
+	}
+	return 0, false
 }
 
 func (e *Engine) levelOf(idx float64) string {
@@ -363,11 +534,19 @@ func (e *Engine) levelOf(idx float64) string {
 	return "crit"
 }
 
-// Current는 지금 점수와 수준(ok | warn | crit)이다. 아직 없으면 ok가 false.
+// Current는 지금 점수(원래 지수)와 수준(ok | warn | crit)이다. 아직 없으면 ok가 false.
 func (e *Engine) Current() (Score, string, bool) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.cur, e.level, e.has
+}
+
+// Open은 미확인 지수(용인된 요인을 뺀 지수), 그 수준, 뺀 용인 수다. 화면 색과 risk 알림은 이 값으로 정한다.
+// 용인이 없으면 Current의 지수와 같다. 아직 점수가 없으면 ok가 false.
+func (e *Engine) Open() (index float64, level string, accepted int, ok bool) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.open, e.openLevel, e.accepted, e.has
 }
 
 // status는 지금 모드, 마지막 학습 보고서, 화면에 밝힐 노트다.

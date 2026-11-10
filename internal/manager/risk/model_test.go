@@ -2,6 +2,7 @@ package risk
 
 import (
 	"context"
+	"encoding/json"
 	"math"
 	"math/rand"
 	"testing"
@@ -160,5 +161,93 @@ func TestStateRoundTrip(t *testing.T) {
 	}
 	if _, err := newLogreg(t).Score(ctx, Vector{Names: ds.Names, Values: ds.X[0]}); err == nil {
 		t.Error("학습 전 Score는 에러여야 함")
+	}
+}
+
+// TestLogregPriorOffset: 양성 가중치로 부풀린 로짓을 ln(n_neg/n_pos)만큼 내려 확률로 되돌린다.
+func TestLogregPriorOffset(t *testing.T) {
+	ctx := context.Background()
+	// 분포가 겹치게(양성은 x1 +1.5σ) 만들어야 보정 전후 차이가 드러난다. 양성 2%.
+	r := rand.New(rand.NewSource(5))
+	ds := Dataset{Names: []string{"x1", "x2"}}
+	for i := range 5000 {
+		y, x1 := 0.0, r.NormFloat64()
+		if i%50 == 7 {
+			y, x1 = 1, x1+1.5
+		}
+		ds.TS = append(ds.TS, int64(i)*60000)
+		ds.X = append(ds.X, []float64{x1, r.NormFloat64()})
+		ds.Y = append(ds.Y, y)
+	}
+	m := newLogreg(t)
+	rep, err := m.Fit(ctx, ds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(rep.PriorOffset-math.Log(49)) > 1e-9 {
+		t.Fatalf("prior_offset = %v, want ln(49) = %v", rep.PriorOffset, math.Log(49))
+	}
+	st := m.(*logreg).st
+	raw := st
+	raw.PriorOffset = 0 // 보정 전
+	var cal, unc []float64
+	var calNeg, uncNeg float64
+	var nn int
+	for i, x := range ds.X {
+		pc, pu := st.prob(x), raw.prob(x)
+		cal, unc = append(cal, pc), append(unc, pu)
+		if ds.Y[i] == 0 {
+			calNeg += pc
+			uncNeg += pu
+			nn++
+		}
+	}
+	calNeg /= float64(nn)
+	uncNeg /= float64(nn)
+	t.Logf("평시 창 평균 확률: 보정 전 %.3f, 보정 뒤 %.3f (양성 비율 0.02)", uncNeg, calNeg)
+	if calNeg > 3*0.02 || calNeg >= uncNeg {
+		t.Errorf("평시 평균 확률 보정 뒤 %.4f, 보정 전 %.4f", calNeg, uncNeg)
+	}
+	if a, b := auc(cal, ds.Y), auc(unc, ds.Y); a != b {
+		t.Errorf("AUC가 바뀜: %v != %v", a, b)
+	}
+}
+
+// TestLogregRestoreOld: prior_offset 없는 옛 상태는 보고서의 창·양성 수로 채워 같은 점수를 낸다.
+func TestLogregRestoreOld(t *testing.T) {
+	ctx := context.Background()
+	ds := synth(300, func(i int) bool { return i%4 == 0 }, 3)
+	m := newLogreg(t)
+	if _, err := m.Fit(ctx, ds); err != nil {
+		t.Fatal(err)
+	}
+	b, err := m.State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(b, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw["prior_offset"]; !ok {
+		t.Fatalf("상태에 prior_offset 없음: %s", b)
+	}
+	delete(raw, "prior_offset")
+	delete(raw["report"].(map[string]any), "prior_offset")
+	old, _ := json.Marshal(raw)
+	m2 := newLogreg(t)
+	if err := m2.Restore(old); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := m2.(*logreg).st.PriorOffset, math.Log(3); math.Abs(got-want) > 1e-9 {
+		t.Errorf("채운 prior_offset = %v, want ln(225/75) = %v", got, want)
+	}
+	for _, x := range ds.X[:50] {
+		v := Vector{Names: ds.Names, Values: x}
+		a, _ := m.Score(ctx, v)
+		c, _ := m2.Score(ctx, v)
+		if a.Index != c.Index {
+			t.Fatalf("점수가 다름 %v != %v", a.Index, c.Index)
+		}
 	}
 }

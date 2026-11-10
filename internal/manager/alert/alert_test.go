@@ -60,7 +60,7 @@ func newEnv(t *testing.T, status int, st store.StateStore) *env {
 		}}},
 		Thresholds: model.HostThresholds{CPUWarn: 70, CPUCrit: 90, MemWarn: 80, MemCrit: 90, SilentAfter: 10 * time.Second},
 		Notifiers:  []notify.Notifier{notify.NewWebhook(e.srv.URL)},
-		Risk:       func() (float64, bool) { return e.risk, true },
+		Risk:       func() (float64, float64, int, bool) { return e.risk, e.risk, 0, true },
 		RiskWarn:   30, RiskCrit: 60,
 		Cfg: Config{Every: 5 * time.Second, IncidentAfter: 30 * time.Second, IncidentClear: 60 * time.Second,
 			LogLevels: []string{"error"}, AutoIncident: true, MinNotify: "warn"},
@@ -221,6 +221,29 @@ func TestRiskThreshold(t *testing.T) {
 				t.Fatal("resolve")
 			}
 		}
+	}
+}
+
+func TestRiskAlertOpen(t *testing.T) {
+	e := newEnv(t, 200, nil)
+	open, all, accepted := 24.0, 72.0, 1
+	e.d.Risk = func() (float64, float64, int, bool) { return open, all, accepted, true }
+	e.w = New(e.d)
+	e.step(t0)
+	if as := e.alerts(""); len(as) != 0 {
+		t.Fatalf("미확인 24는 경고선 30 아래: %+v", as)
+	}
+	open = 45
+	e.step(t0 + 5000)
+	as := e.alerts("firing")
+	if len(as) != 1 || as[0].Level != "warn" || as[0].Value != 45 || as[0].Message != "장애 위험 지수 미확인 45 (경고) · 전체 72, 용인 1" {
+		t.Fatalf("미확인 45: %+v", as)
+	}
+	open, accepted = 72, 0 // 용인 해제
+	e.step(t0 + 10000)
+	as = e.alerts("firing")
+	if len(as) != 1 || as[0].Level != "crit" || as[0].Value != 72 || as[0].Message != "장애 위험 지수 72 (위험)" {
+		t.Fatalf("용인 해제: %+v", as)
 	}
 }
 

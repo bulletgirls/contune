@@ -24,10 +24,13 @@ const (
 	maxExportWindow = 31 * 24 * time.Hour
 )
 
-// Mount는 /risk, /risk/train, /incidents, /export/risk-dataset를 붙인다(05 §10).
+// Mount는 /risk, /risk/train, /risk/holds, /incidents, /export/risk-dataset를 붙인다(05 §10).
 func (e *Engine) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/risk", e.handleRisk)
 	mux.HandleFunc("POST /api/v1/risk/train", e.handleTrain)
+	mux.HandleFunc("GET /api/v1/risk/holds", e.handleHolds)
+	mux.HandleFunc("POST /api/v1/risk/holds", e.handleAddHold)
+	mux.HandleFunc("DELETE /api/v1/risk/holds/{id}", e.handleEndHold)
 	mux.HandleFunc("GET /api/v1/incidents", e.handleIncidents)
 	mux.HandleFunc("POST /api/v1/incidents", e.handleCreateIncident)
 	mux.HandleFunc("PATCH /api/v1/incidents/{id}", e.handlePatchIncident)
@@ -36,24 +39,33 @@ func (e *Engine) Mount(mux *http.ServeMux) {
 }
 
 type riskModelInfo struct {
-	Kind      string  `json:"kind"`
-	TrainedAt int64   `json:"trained_at"`
-	Windows   int     `json:"windows"`
-	Positives int     `json:"positives"`
-	Incidents int     `json:"incidents"`
-	AUC       float64 `json:"auc"`
-	LeadSec   int64   `json:"lead_sec"`
+	Kind        string  `json:"kind"`
+	TrainedAt   int64   `json:"trained_at"`
+	Windows     int     `json:"windows"`
+	Positives   int     `json:"positives"`
+	Incidents   int     `json:"incidents"`
+	AUC         float64 `json:"auc"`
+	LeadSec     int64   `json:"lead_sec"`
+	PriorOffset float64 `json:"prior_offset"`
+	FalseWarn   float64 `json:"false_warn"`
+	HitWarn     float64 `json:"hit_warn"`
 }
 
+// riskResponse는 GET /risk다. index·level은 원래 지수, open_index·open_level은 미확인 지수(화면 색·알림).
 type riskResponse struct {
-	Now     int64         `json:"now"`
-	Index   float64       `json:"index"`
-	Level   string        `json:"level"`
-	Mode    string        `json:"mode"`
-	Model   riskModelInfo `json:"model"`
-	Factors []Factor      `json:"factors"`
-	Note    string        `json:"note"`
-	History [][2]float64  `json:"history"`
+	Now         int64            `json:"now"`
+	Index       float64          `json:"index"`
+	Level       string           `json:"level"`
+	Mode        string           `json:"mode"`
+	OpenIndex   float64          `json:"open_index"`
+	OpenLevel   string           `json:"open_level"`
+	Model       riskModelInfo    `json:"model"`
+	Factors     []Factor         `json:"factors"`
+	Holds       []model.RiskHold `json:"holds"`     // 살아 있는 확인 표시 전부
+	Incidents   []model.Incident `json:"incidents"` // 진행 중 장애, start 내림차순
+	Note        string           `json:"note"`
+	History     [][2]float64     `json:"history"`
+	HistoryOpen [][2]float64     `json:"history_open"`
 }
 
 func (e *Engine) handleRisk(w http.ResponseWriter, r *http.Request) {
@@ -69,30 +81,59 @@ func (e *Engine) handleRisk(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		lv = "ok"
 	}
-	mode, rep, note := e.status()
-	factors := s.Factors
-	if factors == nil {
-		factors = []Factor{}
+	open, openLv, _, _ := e.Open()
+	if !ok {
+		openLv = "ok"
 	}
-	hist := [][2]float64{}
-	ser, err := e.d.Metrics.Query(ctx, model.SeriesQuery{Hosts: []string{riskHost}, Name: riskMetric, From: now - time.Hour.Milliseconds(), To: now, StepSec: 10})
+	mode, rep, note := e.status()
+	holds := e.liveHolds()
+	factors := withHolds(s.Factors, holds) // 점수 뒤에 바뀐 표시도 바로 보이게
+	hist, err := e.history(ctx, riskMetric, now)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	for _, sr := range ser {
-		for _, p := range sr.Points {
-			hist = append(hist, [2]float64{float64(p.TS), p.Value})
+	histOpen, err := e.history(ctx, riskOpenMetric, now)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	incs, err := e.d.State.ListIncidents(ctx, now, 0)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	ongoing := []model.Incident{}
+	for _, in := range incs {
+		if in.End == 0 {
+			ongoing = append(ongoing, in)
 		}
 	}
 	writeJSON(w, http.StatusOK, riskResponse{
-		Now: now, Index: s.Index, Level: lv, Mode: mode,
+		Now: now, Index: s.Index, Level: lv, Mode: mode, OpenIndex: open, OpenLevel: openLv,
 		Model: riskModelInfo{
 			Kind: rep.Kind, TrainedAt: rep.TrainedAt, Windows: rep.Windows, Positives: rep.Positives,
 			Incidents: rep.Incidents, AUC: rep.AUC, LeadSec: int64(e.cfg.Lead / time.Second),
+			PriorOffset: rep.PriorOffset, FalseWarn: rep.FalseWarn, HitWarn: rep.HitWarn,
 		},
-		Factors: factors, Note: note, History: hist,
+		Factors: factors, Holds: holdList(holds), Incidents: ongoing,
+		Note: note, History: hist, HistoryOpen: histOpen,
 	})
+}
+
+// history는 지표 name(호스트 _eum)의 최근 1시간(10초 간격)이다.
+func (e *Engine) history(ctx context.Context, name string, now int64) ([][2]float64, error) {
+	out := [][2]float64{}
+	ser, err := e.d.Metrics.Query(ctx, model.SeriesQuery{Hosts: []string{riskHost}, Name: name, From: now - time.Hour.Milliseconds(), To: now, StepSec: 10})
+	if err != nil {
+		return nil, err
+	}
+	for _, sr := range ser {
+		for _, p := range sr.Points {
+			out = append(out, [2]float64{float64(p.TS), p.Value})
+		}
+	}
+	return out, nil
 }
 
 func (e *Engine) handleTrain(w http.ResponseWriter, r *http.Request) {

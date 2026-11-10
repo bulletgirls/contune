@@ -23,6 +23,7 @@ type stateStore struct {
 	events    map[string][]model.RunEvent
 	hosts     map[string]model.Host
 	incidents []model.Incident
+	holds     []model.RiskHold
 	alerts    []model.Alert
 	audit     []model.AuditEntry
 }
@@ -177,6 +178,44 @@ func (s *stateStore) ListIncidents(ctx context.Context, from, to int64) ([]model
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Start != out[j].Start {
 			return out[i].Start > out[j].Start
+		}
+		return out[i].ID > out[j].ID
+	})
+	return out, nil
+}
+
+func (s *stateStore) AddRiskHold(ctx context.Context, h model.RiskHold) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	h.ID = int64(len(s.holds) + 1)
+	s.holds = append(s.holds, h)
+	return h.ID, nil
+}
+
+func (s *stateStore) EndRiskHold(ctx context.Context, id, ts int64, by, note string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.holds {
+		if h := &s.holds[i]; h.ID == id && h.EndedAt == 0 {
+			h.EndedAt, h.EndedBy, h.EndNote = ts, by, note
+			return nil
+		}
+	}
+	return store.ErrNotFound
+}
+
+func (s *stateStore) ListRiskHolds(ctx context.Context, from, to int64) ([]model.RiskHold, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []model.RiskHold
+	for _, h := range s.holds {
+		if (to == 0 || h.At < to) && (h.EndedAt == 0 || h.EndedAt >= from) {
+			out = append(out, h)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].At != out[j].At {
+			return out[i].At > out[j].At
 		}
 		return out[i].ID > out[j].ID
 	})
