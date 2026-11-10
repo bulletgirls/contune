@@ -38,7 +38,7 @@ type Deps struct {
 const (
 	relayTimeout     = 10 * time.Second // discover·peek 결과를 기다리는 시간, 큐에서 버리는 시간
 	maxPending       = 4                // 호스트마다 결과를 기다리는 요청 수
-	maxBody          = 1 << 20
+	maxBody          = 4 << 20          // 본문 한도(peek 결과: 256KB 줄 + JSON 이스케이프 여유)
 	defaultPeekLines = 200
 	maxPeekLines     = 500
 )

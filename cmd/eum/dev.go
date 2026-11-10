@@ -23,6 +23,7 @@ import (
 	"eum/internal/agent/profile"
 	"eum/internal/fleet"
 	"eum/internal/manager"
+	"eum/internal/manager/collect"
 	"eum/internal/manager/editor"
 	"eum/internal/manager/webauth"
 )
@@ -147,6 +148,10 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 	override("store", &cfg.Store, *storeKind)
 	override("flows", &cfg.Flows, *flows)
 	override("panels", &cfg.Panels, *panels)
+	if *cfgPath == "" {
+		// 수집 설정(05 §17): dev는 데이터 폴더 안에 두고 화면에서 고칠 수 있게 켠다.
+		cfg.Collect = collect.Config{Dir: filepath.Join(cfg.Data, "collect"), Enabled: true}
+	}
 
 	// 호스트별 토큰(보안 S3): 실제 에이전트 3대는 시작할 때 만든 난수 토큰, 모의 서버는 공유 토큰(cfg.Token).
 	tokens := maps.Clone(cfg.AgentTokens)
@@ -180,6 +185,8 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 			LogDir:  filepath.Join(dataAbs, "logs", h.host),
 			WorkDir: filepath.Join(dataAbs, "work", h.host),
 			Vars:    map[string]string{"DEMO": demoAbs, "PUSH": pushAddr},
+			// 수집 설정을 화면에서 받는다(05 §17). 읽기는 log_dir 안만(read_roots 기본값).
+			Remote: agent.RemoteConfig{Enabled: true},
 		}
 		if h.push {
 			a.Probes = append(a.Probes, map[string]any{"type": "push", "listen": pushAddr})

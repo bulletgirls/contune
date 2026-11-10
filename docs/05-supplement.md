@@ -759,3 +759,18 @@ mock(`?mock=1`)은 플로우마다 지난 실행 7~10회를 더 만든다(가끔
 | 에이전트 허용 목록 | 에이전트 설정 `allow: [정규식]`. `editor.allow`와 같은 문법·대상이라 목록을 그대로 옮긴다. 밖의 명령은 띄우지 않고 FAILED + 로그 꼬리 `(E) 에이전트 허용 목록 밖 명령…`. **매니저가 뚫려도 서버는 정해진 명령만 실행한다**(심층 방어). 비면 모두 허용 + 경고 |
 | TLS | 매니저 `tls: {cert, key}`(TLS 1.2 이상), 에이전트 `ca`(PEM, 비면 시스템 루트). `eum dev`는 HTTP |
 | 남은 것 | 감사 기록 변조 방지(행 해시 사슬)·플로우 변경 내용 비교(지금은 sha만), 사내 SSO·LDAP 연결(구현이 둘이 되는 때 인증 인터페이스를 둔다), 세션 영속·다중 매니저, 그룹별 권한, `run_as_user` |
+
+## 17. 수집 설정을 화면에서 (2026-11-10)
+
+카드는 [cards/L-collect.md](cards/L-collect.md)(L0~L3, L9). **무엇을 수집할지(로그 출처·규칙)는 매니저 화면, 어디까지 읽어도 되는지·실행 허용 목록·접속 정보는 서버 YAML.** 매니저가 뚫려도 에이전트는 자기 YAML의 `read_roots` 밖을 읽지 않는다(§16 허용 목록과 같은 심층 방어).
+
+| 항목 | 내용 |
+|---|---|
+| 에이전트 YAML | 새 `remote: {enabled, read_roots}`. 기본 꺼짐, `read_roots` 기본 `[log_dir]`. 꺼져 있으면 원격 설정·파일 찾기·미리보기를 모두 거절하고 YAML의 `logs`만 돈다. `deploy/agent-*.yaml`·`fleet.yaml`(`remote: true`)·`eum dev`는 켬 |
+| 기준 = 파일 | 매니저 `collect: {dir, enabled}`(기본 `/collect`, 꺼짐). 폴더의 YAML 하나 = 범위 하나(`scope: all \| group:<경로> \| host:<id>` + `logs`). 화면 저장은 원자적 쓰기·`if_match`(sha)·감사, 손으로 고치면 `POST /api/v1/collect/reload`. `eum dev`는 `<data>/collect`, 저장소의 `collect/`는 컨테이너용(`../collect:/collect`) |
+| 합치기 | 전체 → 그룹 경로 짧은 것부터 → 서버. 이름이 같으면 좁은 범위가 덮어씀. 에이전트에서는 YAML의 로컬 출처가 먼저 돌고, 같은 이름의 원격 출처는 건너뜀(화면에 사유) |
+| 전달 | 명령 롱폴링에 `rev`(에이전트가 본 판)·`config_rev`·`requests`를 더했다(새 연결 없음). 판이 다르면 `GET /api/v1/agent/config`로 받아 검사(RE2·경로 문법·read_roots·심볼릭 링크) → logtail 바꿔 끼우기(읽던 위치 유지) → `work_dir/remote-config.json` 캐시(0600) → `POST /api/v1/agent/config-status`(applied·partial·failed·disabled, 실제 도는 출처·파일 수). 저장하면 매니저가 롱폴링을 깨워 바로 적용된다 |
+| 화면 | `#collect`(범위 트리·출처 표·서버별 적용 상태·변경 이력), 서버 상세 "수집" 탭(그 서버에서 도는 출처: 로컬/전체/그룹/이 서버, 따라가는 파일, 건너뛴 이유). 출처 추가 마법사: ① 파일(에이전트가 찾은 후보 — 이음이 띄운 프로세스가 연 파일·read_roots 아래 최근 파일·syslog, 경로 제안 `{log_dir}`·`{exec_id}`·`*`) ② 줄 고르기(최근 줄의 줄머리 칩·syslog 프로그램 칩·고른 글자로 규칙) ③ 확인(맞은 줄 강조, 초당 줄 수 경고) ④ 범위·저장(바뀌는 내용 → 적용될 때까지 상태 표시) |
+| 권한·감사 | 조회는 조회 계정 이상, 저장·삭제·다시 읽기·파일 찾기·미리보기는 **관리**(역할 표 기본값). 감사 kind `collect`: `collect.save`·`collect.delete`·`collect.reload`·`collect.discover`·`collect.peek`(읽은 파일·줄 수) |
+| logtail 변경 | 경로의 `*`·`?`는 와일드카드(마지막 요소, 로테이션 파일용 — 로컬 YAML도 같음), 한 주기 예산을 출처별로 고르게 나눔(물 채우기), 일반 파일만 따라감 |
+| 남은 것 | 지표 수집기·프로파일러·주기를 원격으로(2단계), 템플릿(이음 표준 (E)/(W), syslog OOM·segfault, Java 예외), 일부 서버부터 적용하는 단계적 배포, journald, 매니저 재시작 뒤 상태는 다음 보고(최대 5분)까지 "적용 대기"·"모름"으로 보일 수 있음, 거절된 미리보기(read_roots 밖)는 감사에 남지 않음, 심볼릭 링크로 밖을 가리켜 빠진 파일은 파일 수 0으로만 보임 |

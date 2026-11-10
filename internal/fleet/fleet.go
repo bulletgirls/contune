@@ -43,6 +43,8 @@ type Config struct {
 	Faults   []Fault       `yaml:"faults"`
 	// Allow는 모의 서버 에이전트의 허용 목록이다(보안 S3, agent.Config.Allow와 같다). 모의 서버도 명령을 실제로 실행한다.
 	Allow []string `yaml:"allow"`
+	// Remote는 모의 서버 에이전트가 수집 설정을 화면에서 받을지다(05 §17, agent.Config.Remote.Enabled). 읽기는 각자 log_dir 안만.
+	Remote bool `yaml:"remote"`
 }
 
 var varRe = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
@@ -115,6 +117,7 @@ func BuildAgents(cfg Config, tmp string) []agent.Config {
 				Vars:             map[string]string{},
 				Allow:            cfg.Allow,
 				FaultSilentAfter: silent,
+				Remote:           agent.RemoteConfig{Enabled: cfg.Remote},
 			})
 		}
 	}

@@ -26,6 +26,9 @@ editor:
     - '^\$\{DEMO\}/scripts/[A-Za-z0-9_-]+\.sh( |$)'
     - '^sleep [0-9]+$'
     - '^echo( |$)'
+collect:                       # 수집 설정(05 §17): 파일 하나 = 범위 하나(all | group:<경로> | host:<id>). 화면 #collect에서 고친다
+  dir: ./collect
+  enabled: true                # 끄면 조회만. 에이전트는 자기 YAML의 remote.enabled가 켜져 있어야 받는다
 llm: { type: none }
 risk: { model: logreg, score_every: 10s, train_every: 10m, train_window: 168h, lead: 5m, min_incidents: 3, warn: 30, crit: 60 }
 alerts: { every: 5s, log_levels: [error], incident_after: 30s, incident_clear: 60s, auto_incident: true }

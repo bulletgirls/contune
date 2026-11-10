@@ -1,7 +1,6 @@
 // 수집 출처 추가·편집 마법사(파일 → 줄 고르기 → 확인 → 범위·저장)와 그 순수 함수.
 // 순수 함수는 DOM 없이 호출된다(node로 검사). 화면 용어: 05 §14.9·§14.10.
-import { api, ApiError, isMock } from '../api.js';
-import { handle as mockHandle } from '../mock/index.js';
+import { api, ApiError } from '../api.js';
 import { el, relTime, fmtNum, DASH } from '../ui.js';
 
 // ====================== 순수 함수 ======================
@@ -508,7 +507,7 @@ export function openWizard(opts) {
     } catch (e) {
       st.busy = false;
       if (e instanceof ApiError && e.status === 409) { st.fresh = null; st.err = '다른 곳에서 먼저 고쳤습니다. 최신 내용을 다시 읽어 왔으니 바뀌는 내용을 확인하고 다시 저장하세요.'; }
-      else if (e instanceof ApiError && e.status === 400) { st.err = '서버가 설정을 받아들이지 않았습니다.'; st.problems = await problemsOf(`/collect?scope=${encodeURIComponent(st.scope)}`, { logs, if_match: set ? set.sha : '' }); }
+      else if (e instanceof ApiError && e.status === 400) { st.err = '서버가 설정을 받아들이지 않았습니다.'; st.problems = (e.body && e.body.problems) || []; }
       else st.err = err(e);
       if (bg.isConnected) drawSave();
     }
@@ -525,19 +524,6 @@ export function openWizard(opts) {
   // 편집: 같은 경로를 바로 읽어 줄 고르기부터 시작한다(못 읽으면 ①에 오류를 보인다)
   if (opts.edit) { draw(); peek(); } else { draw(); discover(); }
   return { close };
-}
-
-// api()의 ApiError는 응답 본문을 버리므로, 400이면 같은 요청을 한 번 더 보내 problems를 읽는다(400은 부작용이 없다).
-export async function problemsOf(path, body) {
-  try {
-    let r;
-    if (isMock()) r = await mockHandle(path, { method: 'PUT', body, search: location.search });
-    else {
-      const x = await fetch('/api/v1' + path, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      r = { body: await x.json().catch(() => null) };
-    }
-    return (r.body && r.body.problems) || [];
-  } catch (e) { return []; }
 }
 
 // 저장 뒤 그 서버의 적용 상태를 2초마다 30초까지 본다. 적용됨/일부 적용이면 onDone(state).

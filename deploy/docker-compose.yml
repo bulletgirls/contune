@@ -16,6 +16,7 @@ services:
     volumes:
       - eum-data:/data
       - ../flows:/flows            # 쓰기 가능: 화면 편집기가 파일을 쓴다
+      - ../collect:/collect        # 쓰기 가능: 수집 설정 화면(#collect)이 파일을 쓴다(05 §17)
       - ../panels:/panels:ro
       - ./manager.yaml:/etc/eum/manager.yaml:ro
 

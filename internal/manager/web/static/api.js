@@ -24,7 +24,8 @@ function setHealth(ok) {
 }
 
 export class ApiError extends Error {
-  constructor(status, error, need) { super(`${status} ${error}`); this.status = status; this.error = error; this.need = need || ''; }
+  // body는 오류 응답 본문(객체면 그대로, 예: 400의 problems)이다.
+  constructor(status, error, need, body) { super(`${status} ${error}`); this.status = status; this.error = error; this.need = need || ''; this.body = body ?? null; }
 }
 
 // 401(세션 없음·만료)과 403(역할 부족)을 앱에 알린다. 로그인 요청 자체의 401은 제외.
@@ -48,7 +49,7 @@ export async function api(path, opts = {}) {
       if (res.status < 200 || res.status >= 300) {
         setHealth(true);
         notifyStatus(path, res.status, res.body && res.body.need);
-        throw new ApiError(res.status, (res.body && res.body.error) || '', res.body && res.body.need);
+        throw new ApiError(res.status, (res.body && res.body.error) || '', res.body && res.body.need, res.body);
       }
       setHealth(true);
       return res.body;
@@ -65,7 +66,7 @@ export async function api(path, opts = {}) {
     setHealth(true);
     if (!r.ok) {
       notifyStatus(path, r.status, body && body.need);
-      throw new ApiError(r.status, (body && body.error) || String(text).slice(0, 200), body && body.need);
+      throw new ApiError(r.status, (body && body.error) || String(text).slice(0, 200), body && body.need, body);
     }
     return body;
   } catch (e) {
