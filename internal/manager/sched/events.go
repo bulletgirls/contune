@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"eum/internal/api"
+	"eum/internal/manager/actor"
 	"eum/internal/model"
 )
 
@@ -19,6 +20,9 @@ func (s *Scheduler) handleEvents(w http.ResponseWriter, r *http.Request) {
 	var ev api.EventReport
 	if err := json.NewDecoder(io.LimitReader(r.Body, maxEventBody)).Decode(&ev); err != nil {
 		writeError(w, http.StatusBadRequest, "이벤트 본문을 읽지 못했습니다: "+err.Error())
+		return
+	}
+	if !agentHostOK(w, r, ev.Host) {
 		return
 	}
 	t, err := eventTransition(ev, s.d.Now().UnixMilli())
@@ -39,6 +43,18 @@ func (s *Scheduler) handleEvents(w http.ResponseWriter, r *http.Request) {
 		s.kick() // 후행·재시도를 바로 결정한다
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"applied": applied})
+}
+
+// agentHostOK는 호스트별 토큰의 호스트와 에이전트가 댄 host가 맞는지 본다(보안 S3).
+// 다르면 403 {"error":"host mismatch"}를 쓰고 false. 토큰 값은 남기지 않는다.
+func agentHostOK(w http.ResponseWriter, r *http.Request, host string) bool {
+	if actor.AgentHostOK(r, host) {
+		return true
+	}
+	id, _ := actor.From(r.Context())
+	slog.Warn("에이전트 호스트 불일치로 거절", "path", r.URL.Path, "token_host", id.ID, "claimed_host", host)
+	writeError(w, http.StatusForbidden, "host mismatch")
+	return false
 }
 
 // eventTransition은 이벤트를 Transition으로 바꾼다. 시각은 이벤트 ts(없으면 now)다.

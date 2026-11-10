@@ -52,6 +52,9 @@ func (s *Scheduler) handleCommands(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "host가 필요합니다")
 		return
 	}
+	if !agentHostOK(w, r, host) {
+		return
+	}
 	wait := parseWait(r.URL.Query().Get("wait"))
 
 	woken := s.wakeChan() // 읽기 전에 잡아야 그사이의 디스패치를 놓치지 않는다

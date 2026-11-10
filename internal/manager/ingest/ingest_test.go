@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"eum/internal/manager/actor"
 	"eum/internal/manager/live"
 	"eum/internal/manager/store"
 	"eum/internal/manager/store/memstore"
@@ -138,5 +140,50 @@ func TestIngestBadRequest(t *testing.T) {
 	sb.WriteString(`]}`)
 	if got := postTo(mux, "/api/v1/agent/logs", sb.String()); got != 400 {
 		t.Errorf("5001줄 -> %d", got)
+	}
+}
+
+// TestIngestHostMismatch는 호스트별 토큰으로 다른 호스트 이름을 대면 403인지 본다(보안 S3).
+func TestIngestHostMismatch(t *testing.T) {
+	ms := memstore.NewMetric()
+	mux := http.NewServeMux()
+	Mount(mux, Deps{Metrics: ms, Now: time.Now})
+	paths := []string{"/api/v1/agent/metrics", "/api/v1/agent/profiles", "/api/v1/agent/logs"}
+	bodies := map[string]string{
+		paths[0]: `{"host":"%s","samples":[{"ts":5,"name":"x.y","value":1}]}`,
+		paths[1]: `{"host":"%s","profiles":[]}`,
+		paths[2]: `{"host":"%s","events":[]}`,
+	}
+	post := func(path, host string, id *actor.Identity) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(fmt.Sprintf(bodies[path], host)))
+		if id != nil {
+			req = req.WithContext(actor.With(req.Context(), *id))
+		}
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec
+	}
+	batch := &actor.Identity{Kind: actor.KindAgent, ID: "batch-01"}
+	shared := &actor.Identity{Kind: actor.KindAgent}
+
+	for _, p := range paths {
+		rec := post(p, "match-01", batch)
+		if rec.Code != http.StatusForbidden || strings.TrimSpace(rec.Body.String()) != `{"error":"host mismatch"}` {
+			t.Errorf("%s batch-01 토큰으로 match-01: %d %s", p, rec.Code, rec.Body.String())
+		}
+	}
+	if ss, _ := ms.Query(context.Background(), model.SeriesQuery{Name: "x.y", Hosts: []string{"match-01"}, From: 0, To: 10}); len(ss) != 0 {
+		t.Errorf("막힌 묶음은 저장하지 않아야 함: %+v", ss)
+	}
+	for _, p := range paths {
+		if rec := post(p, "batch-01", batch); rec.Code != http.StatusNoContent {
+			t.Errorf("%s 자기 호스트: %d %s", p, rec.Code, rec.Body.String())
+		}
+		if rec := post(p, "match-01", shared); rec.Code != http.StatusNoContent {
+			t.Errorf("%s 공유 토큰: %d %s", p, rec.Code, rec.Body.String())
+		}
+		if rec := post(p, "gw-01", nil); rec.Code != http.StatusNoContent {
+			t.Errorf("%s 문맥 없음: %d %s", p, rec.Code, rec.Body.String())
+		}
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"eum/internal/api"
+	"eum/internal/manager/actor"
 	"eum/internal/manager/live"
 	"eum/internal/manager/store"
 	"eum/internal/model"
@@ -76,6 +77,9 @@ func Mount(mux *http.ServeMux, d Deps) {
 			writeErr(w, http.StatusBadRequest, "host가 비었음")
 			return
 		}
+		if !hostOK(w, r, b.Host) {
+			return
+		}
 		for i := range b.Samples {
 			b.Samples[i].Host = b.Host
 		}
@@ -93,7 +97,7 @@ func Mount(mux *http.ServeMux, d Deps) {
 	})
 	mux.HandleFunc("POST /api/v1/agent/profiles", func(w http.ResponseWriter, r *http.Request) {
 		var b api.ProfilesBatch
-		if !decode(w, r, &b) {
+		if !decode(w, r, &b) || !hostOK(w, r, b.Host) {
 			return
 		}
 		for i := range b.Profiles {
@@ -108,7 +112,7 @@ func Mount(mux *http.ServeMux, d Deps) {
 	})
 	mux.HandleFunc("POST /api/v1/agent/logs", func(w http.ResponseWriter, r *http.Request) {
 		var b api.LogsBatch
-		if !decode(w, r, &b) {
+		if !decode(w, r, &b) || !hostOK(w, r, b.Host) {
 			return
 		}
 		if len(b.Events) > maxLogLines {
@@ -125,6 +129,17 @@ func Mount(mux *http.ServeMux, d Deps) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+// hostOK는 호스트별 토큰의 호스트와 본문 host가 맞는지 본다(보안 S3). 다르면 403 {"error":"host mismatch"}를 쓰고 false.
+func hostOK(w http.ResponseWriter, r *http.Request, host string) bool {
+	if actor.AgentHostOK(r, host) {
+		return true
+	}
+	id, _ := actor.From(r.Context())
+	slog.Warn("에이전트 호스트 불일치로 거절", "path", r.URL.Path, "token_host", id.ID, "claimed_host", host)
+	writeErr(w, http.StatusForbidden, "host mismatch")
+	return false
 }
 
 // decode는 JSON 본문을 읽는다. 깨졌으면 400을 쓰고 false.

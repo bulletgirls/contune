@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"os"
 	osexec "os/exec"
@@ -25,16 +27,23 @@ import (
 	"eum/internal/manager/webauth"
 )
 
-// devToken은 eum dev의 매니저·에이전트 공용 토큰이다.
+// devToken은 eum dev의 공유 에이전트 토큰이다. 모의 서버(fleet)가 쓴다. 실제 에이전트 3대는 호스트별 토큰을 쓴다.
 const devToken = "dev"
 
-// devAllow는 05 §8의 시연 허용 목록이다.
+// devAllow는 05 §8의 시연 허용 목록이다(편집기).
 var devAllow = []string{
 	`^eum burn( |$)`,
 	`^\$\{DEMO\}/scripts/[A-Za-z0-9_-]+\.sh( |$)`,
 	`^sleep [0-9]+$`,
 	`^echo( |$)`,
 }
+
+// devAgentAllow는 eum dev 에이전트의 허용 목록이다(보안 S3). 편집기 목록에 flows/의 고장 주입 스텝
+// (sh -c 'echo "(E) …"; exit N')만 더한다. 큰따옴표 안의 $·`·\는 막아 셸 치환을 열지 않는다.
+// deploy/agent-*.yaml의 allow도 같은 목록이다(dev_test가 확인).
+var devAgentAllow = append(append([]string(nil), devAllow...),
+	"^sh -c echo \"\\(E\\) [^\"$`\\\\]*\"; exit [0-9]+$",
+)
 
 // devUsers는 eum dev의 시연 계정이다(아이디, 비밀번호, 역할). 시작 로그와 demo/README.md에 적는다.
 var devUsers = [][3]string{
@@ -77,8 +86,9 @@ var devHosts = []devHost{
 	{host: "batch-01", group: "사후처리/배치", seed: 3, profile: true},
 }
 
-// parseDev는 dev 플래그를 해석해 매니저·에이전트 설정을 만든다(순수: 파일은 --config만 읽는다).
+// parseDev는 dev 플래그를 해석해 매니저·에이전트 설정을 만든다(파일은 --config만 읽는다).
 // hasPerf가 true면 match-01·batch-01에 perf 프로파일러를 단다.
+// 실제 에이전트의 호스트별 토큰은 부를 때마다 난수로 만든다(설정 파일 agent_tokens에 적힌 호스트는 그 토큰).
 func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 	fs := newFlags("dev", stderr)
 	listen := fs.String("listen", "127.0.0.1:8080", "매니저 주소")
@@ -138,6 +148,18 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 	override("flows", &cfg.Flows, *flows)
 	override("panels", &cfg.Panels, *panels)
 
+	// 호스트별 토큰(보안 S3): 실제 에이전트 3대는 시작할 때 만든 난수 토큰, 모의 서버는 공유 토큰(cfg.Token).
+	tokens := maps.Clone(cfg.AgentTokens)
+	if tokens == nil {
+		tokens = map[string]string{}
+	}
+	for _, h := range devHosts {
+		if tokens[h.host] == "" {
+			tokens[h.host] = rand.Text()
+		}
+	}
+	cfg.AgentTokens = tokens
+
 	// 에이전트: 자식 프로세스가 작업 폴더에서 돌아도 경로가 맞도록 폴더는 절대 경로로 넘긴다.
 	demoAbs, err := filepath.Abs(*demoDir)
 	if err != nil {
@@ -152,7 +174,8 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 	out := devSetup{Manager: cfg, Fleet: *fleetPath}
 	for _, h := range devHosts {
 		a := agent.Config{
-			Host: h.host, Group: h.group, Manager: mgrURL, Token: cfg.Token, Interval: time.Second,
+			Host: h.host, Group: h.group, Manager: mgrURL, Token: tokens[h.host], Interval: time.Second,
+			Allow:   append([]string(nil), devAgentAllow...),
 			Probes:  []map[string]any{{"type": "sim", "profile": "host", "seed": h.seed}},
 			LogDir:  filepath.Join(dataAbs, "logs", h.host),
 			WorkDir: filepath.Join(dataAbs, "work", h.host),

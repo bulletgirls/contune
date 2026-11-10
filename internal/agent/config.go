@@ -8,6 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"eum/internal/agent/exec"
 	"eum/internal/agent/logtail"
 )
 
@@ -15,7 +16,7 @@ import (
 type Config struct {
 	Host     string                 `yaml:"host"`
 	Group    string                 `yaml:"group"`   // 서버 트리 경로 '매매/체결'
-	Manager  string                 `yaml:"manager"` // http://manager:8080
+	Manager  string                 `yaml:"manager"` // http://manager:8080 | https://manager:8443
 	Token    string                 `yaml:"token"`
 	Interval time.Duration          `yaml:"interval"` // 기본 1s
 	Probes   []map[string]any       `yaml:"probes"`
@@ -24,6 +25,12 @@ type Config struct {
 	WorkDir  string                 `yaml:"work_dir"` // 기본 ./work
 	Vars     map[string]string      `yaml:"vars"`
 	Logs     []logtail.SourceConfig `yaml:"logs"` // 없으면 step 출처 하나
+
+	// CA는 매니저 HTTPS 인증서를 믿을 PEM 경로다(보안 S3). 비면 시스템 루트.
+	CA string `yaml:"ca"`
+	// Allow는 에이전트 허용 목록(정규식, 보안 S3)이다. 편집기 editor.allow와 같은 문법·같은 대상
+	// (인자를 공백으로 이은 문자열, ${VAR}를 펼치기 전). 비면 모두 실행하고 시작할 때 경고한다.
+	Allow []string `yaml:"allow"`
 
 	// FaultSilentAfter가 0이 아니면 그 시간 뒤 지표 전송을 멈춘다(시연용 고장 주입). 명령 수신과 실행은 계속.
 	FaultSilentAfter time.Duration `yaml:"fault_silent_after"`
@@ -46,6 +53,9 @@ func LoadConfig(path string) (Config, error) {
 	}
 	var c Config
 	if err := yaml.Unmarshal([]byte(expandVars(string(b))), &c); err != nil {
+		return Config{}, fmt.Errorf("%s: %w", path, err)
+	}
+	if _, err := exec.CompileAllow(c.Allow); err != nil {
 		return Config{}, fmt.Errorf("%s: %w", path, err)
 	}
 	c.applyDefaults()

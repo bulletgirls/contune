@@ -18,6 +18,9 @@ import (
 	"eum/internal/model"
 )
 
+// warnNoAllow는 빈 허용 목록 경고를 프로세스에 한 번만 내게 한다.
+var warnNoAllow sync.Once
+
 // Run은 설정대로 부품을 엮어 ctx가 끝날 때까지 돈다.
 func Run(ctx context.Context, cfg Config) error {
 	cfg.applyDefaults()
@@ -25,13 +28,26 @@ func Run(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("agent: host가 비어 있음")
 	}
 	log := slog.With("host", cfg.Host)
+	allow, err := exec.CompileAllow(cfg.Allow)
+	if err != nil {
+		return fmt.Errorf("agent %s: %w", cfg.Host, err)
+	}
+	if len(allow) == 0 {
+		// 한 프로세스에 에이전트가 여럿(모의 서버)이어도 한 번만 알린다.
+		warnNoAllow.Do(func() {
+			log.Warn("에이전트 허용 목록(allow)이 비어 받은 명령을 모두 실행합니다")
+		})
+	}
+	client, err := api.NewClientCA(cfg.Manager, cfg.Token, cfg.CA)
+	if err != nil {
+		return fmt.Errorf("agent %s: %w", cfg.Host, err)
+	}
 	for _, d := range []string{cfg.LogDir, cfg.WorkDir} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return fmt.Errorf("agent: %w", err)
 		}
 	}
 
-	client := api.NewClient(cfg.Manager, cfg.Token)
 	probes, err := probe.Build(cfg.Probes, probe.Env{Host: cfg.Host})
 	if err != nil {
 		return fmt.Errorf("agent %s: %w", cfg.Host, err)
@@ -42,7 +58,7 @@ func Run(ctx context.Context, cfg Config) error {
 	tracker := exec.NewTracker(cfg.Host, exec.TrackerOptions{})
 	runner := exec.NewRunner(client, cfg.Host, tracker, exec.RunnerOptions{
 		LogDir: cfg.LogDir, WorkDir: cfg.WorkDir, Vars: cfg.Vars,
-		PollWait: 25 * time.Second, KillGrace: 5 * time.Second, Now: time.Now,
+		PollWait: 25 * time.Second, KillGrace: 5 * time.Second, Now: time.Now, Allow: allow,
 	})
 	tailer, err := logtail.New(cfg.Host, cfg.LogDir, cfg.Logs, logtail.Options{
 		Now: time.Now, ScanEvery: 5 * time.Second, MaxLinesPerTick: 1000, MaxLineBytes: 4096,
@@ -84,7 +100,7 @@ func Run(ctx context.Context, cfg Config) error {
 		defer t.Stop()
 	}
 
-	log.Info("agent 시작", "manager", cfg.Manager, "probes", len(probes), "profiler", profiler != nil)
+	log.Info("agent 시작", "manager", cfg.Manager, "probes", len(probes), "profiler", profiler != nil, "allow", len(allow))
 	collect(ctx, log, probes, tracker, tailer, shipper)
 	tick := time.NewTicker(cfg.Interval)
 	defer tick.Stop()

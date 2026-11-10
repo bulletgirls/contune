@@ -4,6 +4,7 @@ package manager
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -173,12 +174,26 @@ func New(cfg Config) (*Manager, error) {
 // Handler는 매니저의 HTTP 핸들러다. 바깥부터: 화면 인증·보안 헤더(webauth, /api/v1/agent/ 제외) →
 // 에이전트 토큰(auth.go, /api/v1/agent/만) → 경로. 인증 판단은 이 두 곳뿐이다.
 func (m *Manager) Handler() http.Handler {
-	return m.auth.Wrap(requireAgentToken(m.cfg.Token, m.mux))
+	return m.auth.Wrap(requireAgentToken(m.cfg.Token, m.cfg.AgentTokens, m.mux))
 }
 
 // Run은 HTTP 서버와 레지스트리 감시·스케줄러·위험 엔진·알림 감시자를 함께 돌린다.
 // 하나가 에러로 끝나도 나머지는 계속한다(로그). ctx가 끝나면 모두 정리하고 돌아온다.
 func (m *Manager) Run(ctx context.Context) error {
+	// TLS(보안 S3): cert·key가 둘 다 있으면 HTTPS(TLS 1.2 이상). 인증서는 듣기 전에 읽어 잘못되면 바로 끝낸다.
+	if err := m.cfg.checkAgentChannel(); err != nil {
+		return err
+	}
+	var tlsCfg *tls.Config
+	scheme := "http"
+	if m.cfg.TLS.Cert != "" {
+		cert, err := tls.LoadX509KeyPair(m.cfg.TLS.Cert, m.cfg.TLS.Key)
+		if err != nil {
+			return fmt.Errorf("tls: %w", err)
+		}
+		tlsCfg = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}}
+		scheme = "https"
+	}
 	ln, err := net.Listen("tcp", m.cfg.Listen)
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", m.cfg.Listen, err)
@@ -186,7 +201,7 @@ func (m *Manager) Run(ctx context.Context) error {
 	m.mu.Lock()
 	m.addr = ln.Addr().String()
 	m.mu.Unlock()
-	slog.Info("manager 시작", "listen", m.addr, "store", m.cfg.Store, "flows", m.cfg.Flows)
+	slog.Info("manager 시작", "listen", m.addr, "scheme", scheme, "store", m.cfg.Store, "flows", m.cfg.Flows)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -205,9 +220,15 @@ func (m *Manager) Run(ctx context.Context) error {
 	start("risk", m.engine.Run)
 	start("alert", m.watcher.Run)
 
-	srv := &http.Server{Handler: m.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: m.Handler(), ReadHeaderTimeout: 10 * time.Second, TLSConfig: tlsCfg}
 	serveErr := make(chan error, 1)
-	go func() { serveErr <- srv.Serve(ln) }()
+	go func() {
+		if tlsCfg != nil {
+			serveErr <- srv.ServeTLS(ln, "", "") // 인증서는 TLSConfig에 있다
+			return
+		}
+		serveErr <- srv.Serve(ln)
+	}()
 
 	var runErr error
 	select {

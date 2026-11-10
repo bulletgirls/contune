@@ -6,6 +6,8 @@ import (
 	"io/fs"
 	"os"
 	"regexp"
+	"slices"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -91,7 +93,40 @@ func LoadConfig(path string) (Config, error) {
 	if c.LLM == nil {
 		c.LLM = map[string]any{"type": "none"}
 	}
+	if err := c.checkAgentChannel(); err != nil {
+		return c, fmt.Errorf("%s: %w", path, err)
+	}
 	return c, nil
+}
+
+// checkAgentChannel은 에이전트 통로 설정을 검사한다(보안 S3): 호스트별 토큰은 호스트 이름·토큰이 비지 않고,
+// 서로 겹치지 않고, 공유 토큰과 같지 않다. TLS는 cert·key를 둘 다 적거나 둘 다 비운다. 에러에 토큰 값은 쓰지 않는다.
+func (c Config) checkAgentChannel() error {
+	hosts := make([]string, 0, len(c.AgentTokens))
+	for h := range c.AgentTokens {
+		hosts = append(hosts, h)
+	}
+	slices.Sort(hosts)
+	owner := map[string]string{} // token → host
+	for _, h := range hosts {
+		tok := c.AgentTokens[h]
+		switch {
+		case strings.TrimSpace(h) == "":
+			return fmt.Errorf("agent_tokens: 호스트 이름이 비었습니다")
+		case tok == "":
+			return fmt.Errorf("agent_tokens.%s: 토큰이 비었습니다(${VAR} 환경변수가 없는지 확인)", h)
+		case tok == c.Token:
+			return fmt.Errorf("agent_tokens.%s: 공유 token과 같은 토큰은 쓸 수 없습니다", h)
+		}
+		if o, dup := owner[tok]; dup {
+			return fmt.Errorf("agent_tokens.%s: %s와 토큰이 겹칩니다", h, o)
+		}
+		owner[tok] = h
+	}
+	if (c.TLS.Cert == "") != (c.TLS.Key == "") {
+		return fmt.Errorf("tls: cert와 key를 둘 다 적어야 합니다")
+	}
+	return nil
 }
 
 var varRe = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
