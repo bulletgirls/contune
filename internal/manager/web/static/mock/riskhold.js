@@ -111,13 +111,14 @@ export function makeHold(c, body, factors, by) {
   const kind = String(b.kind || '');
   if (kind !== 'ack' && kind !== 'accept') return { error: 'kind는 ack 또는 accept' };
   const reason = String(b.reason || '').trim();
-  if (kind === 'accept' && !reason) return { error: '용인에는 사유가 필요합니다' };
+  if (kind === 'accept' && !reason) return { error: '용인(accept)에는 사유가 필요합니다' };
   if ([...reason].length > 200) return { error: '사유는 200자까지' };
   const f = factors.find((x) => x.feature === feature);
   const value = f ? f.value : 0;
   const lo = value, hi = Math.max(2 * value, value + 1);
-  const limit = b.limit === undefined || b.limit === null || b.limit === '' ? r2(value * 1.2) : Number(b.limit);
-  if (!Number.isFinite(limit) || limit < lo || limit > hi) return { error: `한도는 ${r2(lo)} ~ ${r2(hi)} 사이` };
+  const given = !(b.limit === undefined || b.limit === null || b.limit === '');
+  const limit = given ? Number(b.limit) : Math.max(Math.round((value + Math.abs(value) * 0.2) * 1000) / 1000, value);
+  if (given && (!Number.isFinite(limit) || limit < lo || limit > hi)) return { error: `limit은 ${r2(lo)}~${r2(hi)}여야 합니다(지금 값 ${r2(value)})` };
   const until = b.until ? Number(b.until) : c.now + DEFAULT_UNTIL[kind];
   if (!Number.isFinite(until) || until <= c.now || until > c.now + MAX_UNTIL) return { error: '만료는 지금부터 24시간 안' };
   return { hold: { id: c.w.holdSeq++, feature, kind, reason, value, limit, at: c.now, by, until, ended_at: 0, ended_by: '', end_note: '' } };

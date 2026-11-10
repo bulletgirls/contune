@@ -136,7 +136,7 @@ logs:
 | `tile` | 업무 패널 타일이 ok·none → warn·crit | warn · crit | `tile:<panel>/<tile title>` |
 | `log` | `alerts.log_levels`(기본 `[error]`) 수준의 새 로그 줄. **같은 키는 60초에 한 번**만 새 알림, 그 사이 줄 수는 메시지에 누적 | crit | `log:<host>:<source>` |
 | `run` | 재시도가 남지 않은 실패(02 §10 "죽음")가 새로 생김 | crit | `run:<exec_id>` |
-| `risk` | 위험 지수가 warn·crit 기준을 넘음 | warn · crit | `risk` |
+| `risk` | **미확인** 위험 지수(§6.4, 용인한 요인을 뺀 값)가 warn·crit 기준을 넘음 | warn · crit | `risk` |
 
 - 같은 키의 firing 알림이 있으면 새로 만들지 않는다. 조건이 풀리면 그 알림을 `resolved`로 바꾼다(`log`·`run`은 60초 뒤 자동 resolved).
 - 매니저가 재시작하면 Watcher는 state.db의 firing 알림을 읽어 상태를 이어받는다.
@@ -162,10 +162,10 @@ logs:
 |---|---|
 | 특징 | 1분 창마다 특징 벡터 하나. 특징은 표로 정의한다(`risk.DefaultFeatures()`, 아래). 새 특징은 표에 한 줄 |
 | 라벨 | 창 `[t, t+60s)`가 장애 `[start − lead, end]`와 겹치면 1(**`lead` 기본 5분: "곧 장애"를 맞히는 문제**). 끝나지 않은 장애는 end = 지금 |
-| 학습 | `train_every`(10분)마다 최근 `train_window`(7일) 창으로 `RiskModel.Fit`. 기본 모델 `logreg`: 표준화 → L2(λ 0.01) 로지스틱 회귀, 양성 가중치 n/(2·n_pos), 경사 하강 1,000회(0에서 시작해 결정적). 시간순 뒤 20%로 AUC를 재 보고서에 남김 |
+| 학습 | `train_every`(10분)마다 최근 `train_window`(7일) 창으로 `RiskModel.Fit`. 기본 모델 `logreg`: 표준화 → L2(λ 0.01) 로지스틱 회귀, 양성 가중치 n/(2·n_pos), 경사 하강 1,000회(0에서 시작해 결정적). 시간순 뒤 20%로 AUC를 재 보고서에 남김. **절편 보정**(2026-11-10): 양성 가중치로 학습한 로짓은 ln(n_neg/n_pos)만큼 위로 밀려 있어(King & Zeng 2001) 점수 때 그만큼 뺀다(`prior_offset`). 그래야 지수가 실제 확률이다. 같은 입력에서 보정 전후: 분포가 겹치는 양성 2% 시험 데이터의 평시 창 평균 0.31 → 0.017, 시연 seed(7일, 장애 6건)는 `prior_offset` 4.16 · 평시 창 중 경고선 이상 0.07% · 장애 창 중 경고선 이상 95.5% |
 | 사례 부족 | 장애 `min_incidents`(3건) 미만이거나 양성 창 10개 미만이면 **`rule` 모델**로 계산하고 화면에 "규칙 기반 · 학습 사례 부족(장애 n건)"을 표시 |
-| 점수 | `score_every`(10초)마다 최근 60초로 같은 특징 벡터를 만들어 `Score` → 지수 0~100(`100 × P(장애)`), 기여 상위 3개(`w_i × z_i`, 양수만). 수준: < `warn`(30) 정상, < `crit`(60) 경고, 이상 위험 |
-| 저장 | 지수는 지표 `risk.index`(호스트 `_eum`)로 metrics.db에 쌓인다(SQL·차트에 그대로). 모델은 `<data>/risk/model.json`(특징, 평균·표준편차, 가중치, 학습 시각, 창·양성·장애 수, AUC)에 공개 형식으로 둔다 |
+| 점수 | `score_every`(10초)마다 최근 60초로 같은 특징 벡터를 만들어 `Score` → 지수 0~100(`100 × P(장애)`), 기여 양수 전부(`w_i × z_i`, 최대 8개, 기여순. 화면은 가장 큰 기여의 5% 이상이고 0.05 이상인 것만 "확인할 것"으로 보인다). 수준: < `warn`(30) 정상, < `crit`(60) 경고, 이상 위험 |
+| 저장 | 지수는 지표 `risk.index`(호스트 `_eum`)로, 미확인 지수(§6.4)는 `risk.index_open`으로 metrics.db에 쌓인다(SQL·차트에 그대로). 모델은 `<data>/risk/model.json`(특징, 평균·표준편차, 가중치, 절편 보정, 학습 시각, 창·양성·장애 수, AUC, 평시 중앙값, 경고선 기준 평시·장애 창 비율)에 공개 형식으로 둔다 |
 | 꺼내기 | 학습 데이터 그대로: `GET /api/v1/export/risk-dataset?from=&to=` CSV(`ts, 특징…, label`). 사내 분석 팀이 같은 데이터로 다른 모델을 돌린다(데이터 주권) |
 
 | 특징 `name` | 표시 이름 | 계산(서버 묶기 → 창 안 묶기) | 규칙 모델 정규화 lo~hi |
@@ -185,6 +185,22 @@ logs:
 ### 6.3 확장: LLM으로 매기는 지수
 
 `RiskModel`의 `llm` 구현(B9)은 특징 값과 최근 알림을 사내 LLM에 보내 0~100과 근거 한 줄을 받는다. 설정 `risk.model: llm`. LLM이 꺼져 있거나 응답이 깨지면 `rule`로 계산한다. 시연 기본은 `logreg`.
+
+### 6.4 확인 순서와 요인 용인 (2026-11-10)
+
+지수가 높을 때 운영자가 **무엇부터 볼지**와, 보고 나서 **이상 없음을 어떻게 남길지**를 정한다. 카드와 계약: [R-risk-hold.md](cards/R-risk-hold.md).
+근거: ISA-18.2 알람 셸빙(시간 제한, 보류 목록 화면), Checkmk·Icinga 확인(상태가 바뀌면 풀림, 만료), Alertmanager silence(작성자·사유·종료 필수), MS Defender 예외(용인은 점수 계산에서만 빼고 조치와 구분), Dynatrace가 반복 문제 자동 억제를 거두고 원천 수정으로 간 일.
+
+| 항목 | 내용 |
+|---|---|
+| 확인 순서 | 요인을 기여순으로. 요인마다 **어디서**(`where`: 그 값을 낸 서버·로그 출처·실행, 최근 60초), **평소**(`baseline`: 학습 구간 평시 창 중앙값), **확인 질문**(`check`: 특징 표 한 줄, 현장이 고친다), 볼 곳 링크(업무 요인은 그 서버의 업무 패널, 자원 요인은 서버 상세, 실패 실행은 실행 화면) |
+| 확인 표시 | 요인 하나에 `ack`(확인 중: 누가 보고 있다, 지수 그대로, 기본 30분) 또는 `accept`(용인: 봤고 괜찮다, **사유 필수**, 기본 4시간, 최대 24시간). 특징 하나에 살아 있는 표시는 하나 |
+| 한도 | 거는 순간의 값 × 1.2가 기본(값 ~ max(2×값, 값+1) 안에서 고침). 값이 한도를 넘거나 만료되면 자동으로 풀리고(`system`) 미확인 지수가 다시 오른다 |
+| 미확인 지수 | 용인한 특징을 벡터에서 빼고 같은 모델로 다시 매긴 값(빼면 logreg는 평균, rule은 0으로 본다). **화면 색과 `risk` 알림은 미확인 지수**, 원래 지수는 함께 보이고 그대로 저장·학습된다. 지수 전체를 낮추는 확인은 두지 않는다 — 다른 원인이 겹쳐 올라도 숨기 때문 |
+| 기록 | state.db `risk_holds`, 감사 `risk.ack`·`risk.accept`·`risk.release`·`risk.expire`. 용인은 학습 라벨에 쓰지 않는다 |
+| 되먹임 | 7일 반복 용인 통계(특징별 횟수·걸린 시간·그동안 장애 수). 3회 이상인데 장애가 없으면 화면이 "기준 조정·재학습 검토"를, 용인 중 장애가 있었으면 "용인 기준 재검토"를 띄운다. 반복 용인은 끄는 일이 아니라 모델·정상 범위를 고치라는 신호다 |
+| 모델 점검 | 학습 보고서에 경고선 기준 **평시 창 비율**(`false_warn`: 이상이 없어도 빨간불이 뜨는 비율)과 **장애 창 비율**(`hit_warn`)을 rule 모드에서도 남긴다 |
+| 진행 중 장애 | 장애가 열려 있으면 카드·화면 맨 위에 그 장애를 먼저 보인다(지수는 "곧 장애"를 맞히는 값이라 이미 난 장애 앞에서는 원인을 좁히는 데 쓴다) |
 
 ## 7. 운영자 조작 (상태 머신 보강)
 
@@ -243,7 +259,8 @@ logs:
 | `GET /api/v1/logs?group=&host=&exec_id=&level=error,warn&q=&from=&to=&limit=` | C4 | 로그 이벤트, 최신순(기본 200, 최대 2000) |
 | `GET /api/v1/export/logs?…` | C5 | 로그 CSV `ts,host,source,exec_id,level,message` |
 | `GET /api/v1/alerts?state=firing|resolved|all&kind=&since=&limit=` · `POST /api/v1/alerts/{id}/ack` | X1 | 알림 목록(firing 먼저, 최신순) · 확인 |
-| `GET /api/v1/risk` · `POST /api/v1/risk/train` | R1 | 지수·수준·기여·모델 정보·최근 1시간 이력 · 지금 학습(동기, 결과 보고서) |
+| `GET /api/v1/risk` · `POST /api/v1/risk/train` | R1, R2 | 지수·수준·**미확인 지수·수준**·기여(위치·평소·확인 질문·확인 표시)·살아 있는 표시·진행 중 장애·모델 정보(보정·경고 비율)·최근 1시간 이력 · 지금 학습(동기, 결과 보고서) |
+| `GET /api/v1/risk/holds?from=&to=` · `POST /api/v1/risk/holds` · `DELETE /api/v1/risk/holds/{id}` | R2 | §6.4 확인 표시 목록(기본 7일)과 반복 용인 통계 · 걸기(`{feature, kind: ack\|accept, reason, until?, limit?}` → `201`, 운영) · 해제(`204`, 운영) |
 | `GET /api/v1/incidents?from=&to=` · `POST /api/v1/incidents` · `PATCH /api/v1/incidents/{id}` · `POST /api/v1/incidents/import` | R1 | 장애 기록 |
 | `GET /api/v1/export/risk-dataset?from=&to=` | R1 | 학습 데이터 CSV |
 | `POST /api/v1/runs/{exec_id}/force-ok` · `/rerun` · `/kill` | B7 | §7 |
@@ -276,11 +293,23 @@ logs:
 
 // GET /api/v1/risk
 {"now":1761534000000,"index":72,"level":"crit","mode":"model",            // mode: model | rule
- "model":{"kind":"logreg","trained_at":1761533400000,"windows":10080,"positives":61,"incidents":6,"auc":0.93,"lead_sec":300},
- "factors":[{"feature":"queue","title":"대기 큐","value":2240,"contrib":1.9},
-            {"feature":"p99","title":"p99 응답 시간","value":385,"contrib":1.2}],
+ "open_index":43,"open_level":"warn",                                    // 용인한 요인을 뺀 값(§6.4). 화면 색·알림은 이것
+ "model":{"kind":"logreg","trained_at":1761533400000,"windows":10080,"positives":61,"incidents":6,"auc":0.93,"lead_sec":300,
+          "prior_offset":5.1,"false_warn":0.012,"hit_warn":0.71},
+ "factors":[{"feature":"queue","title":"대기 큐","value":2240,"contrib":1.9,"baseline":380,
+             "check":"유입이 늘었나, 처리가 줄었나(처리량 부족과 같이 본다)",
+             "where":[{"kind":"host","id":"match-01","label":"","value":2240}],
+             "hold":{"id":7,"feature":"queue","kind":"accept","reason":"장 마감 주문 몰림, 처리량 정상","value":2240,"limit":2688,
+                     "at":1761533900000,"by":"user:operator","until":1761548300000,"ended_at":0,"ended_by":"","end_note":""}},
+            {"feature":"p99","title":"p99 응답 시간","value":385,"contrib":1.2,"baseline":92,"check":"…","where":[…],"hold":null}],
+ "holds":[{…위 hold…}],
+ "incidents":[{"id":1000,"start":1761533790000,"end":0,"scope":"매매/체결","title":"체결 대기 큐 적체","source":"auto","note":""}],
  "note":"",                                                              // 예: "규칙 기반 · 학습 사례 부족(장애 2건)"
- "history":[[1761530400000,8],[1761530410000,9]]}
+ "history":[[1761530400000,8],[1761530410000,9]], "history_open":[[1761530400000,8],[1761530410000,9]]}
+
+// GET /api/v1/risk/holds
+{"holds":[{…}], "stats":[{"feature":"mem_max","title":"최대 메모리 사용률","count":4,"ms":46800000,"incidents":0}],
+ "from":1760929200000, "to":1761534000000}
 
 // GET /api/v1/incidents
 {"incidents":[{"id":3,"start":1761533700000,"end":0,"scope":"매매/체결","title":"체결 지연","source":"auto","note":""}]}
@@ -409,7 +438,7 @@ func Build(cfg map[string]any) (LLM, error) // 비었거나 none이면 none 구�
 | `internal/manager/assist` | `Deps{LLM llm.LLM; Registry; Editor editor.Config; Hosts func() []model.Host}`, `Mount(mux, d)` | K1(stub), B9 |
 | `internal/manager/llm` | 위 | K1(인터페이스·등록부·none), B9(openai) |
 | `internal/manager/alert` | `Config{Every, IncidentAfter, IncidentClear time.Duration; LogLevels []string; AutoIncident bool; MinNotify string}`, `Deps{Metrics; State; Live; Flows func() []model.Flow; Panels []model.Panel; Thresholds model.HostThresholds; Notifiers []notify.Notifier; Risk func() (float64, bool); RiskWarn, RiskCrit float64; Cfg Config; Now}`, `New(d) *Watcher`, `(*Watcher).Run(ctx) error`, `(*Watcher).Mount(mux)` | K1(stub), X1 |
-| `internal/manager/risk` | 위 + `Config{Model string; ScoreEvery, TrainEvery, TrainWindow, Lead time.Duration; MinIncidents int; Warn, Crit float64}`, `FeatureDef`, `DefaultFeatures() []FeatureDef`, `Deps{Metrics; State; Cfg Config; DataDir string; Env Env; Loc *time.Location; Now}`, `New(d) (*Engine, error)`, `(*Engine).Run(ctx) error`, `(*Engine).Mount(mux)`, `(*Engine).Current() (Score, string /*level*/, bool)`, `TrainOffline(dataDir string, cfg Config, w io.Writer) error`, `ImportIncidents(ctx, st store.StateStore, r io.Reader, loc *time.Location) (int, error)` | K1(stub), R1 |
+| `internal/manager/risk` | 위 + `Config{Model string; ScoreEvery, TrainEvery, TrainWindow, Lead time.Duration; MinIncidents int; Warn, Crit float64}`, `FeatureDef`, `DefaultFeatures() []FeatureDef`, `Deps{Metrics; State; Cfg Config; DataDir string; Env Env; Loc *time.Location; Now}`, `New(d) (*Engine, error)`, `(*Engine).Run(ctx) error`, `(*Engine).Mount(mux)`, `(*Engine).Current() (Score, string /*level*/, bool)`, `(*Engine).Open() (index float64, level string, accepted int, ok bool)`(미확인 지수, §6.4), `TrainOffline(dataDir string, cfg Config, w io.Writer) error`, `ImportIncidents(ctx, st store.StateStore, r io.Reader, loc *time.Location) (int, error)` | K1(stub), R1 |
 | `internal/demo` | `Seed(ctx context.Context, o SeedOptions) error`, `SeedOptions{DataDir string; Days int; Hosts []string; Now time.Time; Seed int64; Loc *time.Location; Force bool}` | K1(stub), E5 |
 | `cmd/eum` | 서브커맨드 `manager · agent · dev · fleet · burn · sql · seed · risk train · incident import · version`을 **K1이 전부 연결**한다(뒤 카드는 cmd를 고치지 않음). `dev`의 플래그 `--listen --data --store --flows --panels --fleet --push-port --demo-dir --config`는 K2 | K1, K2 |
 
@@ -438,6 +467,13 @@ CREATE INDEX IF NOT EXISTS ix_alerts_state ON alerts(state, ts);
 CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL,
   target TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '');
+
+-- 위험 요인 확인 표시(§6.4)
+CREATE TABLE IF NOT EXISTS risk_holds (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, feature TEXT NOT NULL, kind TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '',
+  value REAL NOT NULL, lim REAL NOT NULL, at INTEGER NOT NULL, by TEXT NOT NULL DEFAULT '', until INTEGER NOT NULL,
+  ended_at INTEGER NOT NULL DEFAULT 0, ended_by TEXT NOT NULL DEFAULT '', end_note TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS ix_risk_holds_at ON risk_holds(at);
 
 -- metrics.db
 CREATE TABLE IF NOT EXISTS log_events (
@@ -487,7 +523,7 @@ CREATE VIEW IF NOT EXISTS v_logs AS SELECT ts, host, source, exec_id, level, mes
 
 | 줄 | 왼쪽 → 오른쪽 |
 |---|---|
-| 1 요약 카드 4장 | **장애 위험도**(반원 게이지: 바깥 얇은 띠 = 정상 0–30 · 경고 30–60 · 위험 60–100, 안쪽 호 = 지수. 등급 배지, 주요 요인 상위 2개, 1시간 꺾은선, 모델 표시 `로지스틱 회귀 · 10:40 학습` 또는 `규칙 기반`) · **서버**(도넛 고리: 위험·경고·무응답·정상 비율, 가운데 이상 n / 전체, 옆에 등급별 배지. 모두 정상이면 `✓ 전체 정상`) · **금일 배치**(진행률 고리: 성공·실행 중·실패·조건 대기, 가운데 성공 % 와 n/전체, 옆에 상태별 수) · **업무 지표**(`kpi: true` 타일 최대 3개. `warn`·`crit`이 있는 타일은 값 아래 불릿 그래프) |
+| 1 요약 카드 4장 | **장애 위험도**(반원 게이지: 바깥 얇은 띠 = 정상 0–30 · 경고 30–60 · 위험 60–100, 안쪽 호와 큰 숫자 = **미확인 지수**, 원래 지수까지 남는 몫 = 용인한 몫(빗금). 미확인 수준 배지와 `전체 72 · 용인 1`, **확인할 것** 상위 2개(`순위 요인 값 / 평소 n · 서버`, 누르면 볼 곳으로), 1시간 꺾은선과 모델 표시. 장애가 진행 중이면 맨 아래 줄이 `■ 장애 진행 중 · 15:31~ 제목`, §6.4) · **서버**(도넛 고리: 위험·경고·무응답·정상 비율, 가운데 이상 n / 전체, 옆에 등급별 배지. 모두 정상이면 `✓ 전체 정상`) · **금일 배치**(진행률 고리: 성공·실행 중·실패·조건 대기, 가운데 성공 % 와 n/전체, 옆에 상태별 수) · **업무 지표**(`kpi: true` 타일 최대 3개. `warn`·`crit`이 있는 타일은 값 아래 불릿 그래프) |
 | 2 | **서버 맵**(그룹 줄, 칸 = 서버. 정상 칸은 CPU % 숫자 + CPU 진하기, 이상 칸은 등급 색 + 기호. 범례는 머리 오른쪽에 기호만) · **실시간 이벤트**(firing 알림 하나의 목록: 등급 → 시각 순, 머리에 등급별 수, 줄 왼쪽에 등급 색 막대, 줄마다 기호·대상·이유·경과. 누르면 대상 화면. 맨 아래 `✓ 서버 40대 · 플로우 36개 정상`) |
 | 3 | **배치 시간대**: 0~24시 시간마다 막대 하나. 오늘 시작한 최근 플로우 실행을 상태 색으로 쌓고, 오늘 남은 다음 실행(`next_run`)은 점선 칸, 지금 시각에 세로선(Control-M "Jobs Scheduled by Hour"). `/flows`에는 플로우마다 최근·다음 실행 하나씩만 있어 반복 플로우는 두 번까지만 잡힌다 |
 
@@ -536,7 +572,7 @@ log_levels: [error, warn]
 ### 14.6 알림 · 장애 위험
 
 - `#alerts`: firing 먼저, 종류·수준·상태 거르기, 줄마다 확인 버튼, 대상 바로 가기.
-- `#risk`: 지수·수준·기여 막대, 24시간 지수 차트(장애 기록 구간을 음영으로), 모델 카드(종류·학습 시각·창·양성·장애 수·AUC·lead) + **지금 학습**, 가중치 표(모델 모드), **장애 기록** 표 + 추가 폼 + CSV 붙여 넣기 가져오기, 학습 데이터 내려받기.
+- `#risk`(2026-11-10 개편, §6.4): ① 미확인 지수(큰 숫자)·수준·`전체 n 중 용인한 요인 k개를 뺀 값`·모델, 진행 중 장애 띠 ② **확인할 것** 표(순위 · 요인 · 지금(평소의 ×배) · 평소 · 기여 막대 · 어디서(볼 곳 링크) · 확인 질문 · 상태와 `확인 중`·`용인…`·`해제`. 용인 폼 = 사유·기간 1/4/8/24시간·한도, 용인한 요인은 아래로 빗금 막대) ③ 24시간 지수 차트(원래·미확인 두 선, 장애 구간 음영) ④ **용인 기록 · 지난 7일**(특징별 횟수·걸린 시간·그동안 장애·판단, 최근 표시) · 모델 카드(종류·학습·창·양성·장애·AUC·lead·절편 보정·평시 경고 비율·장애 전 경고 비율) + **지금 학습**, 가중치 표 ⑤ **장애 기록** 표 + 추가 폼 + CSV 붙여 넣기 가져오기, 학습 데이터 내려받기.
 
 ### 14.7 UI 개선 제안(docs/ui-improvement-proposal.md)의 결정
 

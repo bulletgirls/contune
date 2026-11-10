@@ -14,9 +14,16 @@ export const openValue = (r) => (r == null ? null : r.open_index ?? r.index);
 export const openLevel = (r) => levelOf(r && (r.open_level || r.level));
 export const isAccepted = (f) => !!(f && f.hold && f.hold.kind === 'accept');
 export const acceptsOf = (r) => ((r && r.holds) || []).filter((h) => h.kind === 'accept');
-// 확인할 것: 기여순, 용인된 요인은 뺀다.
+// 두드러진 요인: 기여가 가장 큰 요인의 5% 이상이고 0.05 이상(rule은 가중 정규화 값, logreg는 로짓 기여라 둘 다 0.05면 무시할 만하다).
+// 서버는 기여가 양수인 요인을 다 주므로(최대 8) 평소와 같은 값·0인 값이 섞여 온다.
+export const MIN_CONTRIB = 0.05;
+export function notable(factors) {
+  const max = Math.max(...(factors || []).map((f) => f.contrib), 0);
+  return (factors || []).filter((f) => f.contrib >= Math.max(MIN_CONTRIB, max * 0.05));
+}
+// 확인할 것: 두드러진 요인 중 기여순, 용인된 요인은 뺀다.
 export function todoFactors(r, n) {
-  const list = ((r && r.factors) || []).filter((f) => !isAccepted(f));
+  const list = notable((r && r.factors) || []).filter((f) => !isAccepted(f));
   return n == null ? list : list.slice(0, n);
 }
 
@@ -25,7 +32,7 @@ export function baselineText(f) { return f && f.baseline != null ? `평소 ${fmt
 export function ratioText(f) {
   if (!f || f.baseline == null || !(f.baseline > 0)) return '';
   const k = f.value / f.baseline;
-  return k >= 1.5 ? `×${fmtNum(k, 1)}` : '';
+  return k >= 1.5 ? `×${fmtNum(k, k >= 10 ? 0 : 1)}` : '';
 }
 
 export function placeText(p) {
@@ -80,8 +87,12 @@ export function repeatAdvice(s) {
 }
 // 용인 기간 고르기(시간)
 export const HOLD_HOURS = [1, 4, 8, 24];
-// 용인 한도 기본값과 허용 범위(서버와 같은 규칙)
+// 용인 한도 기본값과 허용 범위(서버 risk/hold.go와 같은 규칙). 기본값은 값 + |값|의 20%(음수도 위로).
+export function defaultLimit(value) {
+  const v = Number(value) || 0;
+  return Math.max(Math.round((v + Math.abs(v) * 0.2) * 1000) / 1000, v);
+}
 export function limitRange(value) {
   const v = Number(value) || 0;
-  return { def: Math.round(v * 1.2 * 100) / 100, lo: v, hi: Math.max(2 * v, v + 1) };
+  return { def: defaultLimit(v), lo: v, hi: Math.max(2 * v, v + 1) };
 }

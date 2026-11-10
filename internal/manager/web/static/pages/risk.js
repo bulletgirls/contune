@@ -6,7 +6,7 @@ import { lineChart } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
 import { gate } from '../auth.js';
 import {
-  HOLD_TEXT, HOLD_HOURS, openValue, openLevel, acceptsOf, isAccepted, baselineText, ratioText, placeText, placeHref,
+  HOLD_TEXT, HOLD_HOURS, notable, openValue, openLevel, acceptsOf, isAccepted, baselineText, ratioText, placeText, placeHref,
   FAILED_RUNS_HREF, clockText, actorText, holdLine, incidentText, repeatAdvice, limitRange,
 } from '../riskfmt.js';
 
@@ -24,7 +24,7 @@ export function checkRows(risk) {
   const factors = (risk && risk.factors) || [];
   const max = Math.max(...factors.map((f) => f.contrib), 0) || 1;
   const row = (f) => ({ ...f, pct: Math.max(0, f.contrib) / max * 100 });
-  const open = factors.filter((f) => !isAccepted(f)).map(row);
+  const open = notable(factors).filter((f) => !isAccepted(f)).map(row);
   const held = factors.filter(isAccepted).map(row);
   const seen = new Set(factors.map((f) => f.feature));
   for (const h of acceptsOf(risk)) {
@@ -72,6 +72,7 @@ function summaryBox(risk) {
   const side = el('div', { class: 'rsum-side' });
   side.append(el('div', { class: 'rsum-main', text: acc && risk.index > ov
     ? `미확인 지수 · 전체 ${fmtNum(risk.index, 0)} 중 용인한 요인 ${acc}개를 뺀 값`
+    : acc ? `미확인 지수 · 용인한 요인 ${acc}개를 빼도 남은 요인만으로 ${fmtNum(ov, 0)}`
     : isRule(risk) ? '장애 위험 지수 · 규칙 기반(요인을 정해진 범위로 나눠 가중 합한 0~100)' : '장애 위험 지수 · 5분 안에 장애가 날(또는 장애 중인) 확률 %' }));
   const mode = isRule(risk) ? (risk.note || '규칙 기반') : `${KIND_TEXT[risk.model.kind] || risk.model.kind} · ${clockText(risk.model.trained_at, now)} 학습`;
   side.append(el('div', { class: 'rnote', text: mode }));
@@ -118,7 +119,9 @@ function acceptForm(f, act) {
     if (!why.value.trim()) { msg.textContent = '사유를 적어 주세요'; return; }
     msg.textContent = '';
     const until = Date.now() + Number(hours.value) * 3600000;
-    const err = await act.accept(f, { reason: why.value.trim(), until, limit: Number(lim.value) });
+    // 한도를 고치지 않았으면 보내지 않는다(서버가 자기 마지막 값으로 기본 한도를 정한다).
+    const limit = lim.value === String(r.def) ? undefined : Number(lim.value);
+    const err = await act.accept(f, { reason: why.value.trim(), until, limit });
     if (err != null) msg.textContent = `용인하지 못함 · ${err}`;
   });
   setTimeout(() => why.focus(), 0);

@@ -215,7 +215,7 @@ function riskCard(risk, ctx, now) {
   const lv = openLevel(risk), ov = openValue(risk);
   const acc = acceptsOf(risk).length;
   const todo = todoFactors(risk, 2);
-  const total = acc && risk.index > ov ? `<span class="rk-total">전체 ${esc(fmtNum(risk.index, 0))} · 용인 ${acc}</span>` : '';
+  const total = !acc ? '' : risk.index > ov ? `<span class="rk-total">전체 ${esc(fmtNum(risk.index, 0))} · 용인 ${acc}</span>` : `<span class="rk-total">용인 ${acc}</span>`;
   const items = todo.map((f, i) => todoHTML(f, i, ctx)).join('') ||
     `<span class="rk-none">${acc ? '남은 확인 요인 없음' : '두드러진 요인 없음'}</span>`;
   const note = risk.note ? ` <span class="tipwrap" data-note="${esc(risk.note)}"></span>` : '';

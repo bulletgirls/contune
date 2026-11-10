@@ -50,6 +50,9 @@ func printReport(w io.Writer, res trainResult, path string) error {
 	fmt.Fprintf(tw, "양성 창\t%d\n", rep.Positives)
 	fmt.Fprintf(tw, "장애\t%d\n", rep.Incidents)
 	fmt.Fprintf(tw, "AUC\t%.3f\n", rep.AUC)
+	fmt.Fprintf(tw, "절편 보정\t%.3f\n", rep.PriorOffset)
+	fmt.Fprintf(tw, "평시 경고 비율\t%.2f%%\n", rep.FalseWarn*100)
+	fmt.Fprintf(tw, "장애 전 경고 비율\t%.2f%%\n", rep.HitWarn*100)
 	names := make([]string, 0, len(rep.Weights))
 	for n := range rep.Weights {
 		names = append(names, n)
