@@ -53,6 +53,13 @@ export function fmtClock(ts) {
   return `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
 }
 
+// 실행 번호 줄임: 뒤 6자. ULID는 같은 밀리초에 만들면 끝자리만 늘어나므로 앞이 아니라 뒤를 본다.
+// 시드 ID(eum seed)처럼 끝이 0으로 채워져 있으면 0을 떼고 뒤 6자.
+export function shortExec(id) {
+  const s = String(id ?? '');
+  return (s.replace(/0+$/, '') || s).slice(-6);
+}
+
 // 등급 이름(서버 상태·알림 등급). 모든 화면이 이것을 쓴다.
 export const LEVEL_TEXT = { ok: '정상', warn: '경고', crit: '위험', silent: '무응답' };
 // 상태 배지: 색 + 글자(항상 글자와 함께)

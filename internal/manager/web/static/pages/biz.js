@@ -1,6 +1,6 @@
 // 업무 탭: #biz[/<panel>]. 타일·차트·업무 로그·알림은 패널 YAML이 정하고 화면은 그대로 그린다.
 import { api, poll } from '../api.js';
-import { el, esc, numUnit, relTime, badge, badgeHTML, table, tabBar, EMPTY, DASH, fmtClock } from '../ui.js';
+import { el, esc, numUnit, relTime, badge, badgeHTML, table, tabBar, shortExec, EMPTY, DASH, fmtClock } from '../ui.js';
 import { lineChart } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
 import { hashWith } from '../tree.js';
@@ -188,7 +188,7 @@ function draw(body, panel) {
         { key: 'message', label: '메시지' },
         { key: 'exec_id', label: '실행', render: (e) => {
           if (!e.exec_id) return DASH;
-          return el('a', { href: '#run/' + e.exec_id, text: e.exec_id.slice(-6), onclick: (ev) => ev.stopPropagation() });
+          return el('a', { href: '#run/' + e.exec_id, text: shortExec(e.exec_id), onclick: (ev) => ev.stopPropagation() });
         } },
       ],
       rows,

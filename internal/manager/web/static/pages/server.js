@@ -1,7 +1,7 @@
 // 서버 탭: #hosts 목록, #host/<id>/<tab> 상세. 서브 탭·차트·항목은 /catalog가 정한다.
 // 상세 모양: 머리(서버·상태) → 탭 카드(개요 + 그룹마다 대표 값·추이) → 시간 구간 → 차트 격자.
 import { api, poll } from '../api.js';
-import { el, fmtNum, numUnit, relTime, badge, table, info, EMPTY, DASH, LEVEL_TEXT } from '../ui.js';
+import { el, fmtNum, numUnit, relTime, badge, table, info, shortExec, EMPTY, DASH, LEVEL_TEXT } from '../ui.js';
 import { lineChart, unitScale } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
 import { hashWith } from '../tree.js';
@@ -286,7 +286,7 @@ async function drawCharts(container, charts, ctx, opt = {}) {
 // 이음이 띄운 실행의 프로세스. 열 이름은 카탈로그의 job.* 항목과 같은 말을 쓴다.
 const PROC_COLS = [
   { key: 'flow', label: '플로우 › 스텝', render: (p) => `${p.flow_id} › ${p.step_id}` },
-  { key: 'exec', label: '실행 번호', render: (p) => String(p.exec_id).slice(-6) },
+  { key: 'exec', label: '실행 번호', render: (p) => shortExec(p.exec_id) },
   { key: 'cpu', label: 'CPU 사용률', num: true, html: true, render: (p) => numUnit(p.cpu, '%') },
   { key: 'user', label: '사용자', num: true, html: true, render: (p) => numUnit(p.user, '%') },
   { key: 'sys', label: '시스템', num: true, html: true, render: (p) => numUnit(p.sys, '%') },
@@ -338,7 +338,7 @@ async function drawProc(body, grp, ctx) {
     columns: [
       { key: 'status', label: '상태', render: (x) => badge(x.status) },
       { key: 'flow', label: '플로우 › 스텝', render: (x) => `${x.flow_id} › ${x.step_id}` },
-      { key: 'exec', label: '실행 번호', render: (x) => String(x.exec_id).slice(-6) },
+      { key: 'exec', label: '실행 번호', render: (x) => shortExec(x.exec_id) },
       { key: 'started_at', label: '시작', render: (x) => relTime(x.started_at) },
       { key: 'peak_cpu_pct', label: '최대 CPU 사용률', num: true, html: true, render: (x) => numUnit(x.peak_cpu_pct, '%') },
       { key: 'peak_rss_mb', label: '최대 RSS', num: true, html: true, render: (x) => rateHTML(x.peak_rss_mb, 'MB') },
