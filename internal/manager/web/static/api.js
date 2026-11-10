@@ -98,3 +98,6 @@ export function stopScope() {
   for (const s of [...scope]) s();
   scope = new Set();
 }
+
+// 업무 패널 폴더 다시 읽기(관리). → {panels: 읽은 수, errors: [{file, msg}]}
+export function reloadPanels() { return api('/panels/reload', { method: 'POST' }); }

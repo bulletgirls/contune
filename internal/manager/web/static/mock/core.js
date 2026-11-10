@@ -181,7 +181,7 @@ export function seriesQuery(c, p) {
     for (const [name, points] of acc) if (points.length) raw.push({ host: e.host, name, exec_id: e.exec_id, points });
   }
   let series = raw;
-  if (p.agg === 'sum' || p.agg === 'max' || p.agg === 'avg') {
+  if (p.agg === 'sum' || p.agg === 'max' || p.agg === 'avg' || p.agg === 'min') {
     series = [];
     for (const name of names) {
       const mine = raw.filter((s) => s.name === name);
@@ -192,11 +192,14 @@ export function seriesQuery(c, p) {
         .sort((a, b) => a[0] - b[0])
         .map(([t, vs]) => {
           const sum = vs.reduce((a, b) => a + b, 0);
-          const v = p.agg === 'sum' ? sum : p.agg === 'max' ? Math.max(...vs) : sum / vs.length;
+          const v = p.agg === 'sum' ? sum : p.agg === 'max' ? Math.max(...vs) : p.agg === 'min' ? Math.min(...vs) : sum / vs.length;
           return [t, round(v, 2)];
         });
       series.push({ host: '', name, exec_id: '', points });
     }
+  }
+  for (const name of names) {
+    if (QUOTE_SERIES[name]) series = series.concat([{ host: '', name, exec_id: '', points: grid.map((t) => [t, QUOTE_SERIES[name](t, now)]) }]);
   }
   return { from, to, step, series };
 }
@@ -236,18 +239,56 @@ export function tileState(t, v) {
   return 'ok';
 }
 
+// 시세 패널(매매/시세): 하한 위험 · 값 끊김 · 시간 외 · 읽지 못한 파일을 한 화면에서 보인다.
+// 값 규칙: 매니저 판정(계약 1)이 낼 수 있는 모양만 쓴다.
+const QUOTE_SERIES = {
+  'biz.quote.count_1m': (t, now) => (t > now - 6 * MIN ? Math.round(4200 + (now - t) / 1000) : Math.round(71000 + 3000 * Math.sin(t / 90000))),
+  'biz.quote.tps': (t) => Math.round(1180 + 80 * Math.sin(t / 60000)),
+};
+const QUOTE_PANEL = {
+  id: 'quote',
+  title: '시세',
+  group: '매매/시세',
+  tiles: [
+    { title: '1분 시세량', signal: 'traffic', metric: 'biz.quote.count_1m', agg: 'min', unit: '건/분', kpi: true, warn_below: 60000, crit_below: 10000, stale: '30s', active: 'mon-fri 09:00-15:30' },
+    { title: '시세 수신량', signal: 'traffic', metric: 'biz.quote.tps', agg: 'sum', unit: '건/초' },
+    { title: '호가 갱신', signal: 'traffic', metric: 'biz.quote.depth_1m', agg: 'min', unit: '건/분', kpi: true, warn_below: 3000, crit_below: 500, stale: '30s' },
+    { title: '장 마감 정산 건수', signal: 'other', metric: 'biz.quote.close_count', agg: 'sum', unit: '건', warn_below: 100, crit_below: 10, active: 'mon-fri 15:40-16:00' },
+  ],
+  charts: [{ title: '1분 시세량', unit: '건/분', agg: 'min', metrics: ['biz.quote.count_1m'] }],
+  log_levels: ['error', 'warn'],
+};
+let panelErrors = [{ file: '시세-호가.yaml', msg: '타일 "호가 갱신": crit_below는 warn_below보다 작아야 합니다' }];
+
+function quoteView(c) {
+  const exec = c.w.startRun.exec_id;
+  const mk = (t, f) => ({ ...t, value: null, state: 'none', exec_id: '', ts: c.now, reason: '', off: false, host: '', stale_since: 0, ...f });
+  const [a, b, d, e] = QUOTE_PANEL.tiles;
+  return { ...QUOTE_PANEL, tiles: [
+    mk(a, { value: 4200, state: 'crit', reason: 'low', host: 'feed-03', exec_id: exec }),
+    mk(b, { value: 2360, state: 'ok', exec_id: exec }),
+    mk(d, { value: null, state: 'crit', reason: 'stale', host: 'feed-01', stale_since: c.now - 45000 }),
+    mk(e, { value: 0, state: 'ok', off: true }),
+  ] };
+}
+
 export function panelsView(c) {
   return PANELS.map((p) => ({
     ...p,
     tiles: p.tiles.map((t) => {
       const value = tileValue(c, t.metric);
-      return { ...t, value, state: tileState(t, value), exec_id: value === null ? '' : c.w.startRun.exec_id, ts: c.now };
+      return { ...t, value, state: tileState(t, value), exec_id: value === null ? '' : c.w.startRun.exec_id, ts: c.now, reason: '', off: false, host: '', stale_since: 0 };
     }),
-  }));
+  })).concat([quoteView(c)]);
 }
 
 function panels(c) {
-  return ok({ panels: panelsView(c) });
+  return ok({ panels: panelsView(c), errors: panelErrors });
+}
+
+// 다시 읽기: 틀린 파일은 그대로 건너뛴다(읽은 수 = 보이는 패널 수)
+function panelsReload(c) {
+  return ok({ panels: panelsView(c).length, errors: panelErrors });
 }
 
 // ---- 프로파일 ----
@@ -310,6 +351,7 @@ export const routes = [
   ['GET', /^\/runs\/([^/]+)$/, runOne],
   ['GET', /^\/series$/, series],
   ['GET', /^\/panels$/, panels],
+  ['POST', /^\/panels\/reload$/, panelsReload],
   ['GET', /^\/profile$/, profile],
   ['POST', /^\/flows\/([^/]+)\/run$/, runFlow],
 ];

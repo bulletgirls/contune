@@ -4,7 +4,7 @@ import { MIN, hash32, rnd } from './util.js';
 const ok = (body, status = 200) => ({ status, body });
 const err = (status, msg) => ({ status, body: { error: msg } });
 
-const KINDS = { login: ['login.', 'logout'], flow: ['flow.'], run: ['run.'], alert: ['alert.'], risk: ['risk.', 'incident.'], audit: ['audit.'], collect: ['collect.'] };
+const KINDS = { login: ['login.', 'logout'], flow: ['flow.'], run: ['run.'], alert: ['alert.'], risk: ['risk.', 'incident.'], audit: ['audit.'], collect: ['collect.'], panels: ['panels.'] };
 const inKind = (action, kind) => (KINDS[kind] || []).some((p) => action.startsWith(p));
 
 const U = 'user:admin', O = 'user:operator';
@@ -52,6 +52,7 @@ const SPEC = [
   [47, O, 'run.manual', 'ext-send-margin', '실행 1건'],
   [33, O, 'run.kill', '01JCA2F7E4W9ZT5N0D3R8H1BKC', 'daily-settle/settle-report'],
   [26, O, 'run.force_ok', '01JCA2F7E4W9ZT5N0D3R8H1BKC', 'daily-settle/settle-report 사유: 보고서는 수작업으로 발송 완료'],
+  [30, U, 'panels.reload', 'panels', '패널 2개, 읽지 못한 파일 1개'],
   [22, U, 'collect.delete', 'host:ops-03', 'host-ops-03.yaml'],
   [18, U, 'incident.create', 'incident:8', '정산 보고서 지연'],
   [12, U, 'flow.save', 'ext-send-margin', 'flows/대외송수신/ext-send-margin.yaml a4d83e15 → 1d6c70b9'],

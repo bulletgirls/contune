@@ -2,13 +2,15 @@
 // 참고한 사례(05 §14.10): Google SRE 골든 시그널(트래픽·지연 시간·오류·포화도로 지표 묶기) ·
 // Grafana Stat 패널(값 + 추이선 + 임계 색) · Stephen Few 불릿 그래프 · Grafana Explore 로그(레벨별 로그량 막대,
 // 고정 높이 목록, 줄 펼침) · Datadog Log Explorer(패턴 묶기, Live Tail).
-import { api, poll } from '../api.js';
-import { el, esc, numUnit, fmtNum, relTime, tabBar, shortExec, info, EMPTY, DASH, fmtClock, LEVEL_TEXT } from '../ui.js';
+import { api, poll, reloadPanels } from '../api.js';
+import { el, esc, numUnit, fmtNum, relTime, tabBar, shortExec, info, toast, EMPTY, DASH, fmtClock, LEVEL_TEXT } from '../ui.js';
 import { lineChart, fmtTime, fmtTick } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
 import { hashWith } from '../tree.js';
-import { gate } from '../auth.js';
-import { bulletSVG, ALERT_MARK } from './dashboard.js';
+import { gate, can } from '../auth.js';
+import { bulletSVG, limitText, hasLimit, tileView, offTip, ALERT_MARK } from './dashboard.js';
+
+export { limitText };
 
 const SYNC = 'biz';
 const LIVE_MS = 2000;
@@ -76,21 +78,18 @@ export function toChartSeries(chart, resp, tiles = []) {
   const titleOf = new Map(tiles.map((t) => [t.metric, t.title]));
   return chart.metrics.map((m) => ({ label: titleOf.get(m) || m, unit: chart.unit, data: (byName.get(m) || { points: [] }).points }));
 }
-// 차트 임계선: 차트 지표를 쓰는 타일 중 KPI 타일(없으면 첫 타일)의 경고·위험 값. 계열이 둘 이상이면 어느 지표의 선인지 붙인다.
+// 차트 기준선: 차트 지표를 쓰는 타일 중 KPI 타일(없으면 첫 타일)의 경고·위험 값과 하한 값. 계열이 둘 이상이면 어느 지표의 선인지 붙인다.
 export function chartThresholds(chart, tiles) {
-  const cand = (tiles || []).filter((t) => chart.metrics.includes(t.metric) && (t.warn != null || t.crit != null));
+  const cand = (tiles || []).filter((t) => chart.metrics.includes(t.metric) && hasLimit(t));
   const t = cand.find((x) => x.kpi) || cand[0];
   if (!t) return [];
   // 계열이 둘 이상이면 어느 지표의 선인지: 타일 제목에서 차트 제목을 뺀 말('p99 응답 시간' - '응답 시간' → 'p99')
   const who = chart.metrics.length > 1 ? (t.title.replace(chart.title, '').trim() || t.title) + ' ' : '';
   const out = [];
-  if (t.warn != null) out.push({ value: t.warn, level: 'warn', label: `${who}${LEVEL_TEXT.warn} ${fmtNum(t.warn)}` });
-  if (t.crit != null) out.push({ value: t.crit, level: 'crit', label: `${who}${LEVEL_TEXT.crit} ${fmtNum(t.crit)}` });
+  const add = (v, level, pre) => { if (v != null) out.push({ value: v, level, label: `${who}${pre}${LEVEL_TEXT[level]} ${fmtNum(v)}` }); };
+  add(t.warn, 'warn', ''); add(t.crit, 'crit', '');
+  add(t.warn_below, 'warn', '하한 '); add(t.crit_below, 'crit', '하한 ');
   return out;
-}
-// 타일 임계 글자: '경고 500 · 위험 2,000'
-export function limitText(t) {
-  return [t.warn != null ? `${LEVEL_TEXT.warn} ${fmtNum(t.warn)}` : '', t.crit != null ? `${LEVEL_TEXT.crit} ${fmtNum(t.crit)}` : ''].filter(Boolean).join(' · ');
 }
 
 // 로그 줄 앞의 '(E) 13:23:10 '은 레벨·시각 열과 같은 내용이라 흐리게 그린다.
@@ -167,38 +166,61 @@ function cleanup() {
 
 export function dispose() { cleanup(); }
 
+// 읽지 못한 패널 파일: 한 줄 + 접힌 칸(파일 · 무엇이 틀렸는지 · 할 일)
+export function panelErrorsEl(errors, canFix) {
+  const n = (errors || []).length;
+  if (!n) return null;
+  const rows = errors.map((e) => el('li', {}, el('code', { text: e.file }), ` — ${e.msg}`));
+  return el('details', { class: 'bz-errs', role: 'alert' },
+    el('summary', { text: `읽지 못한 패널 파일 ${n}개` }),
+    el('ul', {}, ...rows),
+    el('p', { class: 'bz-todo', text: canFix ? '매니저의 panels 폴더에서 이 파일을 고치고 다시 읽기' : '관리자에게 알리기' }));
+}
+
 export async function render(root, params, query) {
   cleanup();
-  let panels = [];
-  try { panels = (await api('/panels')).panels || []; } catch (e) { root.append(el('p', { class: 'empty', text: EMPTY.none })); return; }
+  let panels = [], errors = [];
+  try { const r = await api('/panels'); panels = r.panels || []; errors = r.errors || []; } catch (e) { root.append(el('p', { class: 'empty', text: EMPTY.none })); return; }
   panels = panels.filter((p) => panelInScope(p, query.g));
-  if (!panels.length) { root.append(el('h2', { class: 'sec', text: '업무' }), el('p', { class: 'empty', text: EMPTY.none })); return; }
+  const again = () => { root.replaceChildren(); return render(root, params, query); };
+  const reload = gate(el('button', { type: 'button', class: 'ghost bz-reload', text: '다시 읽기', title: '손으로 고친 패널 파일을 반영합니다', onclick: async () => {
+    try { const r = await reloadPanels(); toast(`패널 ${r.panels}개`); await again(); } catch (e) { /* 알림은 api가 한다 */ }
+  } }), 'admin');
+  const errEl = panelErrorsEl(errors, can('admin'));
+  if (!panels.length) {
+    root.append(el('div', { class: 'bz-tabs tabs' }, el('h2', { class: 'sec', text: '업무' }), reload), ...(errEl ? [errEl] : []), el('p', { class: 'empty', text: EMPTY.none }));
+    return;
+  }
   const cur = panels.find((p) => p.id === params.panel) || panels[0];
   const tabs = tabBar(panels.map((p) => ({ id: p.id, label: p.title })), cur.id, (id) => { location.hash = hashWith('biz/' + id, query); });
   tabs.classList.add('bz-tabs');
-  tabs.append(el('span', { class: 'bz-group', text: cur.group }));
+  tabs.append(el('span', { class: 'bz-group', text: cur.group }), reload);
   const body = el('div', { class: 'biz' });
-  root.append(tabs, body);
+  root.append(tabs);
+  if (errEl) root.append(errEl);
+  root.append(body);
   draw(body, cur);
 }
 
-const STATE_MARK = { warn: '▲', crit: '■' };
-
 function tileEl(t) {
-  const none = t.value === null || t.value === undefined;
-  const st = none ? 'none' : t.state || 'ok';
+  const v0 = tileView(t);
+  const { st, none } = v0;
   const card = el('div', { class: `bz-tile ${st}${t.exec_id ? ' click' : ''}`, 'data-m': t.metric, role: t.exec_id ? 'link' : null, tabindex: t.exec_id ? '0' : null });
   const head = el('div', { class: 'bz-th' }, el('span', { class: 'bz-tn', text: t.title }));
-  if (st === 'warn' || st === 'crit') head.append(el('span', { class: `bz-ts ${st}`, text: `${STATE_MARK[st]} ${LEVEL_TEXT[st]}` }));
+  if (v0.mark) head.append(el('span', { class: `bz-ts ${st}`, text: `${v0.mark} ${v0.level}` }));
+  if (v0.off) head.append(el('span', { class: 'bz-off', text: '시간 외' }, info(offTip(t))));
   card.append(head);
   const v = el('div', { class: 'bz-tv' });
-  if (none) v.append(el('span', { class: 'empty', text: EMPTY.serviceDown }));
+  if (none) v.append(el('span', { class: 'empty', text: st === 'crit' ? DASH : EMPTY.serviceDown }));
   else v.innerHTML = numUnit(t.value, t.unit);
-  card.append(v, el('div', { class: 'bz-spark' }));
+  if (t.host && !none && !v0.off && t.reason !== 'stale') v.append(el('span', { class: 'bz-host', text: t.host }));
+  card.append(v);
+  if (v0.stale) card.append(el('div', { class: 'bz-stale', text: v0.stale }));
+  card.append(el('div', { class: 'bz-spark' }));
   const lim = limitText(t);
   if (lim) {
     const b = el('div', { class: 'bz-limit' });
-    b.innerHTML = (none ? '' : bulletSVG(t.value, t.warn, t.crit, st)) + `<span class="bz-lt">${esc(lim)}</span>`;
+    b.innerHTML = (none || v0.off ? '' : bulletSVG(t.value, t.warn, t.crit, st, t.warn_below, t.crit_below)) + `<span class="bz-lt">${esc(lim)}</span>`;
     card.append(b);
   } else {
     card.append(el('div', { class: 'bz-limit bz-stat' })); // 임계값이 없으면 구간 평균·최대(추이선과 함께 채움)
@@ -250,7 +272,7 @@ function draw(body, panel) {
       const row = el('div', { class: 'bz-sig-t', style: `grid-template-columns:repeat(${n},minmax(0,1fr))` });
       for (const t of g.tiles) {
         const c = tileEl(t);
-        paintSpark(c, sparkData.get(t.metric), range, t.value == null ? 'none' : t.state || 'ok');
+        paintSpark(c, sparkData.get(t.metric), range, tileView(t).st);
         row.append(c);
       }
       box.append(row);

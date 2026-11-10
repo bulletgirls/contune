@@ -12,6 +12,7 @@ export const ACTIONS = {
   'incident.create': ['장애 기록 추가'], 'incident.update': ['장애 기록 수정'], 'incident.confirm': ['자동 장애 기록 확인'], 'incident.import': ['장애 기록 가져오기'],
   'collect.save': ['로그 수집 변경'], 'collect.delete': ['로그 수집 삭제', true], 'collect.reload': ['로그 수집 다시 읽기'],
   'collect.discover': ['로그 파일 찾기'], 'collect.peek': ['로그 미리보기'],
+  'panels.reload': ['업무 패널 다시 읽기'],
   'audit.export': ['감사 기록 내려받기'],
 };
 // 분류(kind) → action 앞부분
@@ -23,6 +24,7 @@ export const KINDS = [
   ['alert', '알림', ['alert.']],
   ['risk', '위험 지수', ['risk.', 'incident.']],
   ['collect', '로그 수집', ['collect.']],
+  ['panels', '업무 패널', ['panels.']],
 ];
 
 export const actionName = (a) => (ACTIONS[a] ? ACTIONS[a][0] : a);

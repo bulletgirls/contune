@@ -174,23 +174,61 @@ export function ringSVG(segs, total, center, sub) {
     (sub ? `<text class="rsub" x="${cx}" y="${cy + 17}" text-anchor="middle">${esc(sub)}</text>` : '') + '</svg>';
 }
 
-// 불릿 그래프(Stephen Few): 회색 진하기 3단 = 정상·경고·위험 구간, 가운데 막대 = 지금 값. 클수록 나쁜 지표.
-export function bulletScale(value, warn, crit) {
-  const hi = Math.max(Number(crit) || 0, Number(warn) || 0);
+// 불릿 그래프(Stephen Few): 회색 진하기 3단 = 정상·경고·위험 구간, 가운데 막대 = 지금 값.
+// 이상 기준(warn·crit)은 오른쪽이 나쁘고, 하한 기준(warnBelow·critBelow)은 왼쪽이 나쁘다.
+export function bulletScale(value, warn, crit, warnBelow, critBelow) {
+  const hi = Math.max(Number(crit) || 0, Number(warn) || 0, Number(warnBelow) || 0, Number(critBelow) || 0);
   return Math.max(hi * 1.25, (Number(value) || 0) * 1.05) || 1;
 }
-export function bulletSVG(value, warn, crit, state) {
-  const max = bulletScale(value, warn, crit);
+export function bulletSVG(value, warn, crit, state, warnBelow, critBelow) {
+  const max = bulletScale(value, warn, crit, warnBelow, critBelow);
   const x = (v) => clamp01(v / max) * 100;
   const w = warn != null ? x(warn) : null, c = crit != null ? x(crit) : null;
+  const wb = warnBelow != null ? x(warnBelow) : null, cb = critBelow != null ? x(critBelow) : null;
   const bands = [];
-  const okEnd = w ?? c ?? 100;
-  bands.push(`<rect class="bb ok" x="0" y="0" width="${f2(okEnd)}" height="10"/>`);
-  if (w != null) bands.push(`<rect class="bb warn" x="${f2(w)}" y="0" width="${f2((c ?? 100) - w)}" height="10"/>`);
-  if (c != null) bands.push(`<rect class="bb crit" x="${f2(c)}" y="0" width="${f2(100 - c)}" height="10"/>`);
+  const rect = (cls, a, b) => { if (b - a > 0.01) bands.push(`<rect class="bb ${cls}" x="${f2(a)}" y="0" width="${f2(b - a)}" height="10"/>`); };
+  if (cb != null) rect('crit', 0, cb);
+  if (wb != null) rect('warn', cb ?? 0, wb);
+  rect('ok', wb ?? cb ?? 0, w ?? c ?? 100);
+  if (w != null) rect('warn', w, c ?? 100);
+  if (c != null) rect('crit', c, 100);
   const bar = value == null ? '' : `<rect class="bv ${esc(state || 'ok')}" x="0" y="3" width="${f2(x(Number(value)))}" height="4"/>`;
   return `<svg class="bullet" viewBox="0 0 100 10" preserveAspectRatio="none" role="img">${bands.join('')}${bar}</svg>`;
 }
+
+// 타일 기준 글자: '경고 500 · 위험 2,000 · 하한 경고 60,000 · 하한 위험 10,000'
+export function limitText(t) {
+  return [t.warn != null ? `${LEVEL_TEXT.warn} ${fmtNum(t.warn)}` : '', t.crit != null ? `${LEVEL_TEXT.crit} ${fmtNum(t.crit)}` : '',
+    t.warn_below != null ? `하한 ${LEVEL_TEXT.warn} ${fmtNum(t.warn_below)}` : '', t.crit_below != null ? `하한 ${LEVEL_TEXT.crit} ${fmtNum(t.crit_below)}` : '']
+    .filter(Boolean).join(' · ');
+}
+export const hasLimit = (t) => t.warn != null || t.crit != null || t.warn_below != null || t.crit_below != null;
+
+// 값 끊김 길이: 45초 · 3분 · 1시간 5분
+export function durText(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s}초`;
+  if (s < 3600) return `${Math.floor(s / 60)}분`;
+  const m = Math.floor((s % 3600) / 60);
+  return `${Math.floor(s / 3600)}시간${m ? ` ${m}분` : ''}`;
+}
+// 타일 한 칸을 어떻게 그릴지(판정은 매니저가 한다). now는 다시 그릴 때마다 새로 받는다.
+//   st: 'none'|'ok'|'warn'|'crit'|'off' (칸 색), mark: 수준 표시(▲ ■ ▼) 또는 '', stale: '값 끊김 45초 · feed-01' 또는 ''
+export function tileView(t, now = Date.now(), short = false) {
+  const none = t.value === null || t.value === undefined;
+  if (t.off) return { st: 'off', none, mark: '', level: '', stale: '', off: true };
+  const reason = t.reason || '';
+  const st = reason === 'stale' ? 'crit' : none ? 'none' : t.state || 'ok';
+  const lvl = st === 'warn' || st === 'crit';
+  const mark = !lvl ? '' : reason === 'low' ? '▼' : ALERT_MARK[st];
+  let stale = '';
+  if (reason === 'stale') {
+    const d = t.stale_since ? durText(now - t.stale_since) : '';
+    stale = `${short ? '끊김' : '값 끊김'}${d ? ' ' + d : ''}${!short && t.host ? ' · ' + t.host : ''}`;
+  }
+  return { st, none, mark, level: lvl ? LEVEL_TEXT[st] : '', stale, off: false };
+}
+export const offTip = (t) => `감시 시간 ${t.active || ''}: 이 시간 밖에서는 기준을 보지 않음`;
 
 // ---- 화면 ----
 const go = (h) => { location.hash = h; };
@@ -253,14 +291,16 @@ function batchCard(sum) {
 }
 
 function bizCard(tiles) {
+  const now = Date.now();
   const body = tiles.length ? tiles.map((t) => {
-    const st = t.value == null ? '' : t.state || 'ok';
-    const val = t.value == null ? `<span class="empty">${esc(EMPTY.serviceDown)}</span>` : numUnit(t.value, t.unit);
-    const mark = st === 'warn' || st === 'crit' ? `<span class="km ${st}" title="${esc(LEVEL_TEXT[st])}">${ALERT_MARK[st]}</span>` : '';
-    const hasLimit = t.warn != null || t.crit != null;
-    const bullet = hasLimit && t.value != null ? bulletSVG(t.value, t.warn, t.crit, st) : '';
-    const tip = hasLimit ? `${t.title} · ${LEVEL_TEXT.warn} ${fmtNum(t.warn)} · ${LEVEL_TEXT.crit} ${fmtNum(t.crit)}${t.unit ? ' ' + t.unit : ''}` : t.title;
-    return `<div class="kpi" data-p="${esc(t.panel)}" title="${esc(tip)}"><div class="kl"><span class="kn">${esc(t.title)}</span><span class="kv">${val}${mark}</span></div>${bullet}</div>`;
+    const v = tileView(t, now, true);
+    const val = v.none ? `<span class="empty">${esc(v.st === 'crit' ? DASH : EMPTY.serviceDown)}</span>` : numUnit(t.value, t.unit);
+    const mark = v.mark ? `<span class="km ${v.st}" title="${esc(v.level)}">${v.mark}</span>` : '';
+    const off = v.off ? ` <span class="km-off" title="${esc(offTip(t))}">시간 외</span>` : '';
+    const sub = v.stale ? `<div class="kstale">${esc(v.stale)}</div>` : '';
+    const bullet = hasLimit(t) && !v.none && !v.off ? bulletSVG(t.value, t.warn, t.crit, v.st, t.warn_below, t.crit_below) : '';
+    const tip = hasLimit(t) ? `${t.title} · ${limitText(t)}${t.unit ? ' ' + t.unit : ''}` : t.title;
+    return `<div class="kpi" data-p="${esc(t.panel)}" title="${esc(tip)}"><div class="kl"><span class="kn">${esc(t.title)}${off}</span><span class="kv">${val}${mark}</span></div>${sub}${bullet}</div>`;
   }).join('') : `<div class="empty">${DASH}</div>`;
   const c = card('biz', '업무 지표', '#biz', body);
   c.querySelectorAll('.kpi').forEach((k) => k.addEventListener('click', (e) => { e.preventDefault(); go('#biz/' + encodeURIComponent(k.dataset.p)); }));
