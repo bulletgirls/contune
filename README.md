@@ -20,6 +20,7 @@
 | 설계 원칙 | SRP·OCP·LSP·DIP(인터페이스 6개 + 조립 계약), 테스트로 수정을 보호(계약 스위트, 표 테스트), 단순성(외부 의존성 4개, 빌드 단계 없는 화면) |
 | AI | 개발 수단(오케스트레이터 1 + 워커 서브에이전트 4, 카드 47장). 제품 안에는 **장애 위험 지수**(로컬 로지스틱 회귀, 참고 지표)와 LLM 연결 자리만(05 §6, §9) |
 | 보충 (11-09) | 프로토타입 시연 뒤: 서버 탭 5개 서브 탭(CPU·메모리·시스템·프로세스·IO)과 과거 구간, **업무 탭**(APM 정보, `(E)` 로그 수집과 알림), 화면에서 작업 구성(허용 목록 안에서 YAML 파일을 씀)·강제 OK·재실행·강제 종료, 자연어 작업 초안 입력, 간결한 문구 |
+| 보안 (11-10) | **화면 로그인과 역할 3개**(조회·운영·관리), CSRF·보안 헤더·로그인 감사, **호스트별 에이전트 토큰**, **에이전트 쪽 명령 허용 목록**(매니저가 뚫려도 서버는 정해진 명령만), TLS. 인증 판단은 조립부 두 곳뿐(05 §16, 카드 [S](docs/cards/S-security.md)) |
 | 운영 환경 | 업무는 온라인(체결) 중심, 배치는 개장 준비와 정산. 배치는 셸 스크립트, 스크립트가 띄우는 서비스는 C(자바 일부). 운영 서버는 perf 사용 가능 |
 | 시연 | Docker Compose: 매니저 1 + 에이전트 3 + 모의 서버 40대, 플로우 39개. 장애 장면은 주문량 폭주로 체결 처리가 밀리는 상황 |
 
@@ -31,7 +32,7 @@
 | [docs/02-mvp-architecture.md](docs/02-mvp-architecture.md) | **계약.** 기술 스택, 수집 통로, 서비스 프로세스 추적, 함수 단위 추적(실측 포함), API와 응답 형식, 매니저 설정, 인터페이스 6개, **조립 계약(§7.1)**, 데이터 모델, 상태 머신, 화면, 시연 환경 |
 | [docs/03-roadmap.md](docs/03-roadmap.md) | 당일 계획: 시연 시나리오, 개념 완결 기준과 축소 순서, 일정, 저장소 구조, 테스트 전략, 리스크, 심사 예상 질문 |
 | [docs/04-implementation-plan.md](docs/04-implementation-plan.md) | **구현 지시서:** 설계·기획서 리뷰 결과(바뀐 것, 메운 빈틈), **§1.4 카드 정리(11-09)**, 마일스톤 M0~M4, 운영 규칙, 통합 점검표 |
-| [docs/05-supplement.md](docs/05-supplement.md) | **보충 계약(11-09, 02보다 우선):** 지표 카탈로그, 업무 로그, 알림, 장애 위험 지수, 운영자 조작, 편집기, 자연어 초안, API·설정·타입·DDL 추가, 화면 보충 |
+| [docs/05-supplement.md](docs/05-supplement.md) | **보충 계약(11-09, 02보다 우선):** 지표 카탈로그, 업무 로그, 알림, 장애 위험 지수, 운영자 조작, 편집기, 자연어 초안, API·설정·타입·DDL 추가, 화면 보충, **§16 보안 강화(11-10)** |
 | [docs/cards/](docs/cards/README.md) | **작업카드 원본.** 공통 지시문과 소유 경로(README), 카드 파일 8개(K·A·B·C·R·D·E·X) |
 | [pipeline_plan.md](pipeline_plan.md) | **카드 47장의 등급·우선 세션·선행** (파이프라인의 기준) |
 | [pipeline/ORCHESTRATOR.md](pipeline/ORCHESTRATOR.md) | 자율 오케스트레이터 지시문. 도구: `pipeline/dag.py`(상태), `split_cards.py`(카드 → `specs/<ID>.md`), `setup_worktrees.sh` |
@@ -51,9 +52,9 @@
     deploy/demo.sh settle    # daily-settle(대기 큐가 남아 있으면 HELD)
     deploy/demo.sh train; deploy/demo.sh sql; deploy/demo.sh status; deploy/demo.sh down
 
-화면은 `http://localhost:8080/`(실제 API), `http://localhost:8080/?mock=1`(mock).
+화면은 `http://localhost:8080/`(실제 API), `http://localhost:8080/?mock=1`(mock). 시연 계정은 `admin/eum-admin`(관리), `operator/eum-operator`(운영), `viewer/eum-viewer`(조회)이고, `demo.sh`는 `EUM_USER`·`EUM_PASS`(기본 admin)로 로그인합니다. 운영 계정의 해시는 `printf '%s' '<비밀번호>' | eum passwd`로 만듭니다.
 
-**되는 것 (dev 모드 리허설로 확인):** 서버 43대·그룹 8개, `ext-04` 무응답·`dw-02` 메모리 위험, 플로우 39개·배치판 6개, 재시도·선후행·서버 넘기·중복 실행 409, `start-matching` 뒤에도 같은 `exec_id`로 `job.*`·`biz.*`·함수 표본 수집, 폭주 전·밀린 구간의 `book_insert` 비중 약 4% → 74%, 리소스 게이트 HELD → 해제, 강제 OK·허용 목록 밖 명령 저장 거절, 업무 로그 `(W)`·알림, 위험 모델 학습(AUC 0.99)·`eum sql` 질의 3개·CSV/접힌 스택/학습 데이터 내보내기, 재시작 뒤 실행 기록 유지(sqlite).
+**되는 것 (dev 모드 리허설로 확인):** 서버 43대·그룹 8개, `ext-04` 무응답·`dw-02` 메모리 위험, 플로우 39개·배치판 6개, 재시도·선후행·서버 넘기·중복 실행 409, `start-matching` 뒤에도 같은 `exec_id`로 `job.*`·`biz.*`·함수 표본 수집, 폭주 전·밀린 구간의 `book_insert` 비중 약 4% → 74%, 리소스 게이트 HELD → 해제, 강제 OK·허용 목록 밖 명령 저장 거절, 업무 로그 `(W)`·알림, 위험 모델 학습(AUC 0.99)·`eum sql` 질의 3개·CSV/접힌 스택/학습 데이터 내보내기, 재시작 뒤 실행 기록 유지(sqlite). **보안(11-10, 별도 포트 리허설로 확인):** 로그인 없이 API 401, 조회 계정의 실행·내보내기 403, 운영 계정의 삭제 403, 다른 Origin 403, 운영자 조작 actor `user:operator`, 에이전트 허용 목록 밖 명령(`sh -c id`)은 실행하지 않고 FAILED, CSP를 건 실제 서버에서 화면 정상.
 
 **안 되거나 확인 못 한 것:**
 - compose 모드(`docker compose up`)는 이 PC에서 Docker 데몬이 돌지 않아 확인하지 못했습니다.
