@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"sync"
 	"testing"
 	"time"
@@ -131,6 +132,12 @@ func (f *fakeTracker) snapshot() ([]string, []int, []bool) {
 // startRunner는 가짜 매니저를 향한 Runner를 띄우고, 멈추는 함수를 돌려준다.
 func startRunner(t *testing.T, m *fakeManager, tr ProcessTracker) (stop func()) {
 	t.Helper()
+	return startRunnerAllow(t, m, tr, nil)
+}
+
+// startRunnerAllow는 에이전트 허용 목록 allow를 준 Runner를 띄운다.
+func startRunnerAllow(t *testing.T, m *fakeManager, tr ProcessTracker, allow []*regexp.Regexp) (stop func()) {
+	t.Helper()
 	if tr == nil {
 		tr = &fakeTracker{}
 	}
@@ -140,6 +147,7 @@ func startRunner(t *testing.T, m *fakeManager, tr ProcessTracker) (stop func()) 
 		PollWait:  50 * time.Millisecond,
 		KillGrace: time.Second,
 		Now:       time.Now,
+		Allow:     allow,
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)

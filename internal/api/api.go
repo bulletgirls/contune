@@ -4,11 +4,14 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -77,6 +80,27 @@ type Client struct {
 // NewClient는 base(예: http://manager:8080)와 토큰으로 클라이언트를 만든다.
 func NewClient(base, token string) *Client {
 	return &Client{base: strings.TrimRight(base, "/"), token: token, http: &http.Client{}}
+}
+
+// NewClientCA는 caFile(PEM)의 인증서를 믿는 클라이언트를 만든다(보안 S3, base가 https://일 때 쓴다).
+// caFile이 비면 시스템 루트를 믿는다(NewClient와 같음). 파일을 못 읽거나 PEM 인증서가 없으면 에러다.
+func NewClientCA(base, token, caFile string) (*Client, error) {
+	c := NewClient(base, token)
+	if caFile == "" {
+		return c, nil
+	}
+	b, err := os.ReadFile(caFile)
+	if err != nil {
+		return nil, fmt.Errorf("ca: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(b) {
+		return nil, fmt.Errorf("ca %s: PEM 인증서가 없음", caFile)
+	}
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+	c.http = &http.Client{Transport: tr}
+	return c, nil
 }
 
 // PostMetrics는 지표 묶음을 보낸다.

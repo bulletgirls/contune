@@ -3,6 +3,8 @@ package exec
 import (
 	"context"
 	"log/slog"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +19,8 @@ type RunnerOptions struct {
 	PollWait        time.Duration
 	KillGrace       time.Duration
 	Now             func() time.Time
+	// Allow는 에이전트 허용 목록이다(보안 S3, CompileAllow). 비면 모두 실행한다. run 명령만 검사하고 kill은 검사하지 않는다.
+	Allow []*regexp.Regexp
 }
 
 const (
@@ -117,17 +121,19 @@ func (r *Runner) dispatch(cmds []model.Command) int {
 
 // handleRun은 명령 하나를 띄우고 끝날 때까지 기다리며 이벤트를 큐에 넣는다.
 func (r *Runner) handleRun(c model.Command) {
+	if !Allowed(c.Command, r.o.Allow) {
+		slog.Warn("에이전트 허용 목록 밖 명령이라 실행하지 않음", "exec_id", c.ExecID, "flow", c.Flow, "step", c.Step,
+			"command", strings.Join(c.Command, " "))
+		r.startFailed(c, notAllowedTail)
+		return
+	}
 	job, err := Start(c, StartOptions{
 		LogDir: r.o.LogDir, WorkDir: r.o.WorkDir, Host: r.host,
 		Vars: r.o.Vars, KillGrace: r.o.KillGrace, Now: r.o.Now,
 	})
 	if err != nil {
 		slog.Warn("명령 기동 실패", "exec_id", c.ExecID, "err", err)
-		code := startFailCode
-		r.q.push(api.EventReport{
-			Host: r.host, ExecID: c.ExecID, Seq: 1, Type: "finished", TS: r.o.Now().UnixMilli(),
-			Status: model.StatusFailed, ExitCode: &code, LogTail: err.Error(),
-		})
+		r.startFailed(c, err.Error())
 		return
 	}
 	r.mu.Lock()
@@ -152,6 +158,15 @@ func (r *Runner) handleRun(c model.Command) {
 	r.q.push(api.EventReport{
 		Host: r.host, ExecID: c.ExecID, Seq: 2, Type: "finished", TS: res.EndedAt,
 		Status: res.Status, ExitCode: &code, Usage: &usage, LogTail: res.LogTail,
+	})
+}
+
+// startFailed는 띄우지 못한 명령을 started 없이 finished FAILED(종료 코드 127)로 보고한다.
+func (r *Runner) startFailed(c model.Command, tail string) {
+	code := startFailCode
+	r.q.push(api.EventReport{
+		Host: r.host, ExecID: c.ExecID, Seq: 1, Type: "finished", TS: r.o.Now().UnixMilli(),
+		Status: model.StatusFailed, ExitCode: &code, LogTail: tail,
 	})
 }
 

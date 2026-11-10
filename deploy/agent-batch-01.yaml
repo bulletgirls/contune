@@ -2,6 +2,13 @@ host: batch-01
 group: 사후처리/배치
 manager: http://manager:8080
 token: ${EUM_TOKEN}
+# ca: /etc/eum/ca.pem          # manager가 https://일 때 믿을 인증서(PEM). 비면 시스템 루트
+allow:                         # 에이전트 허용 목록(editor.allow와 같은 문법, ${VAR}를 펼치기 전 명령)
+  - '^eum burn( |$)'
+  - '^\$\{DEMO\}/scripts/[A-Za-z0-9_-]+\.sh( |$)'
+  - '^sleep [0-9]+$'
+  - '^echo( |$)'
+  - '^sh -c echo "\(E\) [^"$`\\]*"; exit [0-9]+$'
 interval: 1s
 probes:
   - type: sim

@@ -1,8 +1,10 @@
 package agent
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -88,5 +90,43 @@ logs:
 
 	if _, err := LoadConfig(filepath.Join(dir, "missing.yaml")); err == nil {
 		t.Error("에이전트 설정 파일이 없으면 에러")
+	}
+	if c.Allow != nil || c.CA != "" {
+		t.Errorf("allow·ca 기본은 비어 있음: %v %q", c.Allow, c.CA)
+	}
+}
+
+// TestAgentConfigAllowCA는 에이전트 허용 목록·CA 설정이다(보안 S3).
+func TestAgentConfigAllowCA(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "a.yaml")
+	body := `host: batch-01
+manager: https://manager:8443
+ca: /etc/eum/ca.pem
+allow:
+  - '^eum burn( |$)'
+  - '^\$\{DEMO\}/scripts/[A-Za-z0-9_-]+\.sh( |$)'
+`
+	os.WriteFile(p, []byte(body), 0o644)
+	c, err := LoadConfig(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.CA != "/etc/eum/ca.pem" || c.Manager != "https://manager:8443" {
+		t.Errorf("ca %q manager %q", c.CA, c.Manager)
+	}
+	if len(c.Allow) != 2 || c.Allow[1] != `^\$\{DEMO\}/scripts/[A-Za-z0-9_-]+\.sh( |$)` {
+		t.Errorf("allow는 ${VAR} 바꾸기 없이 그대로 읽어야 함: %q", c.Allow)
+	}
+
+	os.WriteFile(p, []byte("host: x\nallow: ['^ok$', '(']\n"), 0o644)
+	if _, err := LoadConfig(p); err == nil || !strings.Contains(err.Error(), "allow[1]") {
+		t.Errorf("틀린 정규식은 LoadConfig 에러: %v", err)
+	}
+	if err := Run(context.Background(), Config{Host: "x", Allow: []string{"("}, LogDir: dir, WorkDir: dir}); err == nil {
+		t.Error("코드로 준 틀린 정규식도 Run 에러")
+	}
+	if err := Run(context.Background(), Config{Host: "x", CA: filepath.Join(dir, "missing.pem"), LogDir: dir, WorkDir: dir}); err == nil {
+		t.Error("없는 ca 파일은 Run 에러")
 	}
 }

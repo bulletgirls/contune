@@ -2,10 +2,14 @@ package api
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -174,5 +178,57 @@ func TestClientOK(t *testing.T) {
 	}
 	if q != "host=match-01&wait=25s" {
 		t.Errorf("query %q", q)
+	}
+}
+
+// TestClientCA는 CA를 준 클라이언트만 자체 서명 HTTPS 매니저에 붙는지 본다(보안 S3).
+func TestClientCA(t *testing.T) {
+	var auth string
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	dir := t.TempDir()
+	caPath := filepath.Join(dir, "ca.pem")
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
+	if err := os.WriteFile(caPath, pemBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	c, err := NewClientCA(srv.URL, "tok", caPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.PostMetrics(ctx, MetricsBatch{Host: "h"}); err != nil {
+		t.Fatalf("CA를 준 클라이언트: %v", err)
+	}
+	if auth != "Bearer tok" {
+		t.Errorf("Authorization %q", auth)
+	}
+
+	err = NewClient(srv.URL, "tok").PostMetrics(ctx, MetricsBatch{Host: "h"})
+	var ua x509.UnknownAuthorityError
+	if err == nil || !errors.As(err, &ua) {
+		t.Fatalf("CA 없는 클라이언트 = %v, x509 에러여야 함", err)
+	}
+
+	// ca가 비면 시스템 루트(NewClient와 같음): 자체 서명은 믿지 않는다.
+	sys, err := NewClientCA(srv.URL, "tok", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sys.PostMetrics(ctx, MetricsBatch{Host: "h"}); err == nil || !errors.As(err, &ua) {
+		t.Errorf("ca 없음 = %v, x509 에러여야 함", err)
+	}
+
+	if _, err := NewClientCA(srv.URL, "tok", filepath.Join(dir, "missing.pem")); err == nil {
+		t.Error("없는 CA 파일은 에러")
+	}
+	bad := filepath.Join(dir, "bad.pem")
+	os.WriteFile(bad, []byte("not a pem"), 0o600)
+	if _, err := NewClientCA(srv.URL, "tok", bad); err == nil {
+		t.Error("PEM 인증서가 없는 CA 파일은 에러")
 	}
 }
