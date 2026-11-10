@@ -137,7 +137,7 @@ export function arcPath(cx, cy, r, f0, f1) {
 }
 
 // 장애 위험 지수 게이지: 바깥 얇은 띠 = 정상·경고·위험 구간, 안쪽 굵은 호 = 지금 값(미확인 지수).
-// total(원래 지수)이 value보다 크면 그 차이(용인된 몫)를 빗금 호로 잇는다.
+// total(원래 지수)이 value보다 크면 그 차이(이상 없음 처리한 몫)를 빗금 호로 잇는다.
 export const RISK_WARN = 30, RISK_CRIT = 60;
 export function gaugeSVG(value, level, warn = RISK_WARN, crit = RISK_CRIT, max = 100, total = null) {
   const cx = 60, cy = 62, r = 46;
@@ -215,7 +215,7 @@ function riskCard(risk, ctx, now) {
   const lv = openLevel(risk), ov = openValue(risk);
   const acc = acceptsOf(risk).length;
   const todo = todoFactors(risk, 2);
-  const total = !acc ? '' : risk.index > ov ? `<span class="rk-total">전체 ${esc(fmtNum(risk.index, 0))} · 용인 ${acc}</span>` : `<span class="rk-total">용인 ${acc}</span>`;
+  const total = !acc ? '' : risk.index > ov ? `<span class="rk-total">전체 ${esc(fmtNum(risk.index, 0))} · 이상 없음 ${acc}</span>` : `<span class="rk-total">이상 없음 ${acc}</span>`;
   const items = todo.map((f, i) => todoHTML(f, i, ctx)).join('') ||
     `<span class="rk-none">${acc ? '남은 확인 요인 없음' : '두드러진 요인 없음'}</span>`;
   const note = risk.note ? ` <span class="tipwrap" data-note="${esc(risk.note)}"></span>` : '';
