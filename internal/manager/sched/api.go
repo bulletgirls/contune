@@ -48,6 +48,7 @@ type stepView struct {
 	Depends []string `json:"depends"`
 	Level   int      `json:"level"`
 	Profile bool     `json:"profile"`
+	Starts  []string `json:"starts,omitempty"` // 띄우는 서비스 선언(06, 카드 P): 플로우 그래프의 서비스 칩
 }
 
 type stepLast struct {
@@ -97,7 +98,7 @@ func (s *Scheduler) handleFlows(w http.ResponseWriter, r *http.Request) {
 			if dep == nil {
 				dep = []string{}
 			}
-			v.Steps = append(v.Steps, stepView{ID: st.ID, Host: st.Host, Depends: dep, Level: st.Level, Profile: st.Profile})
+			v.Steps = append(v.Steps, stepView{ID: st.ID, Host: st.Host, Depends: dep, Level: st.Level, Profile: st.Profile, Starts: st.Starts})
 		}
 		if f.Schedule != "" {
 			if sch, err := cronParser.Parse(f.Schedule); err == nil {
