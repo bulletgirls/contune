@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"eum/internal/manager/live"
+	"eum/internal/manager/procs"
 	"eum/internal/manager/store"
 	"eum/internal/model"
 )
@@ -26,6 +27,8 @@ type Deps struct {
 	// CollectPoll은 롱폴링이 부르는 수집 설정 쪽(05 §17): 에이전트가 본 판(rev, 없으면 "")과 시각을 기록하고
 	// 그 호스트의 지금 판(config_rev)과 대기 요청(한 번 주면 큐에서 빠짐)을 돌려준다. nil이면 지금과 같다.
 	CollectPoll func(host, rev string) (configRev string, reqs []model.CollectRequest)
+	// Procs는 프로세스 기록(06, 카드 P-C)이다: 실행 상세·목록의 기동한 프로세스. nil이면 비운다.
+	Procs *procs.Registry
 }
 
 // window는 tick·수동 실행이 읽는 최근 실행 범위(scheduled_at 기준)다.

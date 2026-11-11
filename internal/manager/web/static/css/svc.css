@@ -1,0 +1,49 @@
+/* 서비스 #svcs · #svc/<id> (06, 카드 P-F). 서비스 타임머신은 tm.css(.tm-*)를 그대로 쓰고 여기는 서비스에만 있는 것 */
+.sv-card .dim, .sv-tm .dim { color:var(--t3); }
+.sv-mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; font-weight:500; }
+
+/* 인스턴스 칩: 서버 이름 + 상태 기호(떠 있음 초록 ●, 없음 빨강 ■, 시간 외 회색 ○) */
+.sv-inst { display:inline-flex; align-items:center; gap:4px; font-size:12px; line-height:18px; padding:0 8px 0 6px; margin:1px 4px 1px 0; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--t1); text-decoration:none; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.sv-inst i { font-style:normal; font-size:11px; }
+.sv-inst.up i { color:var(--ok); }
+.sv-inst.down { border-color:color-mix(in srgb, var(--crit) 55%, var(--line)); background:color-mix(in srgb, var(--crit) 6%, var(--surface)); }
+.sv-inst.down i { color:var(--crit); }
+.sv-inst.off { color:var(--t3); } .sv-inst.off i { color:var(--silent); }
+a.sv-inst:hover { border-color:var(--accent); }
+.sv-inst.cur { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; font-weight:600; }
+.sv-auto { display:inline-block; margin-left:6px; font-size:11px; line-height:16px; padding:0 6px; border-radius:9px; border:1px dashed var(--line); color:var(--t2); background:var(--bg); font-weight:400; vertical-align:middle; }
+
+/* 목록 */
+.sv-scroll { max-height:calc(100vh - 230px); }
+.sv-tbl col.c-name { width:210px; } .sv-tbl col.c-panel { width:84px; } .sv-tbl col.c-n { width:86px; }
+.sv-tbl col.c-cpu { width:76px; } .sv-tbl col.c-rss { width:92px; } .sv-tbl col.c-run { width:250px; }
+.sv-tbl td.name .sv-t { color:var(--t1); font-weight:600; }
+.sv-tbl td.name .sv-id { margin-left:6px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
+.sv-tbl td.sv-insts { white-space:normal; }
+.sv-tbl td a, .sv-ptbl td a, .sv-evs a { color:var(--accent); text-decoration:none; } .sv-tbl td a:hover, .sv-ptbl td a:hover, .sv-evs a:hover { text-decoration:underline; }
+.sv-tbl td a.sv-inst { color:var(--t1); } .sv-tbl td a.sv-inst.off { color:var(--t3); } .sv-tbl td a.sv-inst:hover { text-decoration:none; }
+.sv-tbl td.bad a { color:var(--crit); font-weight:600; }
+
+/* 서비스 타임머신 */
+.sv-tm .tm-meta .sv-hosts { display:inline-flex; align-items:center; flex-wrap:wrap; gap:4px; }
+.sv-tm .tm-meta .sv-hosts .sv-inst { margin:0; }
+.sv-tm .tm-meta a.sv-inst { color:var(--t1); } .sv-tm .tm-meta a.sv-inst.off { color:var(--t3); } .sv-tm .tm-meta a.sv-inst:hover { text-decoration:none; }
+.sv-tm .tm-title .sv-auto { margin-left:0; }
+.sv-st { white-space:nowrap; }
+.tm-kpis .bt-kpi .kv .sv-st { font-size:16px; font-weight:650; }
+.sv-st.up { color:var(--ok); } .sv-st.down { color:var(--crit); } .sv-st.off { color:var(--silent); }
+.sv-tm .bt-kpi .ks a { color:var(--accent); text-decoration:none; } .sv-tm .bt-kpi .ks a:hover { text-decoration:underline; }
+.tm-lg i.mk.sv-start { border-left:1px dashed var(--st-running); }
+.tm-lg i.mk.sv-exit { border-left:1px dashed var(--crit); margin-left:10px; }
+
+/* 아래 탭: 프로세스 표 · 사건 */
+.sv-pscroll { max-height:320px; overflow:auto; overscroll-behavior:contain; border:1px solid var(--line); border-radius:4px; }
+.sv-ptbl { table-layout:auto; }
+.sv-ptbl td.at { color:var(--t2); }
+.sv-ptbl tr.g-running td:first-child { box-shadow:inset 3px 0 0 var(--st-running); }
+.sv-run { color:var(--st-running); font-weight:600; }
+.sv-exitl { font-weight:600; } .sv-ptbl td a.sv-exitl.crit { color:var(--crit); } .sv-ptbl td a.sv-exitl.warn { color:var(--warn); }
+.sv-evs li { gap:10px; }
+.sv-ek { flex:none; min-width:72px; font-size:12px; font-weight:600; color:var(--c); display:inline-flex; align-items:center; gap:6px; }
+.sv-ek::before { content:''; width:0; height:12px; border-left:2px dashed var(--c); }
+.sv-etx { color:var(--t1); }

@@ -1,5 +1,6 @@
-// 결정적 세계: 서버 43대·그룹 8개, 플로우 40개·배치판 6개, 실행 이력, 장애 기록.
+// 결정적 세계: 서버 43대·그룹 8개, 플로우 41개·배치판 6개, 실행 이력, 장애 기록.
 // 업무 프로세스 둘: 체결(match-01 matching_svc, market-open → w.startRun), 시세(feed-01 quote_svc, quote-open → w.quoteRun).
+// 실행 · 프로세스 · 서비스(06 §2.1): BATCH_JOB › start(batch-02)가 svr_a·svr_b·svr_c를 띄우고 2초 만에 끝난다(w.batchRun, w.procs).
 // 다른 mock 모듈은 이 파일이 만든 세계만 본다. 시각은 처음 만든 때(base)를 기준으로 상대 배치한다.
 import { hash32, rnd, ulid, mulberry32, MIN, HOUR, DAY, SEC } from './util.js';
 import { hostAt } from './signal.js';
@@ -182,9 +183,20 @@ function buildFlows() {
       { id: 'confirm-send', host: 'ext-03', command: BURN(2), depends: ['send-margin'], timeout: '10m', retry: { count: 0, interval: '1m' }, profile: false },
     ],
   };
+  // 06 §2.1: 스텝 하나가 서버 셋을 띄우고 끝난다. starts: 그 스텝이 띄우는 서비스 선언(플로우 그래프 칩)
+  const batchJob = {
+    id: 'BATCH_JOB',
+    board: '장중',
+    schedule: '0 9 * * 1-5',
+    on_missed: 'skip',
+    steps: [
+      { id: 'start', host: 'batch-02', command: ['${DEMO}/scripts/start_job.sh'], depends: [], timeout: '10m', retry: { count: 0, interval: '1m' }, profile: false, starts: ['svr_a', 'svr_b', 'svr_c'] },
+    ],
+  };
   flows.push(marketOpen, quoteOpen);
   for (const a of AUX.filter((x) => x[0] === '개장준비')) flows.push(mkAux(a));
   for (const a of AUX.filter((x) => x[0] === '장중')) flows.push(mkAux(a));
+  flows.push(batchJob);
   flows.push(dailySettle);
   for (const a of AUX.filter((x) => x[0] === '정산')) flows.push(mkAux(a));
   flows.push(extSend);
@@ -291,7 +303,7 @@ function fillSucceeded(w, flow, fr, t0, opts = {}) {
 function buildHistory(w, flows, base) {
   for (const flow of flows) {
     if (flow.id === 'market-open' || flow.id === 'quote-open') continue;
-    if (flow.id === 'ext-send-margin') continue;
+    if (flow.id === 'ext-send-margin' || flow.id === 'BATCH_JOB') continue;
     const state = flow.state || 'ok';
     if (state === 'prev') {
       const t0 = base - 20 * HOUR - (hash32(flow.id) % (5 * 3600)) * SEC;
@@ -476,6 +488,53 @@ export const PANELS = [
   },
 ];
 
+// 프로세스 기록(06, 카드 P-C 모양 ProcInfo에서 값 칸을 뺀 것). cpu·rss_mb·threads는 mock/procs.js가 시각마다 채운다.
+// sig: 값의 모양(match·quote는 서비스 신호, job은 {cpu, rss}, resident는 이음 밖 서비스 없는 상주). owner는 주인 키.
+function buildProcs(w, base) {
+  const P = (r, o) => {
+    const p = { host: r.host, pid: 0, started_at: 0, ppid: 1, comm: '', exe: '', cmdline: '', user: 'eum', exec_id: r.exec_id,
+      service: '', auto: false, leader: false, profile: false, ended_at: 0, exit_id: '', ...o };
+    p.owner = p.service ? `svc:${p.service}@${p.host}` : p.exec_id;
+    w.procs.push(p);
+    return p;
+  };
+  const leader = (r, pid, script) => P(r, { pid, started_at: r.started_at, ended_at: r.ended_at, comm: script.slice(0, 15), exe: '/bin/bash',
+    cmdline: `/bin/bash /opt/demo/scripts/${script}`, leader: true, ppid: 1, sig: { cpu: 0.4, rss: 3.2 } });
+  // 체결·시세 서비스: 실행이 띄웠고 주인은 서비스
+  const m = w.startRun;
+  leader(m, 3120, 'start_matching.sh');
+  P(m, { pid: 3121, ppid: 3120, started_at: m.started_at + 400, comm: 'matching_svc', exe: '/opt/demo/bin/matching_svc',
+    cmdline: '/opt/demo/bin/matching_svc --port 9101', service: 'matching', profile: true, sig: 'match' });
+  const qr = w.quoteRun;
+  leader(qr, 2840, 'start_quote.sh');
+  P(qr, { pid: 2841, ppid: 2840, started_at: qr.started_at + 300, comm: 'quote_svc', exe: '/opt/demo/bin/quote_svc',
+    cmdline: '/opt/demo/bin/quote_svc --port 9201', service: 'quote', profile: true, sig: 'quote' });
+  // BATCH_JOB › start: 2초 스텝이 svr_a·svr_b·svr_c를 띄운다. 규칙이 없어 실행 파일 이름으로 자동 서비스. svr_b는 12분 전 SIGSEGV
+  const bj = w.flows.find((f) => f.id === 'BATCH_JOB');
+  const b0 = base - 80 * MIN;
+  const bfr = newFlowRun(w, bj, 'schedule', b0);
+  const br = newRun(w, bfr, bj, bj.steps[0], 1, { scheduledAt: b0, startAt: b0 + 1000, endAt: b0 + 3000, status: 'SUCCEEDED',
+    log: '(I) start_job 시작\n(I) svr_a 기동 pid 4101\n(I) svr_b 기동 pid 4102\n(I) svr_c 기동 pid 4103\n(I) start_job 끝남\n' });
+  br.job_cpu = 4.1; // 실행 주인 값은 스크립트 자신뿐(서버 셋은 서비스로 옮겨 감)
+  br.job_mem = 6.8;
+  br.peak_cpu_pct = 4.1;
+  br.peak_rss_mb = 3.4;
+  w.batchRun = br;
+  leader(br, 4100, 'start_job.sh');
+  const svr = (pid, name, o) => P(br, { pid, ppid: 4100, started_at: br.started_at + 600 + (pid - 4101) * 150, comm: name, exe: `/opt/batch/bin/${name}`,
+    cmdline: `/opt/batch/bin/${name} --conf /opt/batch/conf/${name}.yaml`, service: name, auto: true, ...o });
+  svr(4101, 'svr_a', { sig: { cpu: 38, rss: 210, threads: 6 } });
+  svr(4102, 'svr_b', { ended_at: base - 12 * MIN, exit_id: 'exit-svr_b-4102', sig: { cpu: 52, rss: 380, threads: 4 } });
+  svr(4103, 'svr_c', { sig: { cpu: 121, rss: 1204, threads: 12 } });
+  // 서비스에 맞지 않은 상주: 개장준비 fetch-ref › pull-ref가 남긴 ref_cache(주인은 그 실행, 스텝은 끝남)
+  const pr = w.runs.filter((r) => r.flow_id === 'fetch-ref' && r.step_id === 'pull-ref' && r.ended_at).sort((a, b) => b.started_at - a.started_at)[0];
+  if (pr) {
+    pr.service = true; // 실행 주인의 상주 프로세스가 살아 있다(procsOf·지표가 지금까지)
+    P(pr, { pid: 5210, ppid: 1, started_at: pr.started_at + 800, comm: 'ref_cache', exe: '/opt/batch/bin/ref_cache',
+      cmdline: '/opt/batch/bin/ref_cache --listen 7311', sig: 'resident' });
+  }
+}
+
 let W = null;
 
 export function reset() {
@@ -501,9 +560,12 @@ export function getWorld(now) {
     startRun: null,
     quoteRun: null,
     extFail: null,
+    batchRun: null,
+    procs: [],
   };
   buildHistory(w, w.flows, base);
   buildPast(w, w.flows);
+  buildProcs(w, base); // 기존 실행 번호가 바뀌지 않게 지난 이력 뒤에
   w.incidents = buildIncidents(base);
   w.incSeq = w.incidents.length + 1;
   W = w;

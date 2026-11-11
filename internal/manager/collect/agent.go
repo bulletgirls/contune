@@ -47,7 +47,11 @@ func (c *Collect) handleAgentConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	eff := merge(c.sets, host, group)
 	c.mu.Unlock()
-	writeJSON(w, http.StatusOK, model.AgentConfig{Rev: revOf(eff), Logs: sourcesOf(eff)})
+	defs, rev := c.agentRev(host, group, eff)
+	if defs == nil {
+		defs = []model.ServiceDef{}
+	}
+	writeJSON(w, http.StatusOK, model.AgentConfig{Rev: rev, Logs: sourcesOf(eff), Services: defs})
 }
 
 // handleConfigStatus는 에이전트의 적용 상태를 받는다. 메모리에 호스트별 마지막 것만 둔다.

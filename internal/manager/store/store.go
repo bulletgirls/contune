@@ -46,4 +46,18 @@ type StateStore interface {
 	AddAudit(ctx context.Context, e model.AuditEntry) error
 	ListAudit(ctx context.Context, q model.AuditQuery) ([]model.AuditEntry, error) // id 내림차순
 	AuditStats(ctx context.Context, from, to int64) (model.AuditStats, error)      // ts [from,to) 안의 action·actor별 건수
+
+	// 종료 보고서(05 §19, 카드 T3). ID는 부르는 쪽이 붙인다(빈 ID·같은 ID는 에러).
+	AddExit(ctx context.Context, r model.ExitReport) error
+	GetExit(ctx context.Context, id string) (model.ExitRecord, error)              // 없으면 ErrNotFound
+	ListExits(ctx context.Context, f model.ExitFilter) ([]model.ExitRecord, error) // ended_at 내림차순(같으면 id 내림차순), Limit 0이면 200
+	SetExitLLM(ctx context.Context, id string, d model.ExitDiagnosis) error        // 마지막 LLM 초안을 바꿔 둔다. 없으면 ErrNotFound
+
+	// 프로세스 기록(06, 카드 P). (host, pid, started_at)이 키다. 처음 보면 넣고, 있으면 comm·exe·cmdline·user·service·auto·
+	// owner·last_seen·ended_at(0이 아닐 때만)·exit_id(비지 않을 때만)를 바꾼다. exec_id는 처음 값을 지킨다.
+	UpsertProcs(ctx context.Context, ps []model.ProcInfo) error
+	ListProcs(ctx context.Context, f model.ProcFilter) ([]model.ProcInfo, error) // started_at 내림차순
+	// PruneProcs는 ended_at이 before 전인 끝난 기록과, last_seen이 before 전인 끝나지 않은 기록(에이전트가 끝남을 못 알린 것)을 지운다.
+	// 지운 수를 돌려준다(카드 P-C: 매니저가 한 시간에 한 번 7일 전으로 부른다).
+	PruneProcs(ctx context.Context, before int64) (int, error)
 }

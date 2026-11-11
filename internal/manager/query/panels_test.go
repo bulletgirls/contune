@@ -530,3 +530,70 @@ func TestRepoPanels(t *testing.T) {
 		t.Errorf("panels/에 없는 패널: %v", want)
 	}
 }
+
+// 패널 service: (06, 카드 P-D) — biz.·log.·svc.·job.는 그 서비스 인스턴스가 주인인 값만, host.·agent.는 그대로.
+func TestPanelServiceFilter(t *testing.T) {
+	at := kt(10, 10, 0, 0)
+	lv := live.New()
+	putAt(lv, at.Add(-time.Second), "feed-01", "biz.quote.count_1m", 5000, model.ServiceOwner("quote", "feed-01"))
+	putAt(lv, at.Add(-time.Second), "feed-02", "biz.quote.count_1m", 9000, "E2")                                   // 실행 주인
+	putAt(lv, at.Add(-time.Second), "feed-03", "biz.quote.count_1m", 7000, model.ServiceOwner("other", "feed-03")) // 다른 서비스
+	putAt(lv, at.Add(-time.Second), "feed-02", "host.cpu.pct", 80, "")
+	putAt(lv, at.Add(-time.Second), "feed-03", "svc.cpu.pct", 30, model.ServiceOwner("quote", "feed-03"))
+	p := model.Panel{ID: "quote", Title: "시세", Group: "매매/시세", Service: "quote", Tiles: []model.Tile{
+		{Title: "시세량", Metric: "biz.quote.count_1m", Agg: "max"},
+		{Title: "CPU", Metric: "host.cpu.pct", Agg: "max"},
+		{Title: "서비스 CPU", Metric: "svc.cpu.pct", Agg: "sum"},
+	}}
+	ts := PanelsOf(kst, p).Eval(at, quoteHosts, lv)[0].Tiles
+	if v := ts[0]; v.Value == nil || *v.Value != 5000 || v.Service != "quote" || v.Host != "feed-01" || v.ExecID != "" {
+		t.Fatalf("서비스 값만 %+v", v)
+	}
+	if v := ts[1]; v.Value == nil || *v.Value != 80 || v.Service != "" || v.Host != "feed-02" {
+		t.Fatalf("host.*는 거르지 않음 %+v", v)
+	}
+	if v := ts[2]; v.Value == nil || *v.Value != 30 || v.Service != "quote" || v.Host != "feed-03" || v.ExecID != "" {
+		t.Fatalf("sum도 주인이 서비스면 그 서버 %+v", v)
+	}
+	// service가 없으면 지금처럼(실행 주인이면 exec_id).
+	p.Service = ""
+	v := PanelsOf(kst, p).Eval(at, quoteHosts, lv)[0].Tiles[0]
+	if v.Value == nil || *v.Value != 9000 || v.ExecID != "E2" || v.Service != "" || v.Host != "feed-02" {
+		t.Fatalf("service 없음 %+v", v)
+	}
+	// service 없는 패널도 고른 값의 주인이 서비스면 service·host를 채운다.
+	p.Tiles = p.Tiles[:1]
+	p.Tiles[0].Agg = "min"
+	v = PanelsOf(kst, p).Eval(at, quoteHosts, lv)[0].Tiles[0]
+	if v.Value == nil || *v.Value != 5000 || v.Service != "quote" || v.Host != "feed-01" || v.ExecID != "" {
+		t.Fatalf("min %+v", v)
+	}
+
+	// JSON: 타일 service·host, 패널 service.
+	p.Service, p.Tiles[0].Agg = "quote", "max"
+	mux := newMux(Deps{Panels: PanelsOf(kst, p), Live: lv, State: fakeState{hosts: quoteHosts}, Now: func() time.Time { return at }})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/panels", nil))
+	var out struct {
+		Panels []struct {
+			Service string           `json:"service"`
+			Tiles   []map[string]any `json:"tiles"`
+		} `json:"panels"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || len(out.Panels) != 1 || out.Panels[0].Service != "quote" {
+		t.Fatalf("%v %s", err, rec.Body)
+	}
+	if tl := out.Panels[0].Tiles[0]; tl["service"] != "quote" || tl["host"] != "feed-01" || tl["exec_id"] != "" {
+		t.Fatalf("타일 JSON %v", tl)
+	}
+
+	// 서비스 ID 문법이 틀리면 읽지 않는다.
+	dir := t.TempDir()
+	body := "id: q\ntitle: q\ngroup: g\nservice: Bad!\ntiles:\n  - title: a\n    metric: biz.a\n    agg: sum\n"
+	if err := os.WriteFile(filepath.Join(dir, "bad.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if ps, errs, err := LoadPanels(dir); err != nil || len(ps) != 0 || len(errs) != 1 || !strings.Contains(errs[0].Msg, "service") {
+		t.Fatalf("틀린 service %v %v %v", ps, errs, err)
+	}
+}

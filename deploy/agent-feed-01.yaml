@@ -16,12 +16,21 @@ probes:
     seed: 4
   - type: push                 # 시세 서비스(quote_svc)가 1초마다 biz.quote.*를 보낸다
     listen: 127.0.0.1:9102
+    service: quote
 profiler:
   type: perf
   hz: 49
   window: 10s
   call_graph: dwarf
   min_age: 5s
+exit:                          # 종료 보고서(없으면 아래 기본값으로 켜짐)
+  enabled: true
+  subreaper: true
+  core_limit: 256MiB
+  core_keep: 3
+  output_lines: 40
+  gdb: auto
+  kmsg: true
 log_dir: /var/lib/eum/logs
 work_dir: /var/lib/eum/work
 remote:                        # 로그 수집 설정을 매니저 화면(#collect)에서 받기(05 §17). 꺼져 있으면 아래 logs만 돈다
@@ -32,6 +41,7 @@ vars:
   PUSH: 127.0.0.1:9102
 logs:
   - name: quote
+    service: quote
     path: "{log_dir}/quote_svc.{exec_id}.log"
     match:
       - { re: '^\(E\)', level: error }

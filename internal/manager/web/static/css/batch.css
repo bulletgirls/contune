@@ -136,6 +136,11 @@ button.danger:hover:not(:disabled) { border-color:var(--crit); }
 .fg-el { font-variant-numeric:tabular-nums; }
 .fg-tags { display:flex; flex-wrap:nowrap; gap:3px; overflow:hidden; }
 .fg-tag { font-size:11px; color:var(--t2); border:1px solid var(--line); border-radius:8px; padding:0 6px; background:var(--bg); white-space:nowrap; }
+/* 스텝이 띄우는 서비스(starts): 실행 중 ● · 지금 없음 ■ · 모름 ○ */
+.fg-svc { display:inline-flex; align-items:center; gap:2px; font-size:11px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--t2); border:1px solid var(--line); border-radius:8px; padding:0 5px; background:var(--bg); white-space:nowrap; text-decoration:none; }
+.fg-svc i { font-style:normal; font-size:9px; font-family:system-ui,sans-serif; }
+.fg-svc.up i { color:var(--ok); } .fg-svc.down { color:var(--crit); border-color:var(--crit); } .fg-svc.unk i { color:var(--t3); }
+a.fg-svc:hover { border-color:var(--accent); text-decoration:underline; }
 .fg-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--t2); margin-top:10px; }
 .fg-lg { display:inline-flex; align-items:center; gap:5px; }
 .fg-sw { width:12px; height:12px; border-radius:3px; background:var(--c); display:inline-flex; align-items:center; justify-content:center; }
@@ -212,3 +217,4 @@ button.danger:hover:not(:disabled) { border-color:var(--crit); }
 .bt-filters { display:flex; gap:12px; margin-bottom:8px; flex-wrap:wrap; }
 .bt-filter { display:flex; gap:6px; align-items:center; color:var(--t3); font-size:12px; }
 .bt-filter select { font:inherit; color:var(--t1); background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:3px 8px; }
+.fg-svc.more { color:var(--t3); font-family:system-ui,sans-serif; }

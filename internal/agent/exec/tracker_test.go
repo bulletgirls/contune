@@ -92,8 +92,10 @@ func newClock() *clock               { return &clock{t: time.Unix(1700000100, 0)
 func newFS() fstest.MapFS {
 	return fstest.MapFS{"stat": {Data: []byte("cpu 1 2 3\nbtime 1700000000\n")}}
 }
+
+// newT는 실행 주인만 보는 추적기다: 자동 서비스는 끈다(자동 서비스·서비스 주인은 services_test.go).
 func newT(m fs.FS, c *clock) ProcessTracker {
-	return NewTracker("h1", TrackerOptions{FS: m, ScanEvery: 5 * time.Second, Now: c.Now, PageSize: 4096})
+	return NewTracker("h1", TrackerOptions{FS: m, ScanEvery: 5 * time.Second, Now: c.Now, PageSize: 4096, AutoServiceAge: -1})
 }
 
 // collect는 Collect 한 번의 결과를 실행 → 이름 → 값으로 모은다.
@@ -327,6 +329,26 @@ func TestSeenCache(t *testing.T) {
 	c.add(5 * time.Second)
 	if got := collect(tr)["e1"]["job.procs"]; got != 2 {
 		t.Fatalf("procs %v", got)
+	}
+}
+
+// exec 중에 읽은 environ은 비거나 잘려(끝의 EUM_* 없이) 보일 수 있다. 막 뜬 프로세스는 다음 탐색에서 다시 보고,
+// 오래된 프로세스(커널 스레드 등)는 한 번만 본다.
+func TestSeenRetryYoung(t *testing.T) {
+	m, c := newFS(), newClock()                                                                        // 지금 = 부팅 + 100초
+	fakeProc{pid: 600, pgrp: 600, starttime: 99 * ClockTicks, env: map[string]string{"A": "b"}}.put(m) // 1초 전, 잘린 environ
+	fakeProc{pid: 700, pgrp: 700, starttime: 10 * ClockTicks, env: map[string]string{"A": "b"}}.put(m) // 90초 전
+	cf := &countFS{FS: m, reads: map[string]int{}}
+	tr := newT(cf, c)
+	collect(tr)
+	fakeProc{pid: 600, pgrp: 600, starttime: 99 * ClockTicks, env: marker("e1", "h1", false)}.put(m)
+	fakeProc{pid: 700, pgrp: 700, starttime: 10 * ClockTicks, env: marker("e1", "h1", false)}.put(m)
+	c.add(5 * time.Second)
+	if got := collect(tr)["e1"]["job.procs"]; got != 1 {
+		t.Fatalf("procs %v, 막 뜬 600만 다시 봐야 함", got)
+	}
+	if fmt.Sprint(tr.Targets(0)) != "map[]" || cf.reads["700/environ"] != 1 || cf.reads["600/environ"] != 2 {
+		t.Fatalf("reads %v", cf.reads)
 	}
 }
 

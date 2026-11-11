@@ -30,6 +30,13 @@ func TestRequiredRole(t *testing.T) {
 		{"POST", "/api/v1/flows/validate", RoleOperator},
 		{"POST", "/api/v1/flows/reload", RoleOperator},
 		{"POST", "/api/v1/assist/flow", RoleOperator},
+		{"POST", "/api/v1/exits/01J0000000000000000000000/analyze", RoleOperator},
+		// 종료 보고서 조회·내려받기·프롬프트는 조회
+		{"GET", "/api/v1/exits", RoleViewer},
+		{"GET", "/api/v1/exits/x", RoleViewer},
+		{"GET", "/api/v1/exits/x/pack", RoleViewer},
+		{"GET", "/api/v1/exits/x/prompt", RoleViewer},
+		{"GET", "/api/v1/exits/x/analyze", RoleViewer},
 		// 관리
 		{"PUT", "/api/v1/flows/x", RoleAdmin},
 		{"DELETE", "/api/v1/flows/x", RoleAdmin},
@@ -51,5 +58,18 @@ func TestRequiredRole(t *testing.T) {
 		if got := requiredRole(c.method, c.path); got != c.want {
 			t.Errorf("requiredRole(%s %s) = %q, want %q", c.method, c.path, got, c.want)
 		}
+	}
+}
+
+// TestExitAnalyzeRole은 조회 계정이 종료 보고서 LLM 분석을 부르면 403, 운영 계정은 통과함을 본다(카드 T3).
+func TestExitAnalyzeRole(t *testing.T) {
+	e := newEnv(t, enabled(t))
+	view, op := e.login("view", "pw-view"), e.login("op", "pw-op")
+	expect(t, e.do(req{method: "POST", path: "/api/v1/exits/X1/analyze", cookie: view}), 403, "error", "forbidden", "need", RoleOperator)
+	if w := e.do(req{method: "POST", path: "/api/v1/exits/X1/analyze", cookie: op}); w.Code != 200 {
+		t.Errorf("운영 계정 analyze: %d %s", w.Code, w.Body)
+	}
+	if w := e.do(req{method: "GET", path: "/api/v1/exits/X1/prompt", cookie: view}); w.Code != 200 {
+		t.Errorf("조회 계정 prompt: %d %s", w.Code, w.Body)
 	}
 }

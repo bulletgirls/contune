@@ -42,6 +42,18 @@ export function flowColumns(flow) {
   };
 }
 
+// 스텝이 띄우는 서비스(starts, 06 §7)의 그 서버 인스턴스 상태(순수). services: /services의 목록(없거나 실패면 null).
+// up ●, down ■, 그 밖(감시 시간 밖·인스턴스 없음·응답 없음) ○
+export const SVC_MARK = { up: ['●', '실행 중'], down: ['■', '지금 없음'], '': ['○', '모름'] };
+export function svcMarks(step, services) {
+  return (step.starts || []).map((id) => {
+    const it = (services || []).find((x) => x && x.def && x.def.id === id);
+    const inst = it && (it.instances || []).find((i) => i.host === step.host);
+    const st = inst && (inst.state === 'up' || inst.state === 'down') ? inst.state : '';
+    return { id, state: st };
+  });
+}
+
 // 노드 표시값(순수)
 export function nodeInfo(flow, last, step, now) {
   const st = last && last.steps ? last.steps[step.id] : null;
@@ -113,6 +125,21 @@ export function renderFlowGraph(host, flow, last, opts = {}) {
     if (opts.selected === s.id) cls.push('sel');
     const tags = [...info.tags];
     if (info.blocked) tags.push('선행 실패');
+    // 노드 폭이 고정이라 칩은 2개까지(내려간 것 먼저), 나머지는 +n(말풍선에 전부)
+    const RANK = { down: 0, unk: 1, up: 2 };
+    const marks = svcMarks(s, opts.services).sort((a, b) => (RANK[a.state || 'unk'] ?? 1) - (RANK[b.state || 'unk'] ?? 1));
+    const shown = marks.length > 2 ? marks.slice(0, 2) : marks;
+    const rest = marks.slice(shown.length);
+    const svcs = shown.map((m) => {
+      const [mk, txt] = SVC_MARK[m.state];
+      const kids = [el('i', { text: mk }), m.id];
+      const title = `서비스 ${m.id} · ${txt}`;
+      return preview ? el('span', { class: 'fg-svc ' + (m.state || 'unk'), title }, ...kids)
+        : el('a', { class: 'fg-svc ' + (m.state || 'unk'), title, href: `#svc/${encodeURIComponent(m.id)}?host=${encodeURIComponent(s.host)}`, onclick: (e) => e.stopPropagation() }, ...kids);
+    });
+    if (rest.length) {
+      svcs.push(el('span', { class: 'fg-svc more', text: `+${rest.length}`, title: rest.map((m) => `서비스 ${m.id} · ${SVC_MARK[m.state][1]}`).join('\n') }));
+    }
     const node = el('div', {
       class: cls.join(' '), style: `left:${p.x}px;top:${p.y}px;width:${NODE_W}px;height:${NODE_H}px`,
       'data-step': s.id, tabindex: preview ? false : '0',
@@ -120,7 +147,7 @@ export function renderFlowGraph(host, flow, last, opts = {}) {
       el('span', { class: 'fg-bar' }),
       el('div', { class: 'fg-l1' }, el('code', { text: s.id, title: s.id }), preview || !info.status ? null : el('span', { class: 'fg-st', text: statusText(info.status) })),
       el('div', { class: 'fg-l2' }, el('span', { class: 'fg-hostn', text: info.host }), preview ? null : el('span', { class: 'fg-el', text: info.elapsed })),
-      tags.length ? el('div', { class: 'fg-tags' }, tags.map((t) => el('span', { class: 'fg-tag', text: t }))) : null);
+      tags.length || svcs.length ? el('div', { class: 'fg-tags' }, svcs, tags.map((t) => el('span', { class: 'fg-tag', text: t }))) : null);
     if (!preview && opts.onNode) {
       node.addEventListener('click', () => opts.onNode(s.id, info));
       node.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); opts.onNode(s.id, info); } });

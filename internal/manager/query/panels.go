@@ -82,6 +82,9 @@ func validatePanel(p model.Panel) error {
 	if p.ID == "" || p.Title == "" || p.Group == "" || len(p.Tiles) == 0 {
 		return fmt.Errorf("id, title, group, tiles는 필수입니다")
 	}
+	if p.Service != "" && !model.ServiceIDOK(p.Service) {
+		return fmt.Errorf("service %q: 서비스 ID는 소문자·숫자로 시작하고 소문자·숫자·_.-만 64자까지", p.Service)
+	}
 	for _, t := range p.Tiles {
 		if t.Title == "" || t.Metric == "" || !validAgg(t.Agg) {
 			return fmt.Errorf("타일 %q: title, metric이 필요하고 agg는 sum|max|avg|min이어야 합니다", t.Title)
@@ -126,7 +129,8 @@ type TileState struct {
 	Off        bool   // 감시 시간 밖
 	Host       string // 결정한 서버: max·min은 그 값을 보낸 서버, stale은 가장 오래 끊긴 서버, sum·avg는 ""
 	StaleSince int64  // stale일 때 그 서버의 기준 시각(ms), 아니면 0
-	ExecID     string
+	ExecID     string // 고른 값의 주인이 실행이면 그 ID(서비스 주인이면 "")
+	Service    string // 고른 값의 주인이 서비스 인스턴스면 그 서비스 ID(Host는 그 서버, 06·카드 P-D)
 	TS         int64
 }
 
@@ -227,6 +231,20 @@ func (b *PanelBook) Reload(now time.Time) (n int, errs []PanelError, err error) 
 	return len(ps), errs, nil
 }
 
+// Panels는 읽은 패널 정의다(정의 순서, 복사본). nil Book이면 nil.
+func (b *PanelBook) Panels() []model.Panel {
+	if b == nil {
+		return nil
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]model.Panel, 0, len(b.panels))
+	for _, bp := range b.panels {
+		out = append(out, bp.p)
+	}
+	return out
+}
+
 // Errors는 읽지 못한 파일이다(늘 배열).
 func (b *PanelBook) Errors() []PanelError {
 	b.mu.Lock()
@@ -255,17 +273,59 @@ func (b *PanelBook) Eval(now time.Time, hosts []model.Host, lv *live.Cache) []Pa
 			if lv != nil && len(ids) > 0 {
 				all = lv.Find(ids, t.Metric)
 			}
+			all = serviceSamples(bp.p.Service, t.Metric, all)
 			var last map[string]int64
 			if r := bp.rules[i]; r.stale > 0 {
 				last = b.remember(tileKey{bp.p.ID, i}, in, all)
 			}
 			ts := judgeTile(t, bp.rules[i], local, all, last)
 			ts.Panel = bp.p.ID
+			ownerOf(&ts)
 			ps.Tiles = append(ps.Tiles, ts)
 		}
 		out = append(out, ps)
 	}
 	return out
+}
+
+// serviceOwned는 패널 service: 가 있을 때 주인으로 거르는 지표 앞부분이다(host.*·agent.*는 서버 주인이라 거르지 않음).
+var serviceOwned = []string{"biz.", "log.", "svc.", "job."}
+
+// serviceSamples는 패널이 서비스를 가리키면(svc) 거르는 지표의 값 중 주인이 그 서비스 인스턴스인 것만 남긴다.
+func serviceSamples(svc, metric string, all []model.Sample) []model.Sample {
+	if svc == "" {
+		return all
+	}
+	owned := false
+	for _, p := range serviceOwned {
+		if strings.HasPrefix(metric, p) {
+			owned = true
+			break
+		}
+	}
+	if !owned {
+		return all
+	}
+	out := all[:0:0]
+	for _, s := range all {
+		if id, _, ok := model.ParseServiceOwner(s.ExecID); ok && id == svc {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// ownerOf는 고른 값의 주인이 서비스 인스턴스면 Service·Host를 채우고 ExecID를 비운다(실행 주인이면 그대로).
+// 값 끊김(stale)이면 Host는 끊긴 서버 그대로 둔다.
+func ownerOf(ts *TileState) {
+	svc, host, ok := model.ParseServiceOwner(ts.ExecID)
+	if !ok {
+		return
+	}
+	ts.Service, ts.ExecID = svc, ""
+	if ts.Reason != "stale" {
+		ts.Host = host
+	}
 }
 
 // remember는 타일의 서버별 마지막 값 시각을 all로 갱신하고 그룹(in)에서 빠진 서버를 잊는다.
@@ -386,6 +446,7 @@ type tileOut struct {
 	Host       string   `json:"host"`
 	StaleSince int64    `json:"stale_since"`
 	ExecID     string   `json:"exec_id"`
+	Service    string   `json:"service"` // 고른 값의 주인이 서비스면 그 ID(그때 host는 그 서버, exec_id는 "")
 	TS         int64    `json:"ts"`
 }
 
@@ -393,6 +454,7 @@ type panelOut struct {
 	ID        string        `json:"id"`
 	Title     string        `json:"title"`
 	Group     string        `json:"group"`
+	Service   string        `json:"service,omitempty"` // 패널 service:(이 서비스 인스턴스가 주인인 값만 봄)
 	Tiles     []tileOut     `json:"tiles"`
 	Charts    []model.Chart `json:"charts"`
 	LogLevels []string      `json:"log_levels"`
@@ -409,7 +471,7 @@ func handlePanels(w http.ResponseWriter, r *http.Request, d Deps) {
 	out := make([]panelOut, 0, len(states))
 	for _, ps := range states {
 		p := ps.Panel
-		po := panelOut{ID: p.ID, Title: p.Title, Group: p.Group, Charts: p.Charts, LogLevels: p.LogLevels, Tiles: make([]tileOut, 0, len(p.Tiles))}
+		po := panelOut{ID: p.ID, Title: p.Title, Group: p.Group, Service: p.Service, Charts: p.Charts, LogLevels: p.LogLevels, Tiles: make([]tileOut, 0, len(p.Tiles))}
 		if po.Charts == nil {
 			po.Charts = []model.Chart{}
 		}
@@ -419,7 +481,7 @@ func handlePanels(w http.ResponseWriter, r *http.Request, d Deps) {
 		for i, t := range p.Tiles {
 			s := ps.Tiles[i]
 			po.Tiles = append(po.Tiles, tileOut{Tile: t, Value: s.Value, State: s.State, Reason: s.Reason, Off: s.Off,
-				Host: s.Host, StaleSince: s.StaleSince, ExecID: s.ExecID, TS: s.TS})
+				Host: s.Host, StaleSince: s.StaleSince, ExecID: s.ExecID, Service: s.Service, TS: s.TS})
 		}
 		out = append(out, po)
 	}

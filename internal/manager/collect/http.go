@@ -64,7 +64,7 @@ func (c *Collect) handleHost(w http.ResponseWriter, r *http.Request) {
 	c.mu.Lock()
 	group := c.groupOfLocked(host, live)
 	eff := merge(c.sets, host, group)
-	want := revOf(eff)
+	_, want := c.agentRev(host, group, eff)
 	st := c.statusLocked(host)
 	state := hostState(want, st, c.polls[host].rev)
 	c.mu.Unlock()

@@ -31,6 +31,11 @@ func (r *Remote) check(logs []model.LogSource) ([]logtail.SourceConfig, []model.
 			}
 		}
 	}
+	for i, s := range logs { // service는 서비스 ID 문법
+		if s.Service != "" && !model.ServiceIDOK(s.Service) {
+			reasons[i] = append(reasons[i], fmt.Sprintf("service %q: 소문자·숫자로 시작하고 소문자·숫자·_.-만 64자까지", s.Service))
+		}
+	}
 	local := map[string]bool{}
 	localMetric := map[string]string{} // 지표 이름 → 그 지표를 내는 로컬 출처 이름
 	for _, l := range r.o.Local {
@@ -69,7 +74,7 @@ func (r *Remote) check(logs []model.LogSource) ([]logtail.SourceConfig, []model.
 		for _, m := range s.Match {
 			rules = append(rules, logtail.MatchRule{Re: m.Re, Level: m.Level})
 		}
-		srcs = append(srcs, logtail.SourceConfig{Name: s.Name, Path: s.Path, Match: rules, Metrics: s.Metrics, Remote: true})
+		srcs = append(srcs, logtail.SourceConfig{Name: s.Name, Path: s.Path, Match: rules, Metrics: s.Metrics, Remote: true, Service: s.Service})
 	}
 	return srcs, statuses
 }

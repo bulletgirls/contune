@@ -51,6 +51,8 @@ static int hist_n;
 static volatile sig_atomic_t stop_flag;
 static volatile uint64_t sink;
 static int64_t cur_sec;
+static int fault_armed;        /* 접수율 파일에 crash(또는 음수)가 있으면 1: book_insert의 결함 경로를 연다(시연 T6) */
+static quote_t **cold_head;    /* 호가 줄 머리 캐시. 시연 결함 경로만 읽고, 채워 준 적이 없어 NULL이다(calloc이라 컴파일러가 모른다) */
 
 static int64_t now_ns(void) {
     struct timespec ts;
@@ -102,6 +104,11 @@ static NOINL int book_insert(const order_t *o) {
     int s = o->side, n = book_n[s];
     if (n >= BOOK_CAP) return 0;
     quote_t *b = book[s];
+    /* 시연 결함: 스위치가 켜지면 머리 캐시(NULL)를 따라 간격을 확인하려다 NULL 역참조 */
+    if (__builtin_expect(fault_armed, 0)) {
+        quote_t *head = cold_head[s];
+        if (head[1].price == o->price) return 0;   /* 결함 주소 0x8 */
+    }
     /* 매수: 높은 가격이 최우선(끝), 매도: 낮은 가격이 최우선(끝) */
     int key = s == 0 ? o->price : -o->price;
     int i = n, steps = 0;
@@ -154,7 +161,12 @@ static int read_rate(const char *path, int cur) {
     FILE *f = fopen(path, "r");
     if (!f) return DEFAULT_RATE;
     int v = DEFAULT_RATE;
-    if (fscanf(f, "%d", &v) != 1 || v < 0) v = DEFAULT_RATE;
+    char w[16] = "";
+    if (fscanf(f, "%15s", w) == 1) {
+        if (!strcmp(w, "crash")) fault_armed = 1;          /* 접수율은 평시 값 그대로, 다음 주문에서 죽는다 */
+        else if (sscanf(w, "%d", &v) != 1) v = DEFAULT_RATE;
+        else if (v < 0) { fault_armed = 1; v = DEFAULT_RATE; }
+    }
     fclose(f);
     return v;
 }
@@ -200,6 +212,8 @@ int main(int argc, char **argv) {
     queue_buf = malloc(sizeof(order_t) * QUEUE_CAP);
     book[0] = malloc(sizeof(quote_t) * BOOK_CAP);
     book[1] = malloc(sizeof(quote_t) * BOOK_CAP);
+    cold_head = calloc(2, sizeof *cold_head);
+    if (!cold_head) { perror("calloc"); return 1; }
     if (!queue_buf || !book[0] || !book[1]) { perror("malloc"); return 1; }
 
     char host[64] = "127.0.0.1"; int port = 9101;

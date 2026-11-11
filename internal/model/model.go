@@ -176,7 +176,10 @@ type Step struct {
 	Profile     bool          `json:"profile" yaml:"profile,omitempty"`
 	Gate        []GateCond    `json:"gate" yaml:"gate,omitempty"`
 	GateMaxWait time.Duration `json:"gate_max_wait" yaml:"gate_max_wait,omitempty"`
-	Level       int           `json:"level" yaml:"-"` // 로더가 계산
+	// Starts는 이 스텝이 띄우는 서비스 ID 선언이다(06, 카드 P). 화면이 실행 전에도 보이고,
+	// 스텝이 성공했는데 1분 안에 그 서버에 인스턴스가 안 보이면 경고한다.
+	Starts []string `json:"starts,omitempty" yaml:"starts,omitempty"`
+	Level  int      `json:"level" yaml:"-"` // 로더가 계산
 }
 
 // Retry는 재시도 정책이다. Count 2 = 최대 3번 실행.
@@ -212,6 +215,9 @@ type Panel struct {
 	Tiles     []Tile   `json:"tiles" yaml:"tiles"`
 	Charts    []Chart  `json:"charts" yaml:"charts,omitempty"`
 	LogLevels []string `json:"log_levels" yaml:"log_levels,omitempty"`
+	// Service가 있으면 타일·차트는 그 서비스 인스턴스가 주인인 biz.*·log.*·svc.*·job.* 값만 보고,
+	// 타일을 누르면 서비스 타임머신(#svc/<id>?host=)으로 간다(06, 카드 P). host.*·agent.*는 거르지 않는다.
+	Service string `json:"service,omitempty" yaml:"service,omitempty"`
 }
 
 // Tile은 패널 타일이다. Agg: sum | max | avg | min(05 §18, 그룹 서버 중 가장 낮은 값). KPI면 관제 화면에도 올림.

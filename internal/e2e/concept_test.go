@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +26,7 @@ import (
 	"eum/internal/agent/logtail"
 	"eum/internal/manager"
 	"eum/internal/manager/editor"
+	"eum/internal/model"
 	"eum/internal/sqlcli"
 )
 
@@ -249,7 +251,7 @@ func seriesValues(c cli, name, execID string) []float64 {
 			Points [][]any `json:"points"`
 		} `json:"series"`
 	}
-	c.get("/series?host="+conceptHost+"&name="+name+"&exec_id="+execID, &out)
+	c.get("/series?host="+conceptHost+"&name="+name+"&exec_id="+url.QueryEscape(execID), &out)
 	var vs []float64
 	for _, s := range out.Series {
 		if s.ExecID != execID {
@@ -456,33 +458,49 @@ func TestConcept(t *testing.T) {
 		})
 	})
 
-	// --- 5. 연결: 스텝이 끝난 뒤에도 같은 exec_id로 서비스 자원 ---
+	// --- 5. 연결: 실행이 기동한 프로세스 → 스텝이 끝난 뒤 자동 서비스(06 §4 규칙 3) ---
+	// 스텝 svc는 바쁜 프로세스를 setsid로 띄우고 바로 끝난다. 그 프로세스는 처음엔 실행 주인(job.*)이고,
+	// 스텝이 끝나고 10초 뒤 실행 파일 이름의 자동 서비스(svc.*, 주인 키 svc:<서비스>@e2e-01)로 옮겨 간다.
+	var svcOwner string
 	step("5_연결_자원", func(t *testing.T, c cli) {
-		waitFor(t, 15*time.Second, "job.procs ≥ 1, job.cpu.pct 최대 ≥ 50, /procs에 svc", func() (bool, string) {
-			procs := seriesValues(c, "job.procs", svcID)
-			cpu := seriesValues(c, "job.cpu.pct", svcID)
-			latest, peak := 0.0, 0.0
-			if len(procs) > 0 {
-				latest = procs[len(procs)-1]
+		waitFor(t, 30*time.Second, "job.procs ≥ 1, 기동한 프로세스가 자동 서비스로, svc.cpu.pct 최대 ≥ 50, /services에 인스턴스 up", func() (bool, string) {
+			jobProcs := seriesValues(c, "job.procs", svcID)
+			hadJob := false
+			for _, v := range jobProcs {
+				hadJob = hadJob || v >= 1
 			}
-			for _, v := range cpu {
-				peak = max(peak, v)
+			var rd struct {
+				Procs []model.ProcInfo `json:"procs"`
 			}
-			var pr struct {
-				Procs []struct {
-					ExecID string `json:"exec_id"`
-					StepID string `json:"step_id"`
-				} `json:"procs"`
-			}
-			c.get("/hosts/"+conceptHost+"/procs", &pr)
-			row := false
-			for _, p := range pr.Procs {
-				if p.ExecID == svcID && p.StepID == "svc" {
-					row = true
+			c.get("/runs/"+svcID, &rd)
+			var svc model.ProcInfo
+			for _, p := range rd.Procs {
+				if p.ExecID == svcID && !p.Leader && p.Service != "" && p.EndedAt == 0 {
+					svc = p
 				}
 			}
-			return latest >= 1 && peak >= 50 && row,
-				fmt.Sprintf("procs 최신=%v(%d점) cpu 최대=%v(%d점) procs 줄=%v", latest, len(procs), peak, len(cpu), row)
+			if svc.Service == "" {
+				return false, fmt.Sprintf("job.procs %v, 기동한 프로세스 %d개 중 서비스로 옮긴 것 없음", hadJob, len(rd.Procs))
+			}
+			svcOwner = model.ServiceOwner(svc.Service, conceptHost)
+			peak := 0.0
+			for _, v := range seriesValues(c, "svc.cpu.pct", svcOwner) {
+				peak = max(peak, v)
+			}
+			var sv struct {
+				Services []model.ServiceItem `json:"services"`
+			}
+			c.get("/services", &sv)
+			up := false
+			for _, it := range sv.Services {
+				for _, in := range it.Instances {
+					if it.Def.ID == svc.Service && in.Host == conceptHost && in.State == "up" && in.ExecID == svcID {
+						up = it.Auto
+					}
+				}
+			}
+			return hadJob && svc.Auto && peak >= 50 && up,
+				fmt.Sprintf("job.procs %v, 서비스 %s(자동 %v) svc.cpu.pct 최대 %v, /services 인스턴스 up·기동 실행 %v", hadJob, svc.Service, svc.Auto, peak, up)
 		})
 	})
 
@@ -532,10 +550,16 @@ func TestConcept(t *testing.T) {
 					Frames string `json:"frames"`
 				} `json:"stacks"`
 			}
-			c.get("/profile?exec_id="+svcID, &pf)
-			for _, s := range pf.Stacks {
-				if strings.Contains(s.Frames, "busyLoopForE2E") {
-					return true, ""
+			// 스텝이 끝난 뒤의 표본은 자동 서비스 주인 키로 쌓인다(재기동을 넘어 한 서비스 안에서 비교)
+			for _, owner := range []string{svcOwner, svcID} {
+				if owner == "" {
+					continue
+				}
+				c.get("/profile?exec_id="+url.QueryEscape(owner), &pf)
+				for _, s := range pf.Stacks {
+					if strings.Contains(s.Frames, "busyLoopForE2E") {
+						return true, ""
+					}
 				}
 			}
 			return false, fmt.Sprintf("표본 %d, 스택 %d개", pf.Samples, len(pf.Stacks))

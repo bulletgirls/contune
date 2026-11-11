@@ -84,7 +84,10 @@ export function parseRoute(hash, boards = new Set()) {
     case 'edit': params = { flow: segs[1] || '' }; break;
     case 'biz': params = { panel: segs[1] || '' }; break;
     case 'runs': break;
+    case 'exits': break;
     case 'run': params = { id: segs[1] || '' }; break;
+    case 'svc': params = { id: segs[1] || '' }; break; // 서비스 타임머신 #svc/<id>?host=&from=&to= (06, 카드 P-F)
+    case 'svcs': break; // 서비스 목록
     case 'alerts': break;
     case 'risk': break;
     case 'audit': break;

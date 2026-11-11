@@ -75,6 +75,7 @@ func TestErrors(t *testing.T) {
 		{"bad-cron", "99 * * * *"},
 		{"bad-duration", "10분"},
 		{"bad-id", "Bad_ID"},
+		{"bad-starts", "Bad Svc"},
 		{"bad-dup-flow", "a/x.yaml"},
 		{"bad-dup-flow", "b/x.yaml"},
 	}
@@ -193,4 +194,15 @@ func TestRegistryWatch(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("1초 안에 Version이 오르지 않음")
+}
+
+func TestStartsRoundTrip(t *testing.T) {
+	f, err := Parse([]byte("id: x\nsteps:\n  - {id: a, host: h, command: [x], starts: [svr_a, quote]}\n"), "x.yaml", "")
+	if err != nil || len(f.Steps[0].Starts) != 2 || f.Steps[0].Starts[0] != "svr_a" {
+		t.Fatal(f.Steps, err)
+	}
+	b, err := Marshal(f)
+	if err != nil || !strings.Contains(string(b), "starts:") {
+		t.Fatal(string(b), err)
+	}
 }

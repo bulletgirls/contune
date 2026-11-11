@@ -168,3 +168,11 @@ export function table(opts) {
 export function info(text) {
   return el('span', { class: 'tip', tabindex: '0' }, 'ⓘ', el('span', { class: 'tipbox', text }));
 }
+
+// 주인 키(06, 카드 P): 서비스 인스턴스의 지표·프로파일은 exec_id 자리에 "svc:<서비스>@<서버>"로 저장된다(model.ServiceOwner).
+export function svcOwner(service, host) { return `svc:${service}@${host}`; }
+// "svc:<서비스>@<서버>" → {service, host}, 아니면 null. 실행 링크(#run/)를 만들기 전에 거른다.
+export function parseOwner(owner) {
+  const m = /^svc:(.+)@([^@]+)$/.exec(String(owner || ''));
+  return m ? { service: m[1], host: m[2] } : null;
+}

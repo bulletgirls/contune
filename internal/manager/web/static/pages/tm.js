@@ -5,10 +5,13 @@
 import { api, poll } from '../api.js';
 import { lineChart, fmtTime } from '../chart.js';
 import { renderFlame, compareLeaf, verdict } from '../flame.js';
-import { el, esc, badgeHTML, fmtDuration, fmtClock, fmtNum, info, shortExec, toast, DASH, LEVEL_TEXT } from '../ui.js';
+import { el, esc, badgeHTML, fmtDuration, fmtClock, fmtNum, numUnit, info, shortExec, toast, parseOwner, DASH, LEVEL_TEXT } from '../ui.js';
 import { TRIGGER_TEXT, hashOfBoard, hashOfFlow } from './batch.js';
 import { splitPrefix } from './biz.js';
 import { can } from '../auth.js';
+import { exitStrip, endText } from './exit.js';
+import { bandsFromPanel, pickPanel } from './panelbands.js';
+import { procChips } from './runs.js';
 
 const PAD_MIN = 30000, PAD_MAX = 5 * 60000;
 const FIXED = 30000;
@@ -21,11 +24,17 @@ export function padOf(run, now) {
   return Math.min(PAD_MAX, Math.max(PAD_MIN, dur));
 }
 // 보는 구간: 시작 - 여백 ~ 끝 + 여백. 실행 중(상주 프로세스 포함)이면 지금까지.
-export function viewRange(run, live, now) {
-  const pad = padOf(run, now);
-  const from = (run.started_at || run.scheduled_at || now) - pad;
-  const running = !run.ended_at || (live && live.procs > 0);
-  return { from, to: running ? now : run.ended_at + pad, running };
+// residentEnd: 스텝이 끝난 뒤 상주 프로세스가 끝난 마지막 시각(종료 보고서). 스텝 끝보다 늦으면 그때를 끝으로 본다.
+export function viewRange(run, live, now, residentEnd = 0) {
+  const r = run.ended_at && residentEnd > run.ended_at ? { ...run, ended_at: residentEnd } : run;
+  const pad = padOf(r, now);
+  const from = (r.started_at || r.scheduled_at || now) - pad;
+  const running = !r.ended_at || (live && live.procs > 0);
+  return { from, to: running ? now : r.ended_at + pad, running };
+}
+// lastExit은 종료 보고서 목록에서 마지막으로 끝난 시각이다(없으면 0).
+export function lastExit(exits) {
+  return (exits || []).reduce((m, e) => Math.max(m, e.ended_at || 0), 0);
 }
 // 시작·종료 표시선. 둘이 가까우면(구간의 4% 안) 이름표를 하나로 합친다.
 export function runMarks(run, view, withLabel) {
@@ -40,25 +49,22 @@ export function pointsOf(resp, name) {
   const s = ((resp && resp.series) || []).find((x) => x.name === name);
   return s ? s.points || [] : [];
 }
-// 업무 트랙은 실행이 낸 지표에 따라 고른다: 업무 프로세스마다 지표 이름 앞부분이 다르다.
-// 체결 서비스(matching_svc, market-open)는 biz.order.*, 시세 서비스(quote_svc, quote-open)는 biz.quote.*.
-// series: [이름표, 지표, 점선]. ref: 임계선을 가져올 패널 지표
-export const BIZ_BANDS = {
-  'biz.order.': [
-    { key: 'tps', title: '처리량', unit: 'TPS', series: [['주문 유입량', 'biz.order.in_tps', true], ['체결 처리량', 'biz.order.tps']] },
-    { key: 'queue', title: '대기 큐', unit: '건', ref: 'biz.order.queue', series: [['대기 큐', 'biz.order.queue']] },
-    { key: 'lat', title: '응답 시간', unit: 'ms', ref: 'biz.order.latency_p99_ms', series: [['평균', 'biz.order.latency_avg_ms'], ['p99', 'biz.order.latency_p99_ms']] },
-  ],
-  'biz.quote.': [
-    { key: 'tps', title: '시세 처리량', unit: '건/초', series: [['시세 수신량', 'biz.quote.recv_tps', true], ['시세 송출량', 'biz.quote.sent_tps']] },
-    { key: 'queue', title: '수신 대기', unit: '건', ref: 'biz.quote.backlog', series: [['수신 대기', 'biz.quote.backlog']] },
-    { key: 'lat', title: '시세 지연', unit: 'ms', ref: 'biz.quote.delay_p99_ms', series: [['평균', 'biz.quote.delay_avg_ms'], ['p99', 'biz.quote.delay_p99_ms']] },
-  ],
-};
-// 응답(biz.*)에서 점이 있는 업무 지표 묶음의 앞부분. 없으면 ''(업무 트랙을 숨긴다)
-export function bizFamily(resp) {
-  const live = ((resp && resp.series) || []).filter((s) => (s.points || []).length > 0).map((s) => s.name || '');
-  return Object.keys(BIZ_BANDS).find((p) => live.some((n) => n.startsWith(p))) || '';
+// 업무 트랙은 패널 YAML의 charts(06 §7, panelbands.js): 실행 응답에 점이 있는 biz.* 이름과 가장 많이 겹치는 패널.
+// 응답(biz.*)에서 점이 있는 지표 이름들. 없으면 업무 트랙을 숨긴다
+export function liveNames(resp) {
+  return ((resp && resp.series) || []).filter((s) => (s.points || []).length > 0).map((s) => s.name || '');
+}
+// 서비스로 옮겨 간 프로세스(주인이 서비스인 것, 리더 빼고) → 서비스별 [{service, host, comms}], 띄운 순서
+export function movedToService(procs) {
+  const by = new Map();
+  for (const p of [...(procs || [])].sort((a, b) => a.started_at - b.started_at || a.pid - b.pid)) {
+    const o = !p.leader && parseOwner(p.owner);
+    if (!o) continue;
+    const k = p.owner;
+    if (!by.has(k)) by.set(k, { ...o, comms: [] });
+    if (!by.get(k).comms.includes(p.comm)) by.get(k).comms.push(p.comm);
+  }
+  return [...by.values()];
 }
 // 고정 구간: A = 앞 30초, B = 마지막 30초
 export function fixedAB(view) {
@@ -107,13 +113,13 @@ export function peakOf(points, from, to) {
   return m;
 }
 
-// 트랙 정의: 업무 트랙(있으면, BIZ_BANDS) + 자원 트랙
+// 트랙 정의: 업무 트랙(있으면, 패널 charts) + 자원 트랙. 자원은 실행 주인 값만(job.*): 서비스로 옮겨 간 프로세스는 빠진다
 const RES_BANDS = [
-  { key: 'cpu', title: '프로세스 CPU 사용률', unit: '%', desc: '이 실행의 프로세스(자식 포함) CPU. 코어 여러 개를 쓰면 100%를 넘는다' },
+  { key: 'cpu', title: '프로세스 CPU 사용률', unit: '%', desc: '이 실행이 주인인 프로세스(자식 포함) CPU. 서비스로 옮겨 간 프로세스는 빠진다. 코어 여러 개를 쓰면 100%를 넘는다' },
   { key: 'host', title: '서버 CPU 사용률', unit: '%', max: 100 },
 ];
-export function bandsOf(family) {
-  return [...(BIZ_BANDS[family] || []), ...RES_BANDS];
+export function bandsOf(biz) {
+  return [...(biz || []), ...RES_BANDS];
 }
 
 // ---- 화면 ----
@@ -130,20 +136,31 @@ export async function render(host, params) {
   }
   let hostInfo = null;
   try { hostInfo = ((await api('/hosts')).hosts || []).find((h) => h.id === detail.run.host); } catch (e) { /* 그룹 없이 진행 */ }
-  let tiles = [];
-  try { tiles = ((await api('/panels')).panels || []).flatMap((p) => p.tiles || []); } catch (e) { /* 임계선 없이 */ }
+  let panels = [];
+  try { panels = (await api('/panels')).panels || []; } catch (e) { /* 업무 트랙·임계선 없이 */ }
+  let exits = [];
+  try { exits = (await api('/exits?exec_id=' + q(id))).exits || []; } catch (e) { /* 종료 보고 없이 */ }
+  // 서비스 이름표(/services의 def.title). 응답이 없으면 서비스 ID 그대로
+  const svcTitle = new Map();
+  if ((detail.procs || []).some((p) => p.service)) {
+    try { for (const it of (await api('/services')).services || []) if (it.def && it.def.id) svcTitle.set(it.def.id, it.def.title || it.def.id); } catch (e) { /* ID로 */ }
+  }
+  const titleOf = (sid) => svcTitle.get(sid) || sid;
 
-  const st = { run: detail.run, live: detail.live, view: null, sel: { a: null, b: null }, pending: null, userRange: false, biz: '', hl: null, tab: 'out' };
-  st.view = viewRange(st.run, st.live, Date.now());
+  const st = { run: detail.run, live: detail.live, view: null, sel: { a: null, b: null }, pending: null, userRange: false, biz: null, panel: null, hl: null, tab: 'out', residentEnd: lastExit(exits) };
+  st.view = viewRange(st.run, st.live, Date.now(), st.residentEnd);
 
   const head = el('div', { class: 'tm-head' });
   const kpis = el('div', { class: 'bt-kpis tm-kpis' });
   const toolbar = el('div', { class: 'tm-tools' });
+  const movedEl = el('div', { class: 'tm-moved', hidden: true });
   const tracks = el('div', { class: 'tm-tracks' });
+  const procCard = el('section', { class: 'tm-card tm-procs', hidden: true });
+  const chipsEl = el('span', { class: 'tm-pcs' }); // 머리의 기동한 프로세스 칩(실행 이력과 같은 칩)
   const metricCard = el('section', { class: 'tm-card' },
     el('div', { class: 'tm-ch' }, el('h3', { class: 'sec', text: '지표' }), info('실행 앞뒤를 실행 길이만큼(30초~5분) 함께 본다. 차트를 끌어 기준(A) 구간을, 한 번 더 끌어 비교(B) 구간을 고르면 아래 프로파일이 두 구간을 비교한다'),
       el('span', { class: 'grow' }), el('span', { class: 'tm-lg' }, el('i', { class: 'mk' }), '실행 시작 · 종료', el('i', { class: 'th' }), '경고 · 위험 기준')),
-    toolbar, tracks);
+    toolbar, movedEl, tracks);
   const vEl = el('div', { class: 'tm-verdict' });
   const flames = el('div', { class: 'flame-pair' });
   const cmpEl = el('div', { class: 'tm-cmp' });
@@ -153,7 +170,9 @@ export async function render(host, params) {
   const tabsEl = el('div', { class: 'tm-tabs', role: 'tablist' });
   const pane = el('div', { class: 'tm-pane' });
   const logCard = el('section', { class: 'tm-card tm-logcard' }, tabsEl, pane);
-  host.append(head, kpis, metricCard, profCard, logCard);
+  // 이 실행의 프로세스 종료 보고가 있으면 맨 위 띠(종료 보고서로 가는 링크)
+  const exitBar = exitStrip(exits) || el('div', { hidden: true });
+  host.append(exitBar, head, procCard, kpis, metricCard, profCard, logCard);
 
   function drawHead() {
     const r = st.run;
@@ -164,13 +183,46 @@ export async function render(host, params) {
     const crumbs = [];
     if (detail.board) crumbs.push(`<a href="${esc(hashOfBoard(detail.board))}">${esc(detail.board)}</a>`);
     if (r.flow_id) crumbs.push(`<a href="${esc(detail.board ? hashOfFlow(detail.board, r.flow_id) : '#runs?range=7d&flow=' + q(r.flow_id))}">${esc(r.flow_id)}</a>`);
-    const live = st.live && st.live.procs > 0 ? '<span class="tm-live">● 상주 프로세스 실행 중</span>' : '';
     head.innerHTML = `<div class="tm-crumb"><a href="#runs">실행 이력</a> › ${crumbs.join(' › ')}</div>
-      <div class="tm-title"><h2>${esc(r.step_id || r.exec_id)}</h2>${badgeHTML(r.forced ? 'FORCED' : r.status)}${live}<span class="grow"></span><span class="tm-dls">${links}</span></div>
+      <div class="tm-title"><h2>${esc(r.step_id || r.exec_id)}</h2>${badgeHTML(r.forced ? 'FORCED' : r.status)}<span class="grow"></span><span class="tm-dls">${links}</span></div>
       <div class="tm-meta"><span>실행 ID <code class="tm-id" title="눌러서 복사">${esc(r.exec_id)}</code></span>
       <span>실행 서버 <a href="#host/${esc(q(r.host))}/overview">${esc(r.host || DASH)}</a>${group ? ` <span class="dim">(${esc(group)})</span>` : ''}</span>
       <span>시도 <b>${esc(r.attempt ?? DASH)}</b></span><span>실행 유형 <b>${esc(TRIGGER_TEXT[r.trigger] || r.trigger || DASH)}</b></span></div>`;
     head.querySelector('.tm-id').addEventListener('click', () => { navigator.clipboard?.writeText(r.exec_id).then(() => toast('실행 ID 복사함'), () => {}); });
+    head.querySelector('.tm-title .grow').before(chipsEl);
+  }
+
+  // 기동한 프로세스(06 §7.1): comm · pid · 상태 · CPU · RSS · 서비스 →(끝났고 보고서가 있으면 종료 보고서 →)
+  function drawProcs() {
+    const ps = (detail.procs || []).filter((p) => !p.leader).sort((a, b) => a.started_at - b.started_at || a.pid - b.pid);
+    procCard.hidden = !ps.length;
+    chipsEl.replaceChildren(...[procChips(detail.procs, st.run.host)].filter(Boolean));
+    const ex = new Map(exits.map((x) => [x.id, x]));
+    const rows = ps.map((p) => {
+      const x = p.exit_id ? ex.get(p.exit_id) : null;
+      const state = !p.ended_at ? el('span', { class: 'tp-up', text: '실행 중' })
+        : el('span', { class: p.exit_id ? 'tp-down' : 'tp-end' }, p.exit_id ? '■ ' : '', x ? endText(x) : '종료', ' ', el('span', { class: 'num', text: fmtClock(p.ended_at) }));
+      const num = (html) => { const s = el('span', { class: 'tp-n' }); s.innerHTML = p.ended_at ? '' : html; return s; };
+      const svcHref = p.service ? `#svc/${q(p.service)}?host=${q(p.host || st.run.host)}` + (p.ended_at ? `&at=${Math.round(p.ended_at)}` : '') : '';
+      const go = p.exit_id ? el('a', { href: '#exit/' + q(p.exit_id), text: '종료 보고서 →' })
+        : p.service ? el('a', { href: svcHref, text: `서비스 ${titleOf(p.service)} →` }) : el('span');
+      return el('div', { class: 'tp-row' },
+        el('b', { class: 'tp-c', text: p.comm || DASH }), el('span', { class: 'tp-pid num', text: `pid ${p.pid ?? DASH}` }), state,
+        num(`<span class="tl">CPU</span> ${numUnit(p.cpu, '%')}`), num(`<span class="tl">RSS</span> ${numUnit(p.rss_mb, 'MB', 0)}`), go);
+    });
+    procCard.replaceChildren(el('div', { class: 'tm-ch' }, el('h3', { class: 'sec', text: '기동한 프로세스' }), el('span', { class: 'tp-cnt num', text: `${fmtNum(ps.length, 0)}개` })),
+      el('div', { class: 'tp-list' }, rows));
+  }
+  // 서비스로 옮겨 간 프로세스: 실행 지표 트랙 위 한 줄
+  function drawMoved() {
+    const mv = movedToService(detail.procs);
+    movedEl.hidden = !mv.length;
+    if (!mv.length) return;
+    const href = (o) => `#svc/${q(o.service)}?host=${q(o.host)}`;
+    const names = [...new Set(mv.flatMap((o) => o.comms))].join('·');
+    movedEl.replaceChildren(...(mv.length === 1
+      ? [`${names}는 서비스 ${titleOf(mv[0].service)}로 옮겨 감 `, el('a', { href: href(mv[0]), text: '→ 서비스 타임머신' })]
+      : [`${names}는 서비스로 옮겨 감 → 서비스 타임머신 `, ...mv.flatMap((o, i) => [i ? ' · ' : '', el('a', { href: href(o), text: titleOf(o.service) })])]));
   }
 
   function kpi(label, value, sub, cls = '') {
@@ -211,19 +263,23 @@ export async function render(host, params) {
   async function fetchAll() {
     const { from, to } = st.view;
     const qs = `from=${Math.round(from)}&to=${Math.round(to)}`;
+    const extra = st.biz ? [...new Set(st.biz.flatMap((b) => b.series.map((x) => x[1])))].filter((n) => !n.startsWith('biz.')) : [];
     const [biz, cpu, hcpu] = await Promise.all([
-      api(`/series?exec_id=${q(id)}&name=biz.*&${qs}`),
+      api(`/series?exec_id=${q(id)}&name=${['biz.*', ...extra].map(q).join(',')}&${qs}`),
       api(`/series?exec_id=${q(id)}&name=job.cpu.pct&${qs}`),
       api(`/series?host=${q(st.run.host)}&name=host.cpu.pct&${qs}`),
     ]);
-    // 한 번 정한 업무 묶음은 끝까지 쓴다(구간을 옮기다 점이 잠깐 비어도 트랙이 사라지지 않게)
-    st.biz = st.biz || bizFamily(biz);
+    // 한 번 정한 업무 패널은 끝까지 쓴다(구간을 옮기다 점이 잠깐 비어도 트랙이 사라지지 않게)
+    if (!st.biz) {
+      st.panel = pickPanel(panels, liveNames(biz));
+      if (st.panel) st.biz = bandsFromPanel(st.panel);
+    }
     const p = (r, n) => pointsOf(r, n);
     const out = {
       cpu: [{ label: '프로세스', data: p(cpu, 'job.cpu.pct') }],
       host: [{ label: '서버', data: p(hcpu, 'host.cpu.pct') }],
     };
-    for (const b of BIZ_BANDS[st.biz] || []) out[b.key] = b.series.map(([label, name, dash]) => ({ label, data: p(biz, name), dash: !!dash }));
+    for (const b of st.biz || []) out[b.key] = b.series.map(([label, name, dash]) => ({ label, data: p(biz, name), dash: !!dash }));
     return out;
   }
 
@@ -270,7 +326,7 @@ export async function render(host, params) {
       const row = el('div', { class: 'tm-track' + (last ? ' last' : '') }, trackLabel(b, data), box);
       tracks.append(row);
       const c = lineChart(box, { title: b.title, unit: b.unit, series: data[b.key], sync: 'tm', height: last ? 112 : 86, head: false, xAxis: last, max: b.max,
-        range: { from: st.view.from, to: st.view.to }, onSelect, shades: shades(), marks: marks(i === 0), thresholds: b.ref ? thresholdsFor(tiles, b.ref) : [] });
+        range: { from: st.view.from, to: st.view.to }, onSelect, shades: shades(), marks: marks(i === 0), thresholds: b.ref ? thresholdsFor(st.panel ? st.panel.tiles : [], b.ref) : [] });
       try { data[b.key].forEach((s, k) => { if (s.dash) c.plot.series[k + 1].dash = [5, 4]; }); } catch (e) { /* 점선 실패는 그대로 */ }
       c.key = b.key;
       c.row = row;
@@ -309,9 +365,12 @@ export async function render(host, params) {
     if (!ranges.length) {
       // 서비스를 띄우고 바로 끝나는 스텝(start-matching·start-quote)은 스텝 길이가 0초라
       // 종료 시각에서 자르면 늘 빈 그래프다. 상주 프로세스가 살아 있으면 지금까지 본다.
+      // 상주 프로세스가 스텝 뒤에 끝났으면(종료 보고서) 그 시각까지 본다.
       const resident = st.live && st.live.procs > 0;
-      const r = { from: Math.max(st.view.from, st.run.started_at || st.view.from), to: resident ? st.view.to : Math.min(st.view.to, st.run.ended_at || st.view.to) };
-      ranges.push(['', resident ? '실행 전체(상주 프로세스 포함)' : '실행 전체', r, 'fa']);
+      const lived = !resident && st.run.ended_at && st.residentEnd > st.run.ended_at;
+      const end = lived ? st.residentEnd : (st.run.ended_at || st.view.to);
+      const r = { from: Math.max(st.view.from, st.run.started_at || st.view.from), to: resident ? st.view.to : Math.min(st.view.to, end) };
+      ranges.push(['', resident || lived ? '실행 전체(상주 프로세스 포함)' : '실행 전체', r, 'fa']);
     }
     flames.replaceChildren(...ranges.map(([, , , cls]) => el('div', { class: cls })));
     flames.classList.toggle('single', ranges.length === 1);
@@ -373,7 +432,7 @@ export async function render(host, params) {
     drawTabs();
   }
 
-  drawHead(); drawKpis(); drawTools(); drawTabs();
+  drawHead(); drawProcs(); drawKpis(); drawTools(); drawMoved(); drawTabs();
   buildCharts(await fetchAll());
   await drawFlames();
   loadAppLogs();
@@ -381,8 +440,12 @@ export async function render(host, params) {
   // 실행 중이면 2초마다 오른쪽으로 민다. 구간을 고른 뒤에는 밀지 않는다.
   const stop = poll(async () => {
     if (st.userRange) return;
-    try { const d = await api('/runs/' + q(id)); st.run = d.run; st.live = d.live; detail.events = d.events || detail.events; } catch (e) { return; }
-    const v = viewRange(st.run, st.live, Date.now());
+    try { const d = await api('/runs/' + q(id)); st.run = d.run; st.live = d.live; detail.events = d.events || detail.events; detail.procs = d.procs || detail.procs; drawProcs(); drawMoved(); } catch (e) { return; }
+    let v = viewRange(st.run, st.live, Date.now(), st.residentEnd);
+    if (!v.running && st.view.running) { // 상주 프로세스가 방금 끝났으면 종료 보고서의 시각까지 본다
+      try { st.residentEnd = lastExit((await api('/exits?exec_id=' + q(id))).exits); } catch (e) { /* 그대로 */ }
+      v = viewRange(st.run, st.live, Date.now(), st.residentEnd);
+    }
     if (!v.running) { if (st.view.running) { st.view = v; updateCharts(await fetchAll()); drawHead(); drawKpis(); } return; }
     st.view = v;
     updateCharts(await fetchAll());

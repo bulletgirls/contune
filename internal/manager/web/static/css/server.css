@@ -54,3 +54,30 @@
 @media (max-width:1100px) { .srv .meter .mt { width:44px; } }
 /* 목록의 정상 배지는 테두리 없는 회색: 이상(위험·경고·무응답) 배지만 눈에 띄게. 자리는 같게 둔다 */
 .srv-list .badge.ok { color:var(--t3); border-color:transparent; }
+/* 프로세스 탭: 종료된 프로세스(종료 보고서) */
+.srv-sech { display:flex; align-items:baseline; gap:12px; }
+.srv-sech h3.sec { margin-right:auto; }
+.srv-more { font-size:12px; color:var(--accent); text-decoration:none; } .srv-more:hover { text-decoration:underline; }
+.srv-why { display:inline-block; max-width:520px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom; }
+
+/* 프로세스 탭(06 §7): 주인 머리 줄 + 프로세스 줄(systemd status의 CGroup 나무처럼) */
+.srv-ptbl { font-size:13px; }
+.srv-ptbl .dim { color:var(--t3); font-size:12px; }
+.srv-ptbl tr.srv-grp td { background:var(--bg); border-bottom-color:color-mix(in srgb, var(--line) 60%, transparent); }
+.srv-ptbl tr.srv-grp.sel td { background:color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.srv-ptbl tr.srv-grp.sel td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
+.srv-gn { display:inline-flex; align-items:baseline; gap:8px; }
+.srv-gk { font-size:11px; color:var(--t3); border:1px solid var(--line); border-radius:4px; padding:0 5px; background:var(--surface); }
+.srv-ptbl tr.srv-prow td { border-bottom-color:color-mix(in srgb, var(--line) 50%, transparent); }
+.srv-tree { display:inline-block; width:14px; margin:0 6px 0 4px; color:var(--t3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+.srv-ptbl td.cut { max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.srv-svcw { display:inline-flex; align-items:baseline; gap:4px; }
+.srv-svc { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; color:var(--accent); text-decoration:none; border:1px solid color-mix(in srgb, var(--accent) 40%, var(--line)); border-radius:9px; padding:0 7px; }
+.srv-svc:hover { text-decoration:underline; }
+.srv-auto { font-size:11px; color:var(--t3); }
+.srv-run { color:var(--t1); text-decoration:none; } .srv-run:hover { color:var(--accent); text-decoration:underline; }
+.srv-reg { font-size:12px; padding:1px 8px; }
+.srv-reg-m { font-size:12px; color:var(--t2); margin:6px 0; }
+.srv-reg-h { display:flex; align-items:center; gap:8px; margin-top:10px; }
+.srv-reg-h code { font-size:12px; }
+.srv-yaml { margin:6px 0; padding:8px 10px; background:var(--bg); border:1px solid var(--line); border-radius:4px; font-size:12px; line-height:1.5; white-space:pre; overflow:auto; }

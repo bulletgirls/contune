@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -485,4 +486,102 @@ func RunState(t *testing.T, open func(t *testing.T) store.StateStore) {
 			t.Errorf("stats %+v", st)
 		}
 	})
+
+	sub("Exits", func(t *testing.T, s store.StateStore) {
+		code3 := 3
+		ok := false
+		full := model.ExitReport{ID: "X2", Host: "h1", ExecID: "e1", PID: 4037, PPID: 1, Comm: "matching_svc",
+			Exe: "/opt/bin/matching_svc", BuildID: "abcd", Cmdline: "matching_svc --port 9", Cwd: "/opt",
+			StartedAt: 100, EndedAt: 2000, Resident: true, How: model.HowSignal, HowSource: model.HowFromWait,
+			Signal: 11, SignalName: "SIGSEGV", CoreDumped: true, MaxRSSMB: 12.5, LastRSSMB: 12, LastCPUPct: 3.5, Threads: 2,
+			Stderr: "/var/log/m.err", OutputTail: []string{"a", "b"}, Kernel: []string{"segfault at 8"}, Notes: []string{"n"},
+			Core: &model.CoreSummary{Path: "/tmp/core.1", SizeBytes: 4096, Analyzer: "gdb", Signal: 11, SignalName: "SIGSEGV",
+				Code: 1, CodeName: "SEGV_MAPERR", FaultAddr: "0x8", Threads: 1, BuildIDOK: &ok,
+				Frames: []model.Frame{{Func: "book_insert", Offset: "+0x17", Module: "matching_svc", Addr: "0x55", Guess: true}}}}
+		add := func(r model.ExitReport) {
+			t.Helper()
+			if err := s.AddExit(ctx, r); err != nil {
+				t.Fatal(err)
+			}
+		}
+		add(full)
+		add(model.ExitReport{ID: "X1", Host: "h1", ExecID: "e1", PID: 5, Comm: "sh", EndedAt: 1000, How: model.HowExit, HowSource: model.HowFromWait, ExitCode: &code3})
+		add(model.ExitReport{ID: "X3", Host: "h2", ExecID: "e2", PID: 6, Comm: "matching_svc", EndedAt: 2000, How: model.HowUnknown, HowSource: model.HowFromNone})
+		add(model.ExitReport{ID: "X4", Host: "h1", ExecID: "e3", PID: 7, Comm: "matching_svc", EndedAt: 3000, How: model.HowSignal, Signal: 9})
+		if err := s.AddExit(ctx, model.ExitReport{ID: "X1", Host: "h1", ExecID: "e1"}); err == nil {
+			t.Error("같은 id는 에러여야 함")
+		}
+		if err := s.AddExit(ctx, model.ExitReport{Host: "h1", ExecID: "e1"}); err == nil {
+			t.Error("빈 id는 에러여야 함")
+		}
+
+		got, err := s.GetExit(ctx, "X2")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.LLM != nil || !reflect.DeepEqual(got.Report, full) {
+			t.Fatalf("GetExit\n got %+v\nwant %+v", got.Report, full)
+		}
+		if g, _ := s.GetExit(ctx, "X1"); g.Report.ExitCode == nil || *g.Report.ExitCode != 3 {
+			t.Fatalf("exit_code %+v", g.Report)
+		}
+		if _, err := s.GetExit(ctx, "nope"); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("없는 id: %v", err)
+		}
+
+		ids := func(f model.ExitFilter) string {
+			t.Helper()
+			l, err := s.ListExits(ctx, f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out []string
+			for _, r := range l {
+				out = append(out, r.Report.ID)
+			}
+			return strings.Join(out, ",")
+		}
+		for name, c := range map[string]struct {
+			f    model.ExitFilter
+			want string
+		}{
+			"all":   {model.ExitFilter{}, "X4,X3,X2,X1"},
+			"exec":  {model.ExitFilter{ExecID: "e1"}, "X2,X1"},
+			"host":  {model.ExitFilter{Host: "h2"}, "X3"},
+			"comm":  {model.ExitFilter{Comm: "matching_svc", Host: "h1"}, "X4,X2"},
+			"from":  {model.ExitFilter{From: 2000}, "X4,X3,X2"},
+			"to":    {model.ExitFilter{To: 2000}, "X1"},
+			"range": {model.ExitFilter{From: 1000, To: 3000}, "X3,X2,X1"},
+			"limit": {model.ExitFilter{Limit: 2}, "X4,X3"},
+			"none":  {model.ExitFilter{ExecID: "zz"}, ""},
+		} {
+			if got := ids(c.f); got != c.want {
+				t.Errorf("%s: got %q want %q", name, got, c.want)
+			}
+		}
+
+		d := model.ExitDiagnosis{Category: model.ExitCrashNull, Title: "NULL", Confidence: "high",
+			EvidenceIDs: []string{model.EvExit, model.EvCore}, By: "llm", Model: "fake", At: 5, Actor: "user:op"}
+		if err := s.SetExitLLM(ctx, "X2", d); err != nil {
+			t.Fatal(err)
+		}
+		d2 := d
+		d2.Title = "다시"
+		if err := s.SetExitLLM(ctx, "X2", d2); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.SetExitLLM(ctx, "nope", d); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("없는 id SetExitLLM: %v", err)
+		}
+		got, _ = s.GetExit(ctx, "X2")
+		if got.LLM == nil || got.LLM.Title != "다시" || got.LLM.Model != "fake" || got.LLM.Actor != "user:op" ||
+			strings.Join(got.LLM.EvidenceIDs, ",") != "exit,core" || got.Report.PID != 4037 {
+			t.Fatalf("LLM %+v", got.LLM)
+		}
+		l, _ := s.ListExits(ctx, model.ExitFilter{ExecID: "e1"})
+		if len(l) != 2 || l[0].LLM == nil || l[1].LLM != nil {
+			t.Fatalf("목록의 LLM %+v", l)
+		}
+	})
+	runProcs(t, open) // procs.go(카드 P-C)
 }

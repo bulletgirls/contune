@@ -34,6 +34,10 @@ type SourceConfig struct {
 	// Remote는 매니저 화면에서 받은 원격 출처다. 파일의 실제 경로(심볼릭 링크를 따라간 곳)가
 	// Options.ReadRoots 안일 때만 읽는다. 로컬 YAML로는 켤 수 없다(yaml:"-").
 	Remote bool `yaml:"-" json:"-"`
+
+	// Service가 있으면 이 출처의 줄·log.*·숫자 뽑기 지표의 주인은 그 서비스 인스턴스(model.ServiceOwner(Service, host))다(06, 카드 P-B).
+	// 비면 경로의 {exec_id}. ID 문법이 틀리면 만들 때 에러.
+	Service string `yaml:"service,omitempty" json:"service,omitempty"`
 }
 
 // MatchRule은 줄을 고르는 정규식과 수준이다.
@@ -72,6 +76,7 @@ type source struct {
 	capture *regexp.Regexp // 경로 전체에 대한 정규식
 	hasID   bool
 	remote  bool
+	owner   string // 서비스 주인 키. 비면 파일 경로의 exec_id
 	rules   []rule
 	metrics []*metricRule
 	files   map[string]*fileState // 따라가는 파일 경로 → 상태
@@ -220,6 +225,12 @@ func (t *Tailer) compile(sc SourceConfig) (*source, error) {
 	}
 	s := &source{name: sc.Name, path: sc.Path, glob: glob, capture: capture, hasID: hasID, remote: sc.Remote,
 		files: map[string]*fileState{}}
+	if sc.Service != "" {
+		if !model.ServiceIDOK(sc.Service) {
+			return nil, fmt.Errorf("logtail %s: service %q: 소문자·숫자로 시작하고 소문자·숫자·_.-만 64자까지", sc.Name, sc.Service)
+		}
+		s.owner = model.ServiceOwner(sc.Service, t.host)
+	}
 	for _, m := range sc.Match {
 		re, err := regexp.Compile(m.Re)
 		if err != nil {
@@ -414,7 +425,7 @@ func (t *Tailer) Collect(emit func(model.Sample), emitLog func(model.LogEvent)) 
 			for w.pos < len(w.paths) && left > 0 {
 				p := w.paths[w.pos]
 				if st := w.s.files[p]; st != nil {
-					ck := countKey{w.i, st.execID}
+					ck := countKey{w.i, ownerOf(w.s, st)}
 					s := w.s
 					var ms []*mstate // 이 파일의 exec_id 지표 상태(맞은 줄이 있을 때 만든다)
 					t.readFile(s, p, st, &left, &dropped, func(line string) {
@@ -422,7 +433,7 @@ func (t *Tailer) Collect(emit func(model.Sample), emitLog func(model.LogEvent)) 
 							if !r.re.MatchString(line) {
 								continue
 							}
-							emitLog(model.LogEvent{TS: nowMS, Host: t.host, Source: s.name, ExecID: st.execID, Level: r.level, Message: line})
+							emitLog(model.LogEvent{TS: nowMS, Host: t.host, Source: s.name, ExecID: ck.execID, Level: r.level, Message: line})
 							switch r.level {
 							case "error":
 								errs[ck]++
@@ -443,7 +454,7 @@ func (t *Tailer) Collect(emit func(model.Sample), emitLog func(model.LogEvent)) 
 								ms = make([]*mstate, len(s.metrics))
 							}
 							if ms[j] == nil {
-								ms[j] = m.state(st.execID, slot)
+								ms[j] = m.state(ck.execID, slot)
 							}
 							ms[j].acc = m.merge(ms[j].acc, v)
 						}
@@ -465,7 +476,7 @@ func (t *Tailer) Collect(emit func(model.Sample), emitLog func(model.LogEvent)) 
 	for i, s := range t.srcs {
 		for _, st := range s.files {
 			if !st.lastGrow.IsZero() && now.Sub(st.lastGrow) <= idleAfter {
-				active[countKey{i, st.execID}] = true
+				active[countKey{i, ownerOf(s, st)}] = true
 			}
 		}
 	}
@@ -623,4 +634,12 @@ func Clip(b []byte, max int) string {
 		b = b[:max]
 	}
 	return strings.TrimRight(string(b), " \t\r\n")
+}
+
+// ownerOf는 파일의 줄·지표의 주인 키다: 출처에 service가 있으면 서비스 주인, 아니면 경로의 exec_id.
+func ownerOf(s *source, st *fileState) string {
+	if s.owner != "" {
+		return s.owner
+	}
+	return st.execID
 }

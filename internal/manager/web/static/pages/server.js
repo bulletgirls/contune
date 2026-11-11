@@ -1,10 +1,11 @@
 // 서버 탭: #hosts 목록, #host/<id>/<tab> 상세. 서브 탭·차트·항목은 /catalog가 정한다.
 // 상세 모양: 머리(서버·상태) → 탭 카드(개요 + 그룹마다 대표 값·추이) → 시간 구간 → 차트 격자.
 import { api, poll } from '../api.js';
-import { el, fmtNum, numUnit, relTime, badge, table, info, shortExec, EMPTY, DASH, LEVEL_TEXT } from '../ui.js';
+import { el, esc, fmtNum, numUnit, relTime, fmtDuration, badge, table, info, shortExec, openDrawer, toast, svcOwner, parseOwner, EMPTY, DASH, LEVEL_TEXT } from '../ui.js';
 import { lineChart, unitScale } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
 import { hashWith } from '../tree.js';
+import { endBadge, CATEGORY_TEXT } from './exit.js';
 
 const STATE_RANK = { crit: 0, silent: 1, warn: 2, ok: 3 };
 const SYNC = 'srv';
@@ -318,54 +319,168 @@ async function drawCharts(container, charts, ctx, opt = {}) {
   return () => { stopPoll(); stop(); };
 }
 
-// 이음이 띄운 실행의 프로세스. 열 이름은 카탈로그의 job.* 항목과 같은 말을 쓴다.
-const PROC_COLS = [
-  { key: 'flow', label: '플로우 › 스텝', render: (p) => `${p.flow_id} › ${p.step_id}` },
-  { key: 'exec', label: '실행 번호', render: (p) => shortExec(p.exec_id) },
-  { key: 'cpu', label: 'CPU 사용률', num: true, html: true, render: (p) => numUnit(p.cpu, '%') },
-  { key: 'user', label: '사용자', num: true, html: true, render: (p) => numUnit(p.user, '%') },
-  { key: 'sys', label: '시스템', num: true, html: true, render: (p) => numUnit(p.sys, '%') },
-  { key: 'rss_mb', label: 'RSS', num: true, html: true, render: (p) => rateHTML(p.rss_mb, 'MB') },
-  { key: 'size_mb', label: '데이터', num: true, html: true, render: (p) => rateHTML(p.size_mb, 'MB') },
-  { key: 'vsz_mb', label: '가상 메모리', num: true, html: true, render: (p) => rateHTML(p.vsz_mb, 'MB') },
-  { key: 'chario_kbps', label: 'I/O', num: true, html: true, render: (p) => rateHTML(p.chario_kbps, 'KB/s') },
-  { key: 'threads', label: '스레드', num: true, render: (p) => fmtNum(p.threads, 0) },
-  { key: 'procs', label: '프로세스', num: true, render: (p) => fmtNum(p.procs, 0) },
-];
+// ---- 프로세스 탭(06 §7, 카드 P-E): 한 줄 = 프로세스(/hosts/{id}/procs processes) ----
+// 주인(서비스·실행)으로 묶은 머리 줄은 systemd status의 CGroup 나무처럼. 머리를 누르면 그 주인의 차트.
+
+// 주인별 묶음(순수): 서비스(이름순) → 실행(시작 내림차순) → 주인 없음. 묶음 안은 리더 먼저, 띄운 순서.
+export function groupProcs(list) {
+  const by = new Map();
+  for (const p of list || []) {
+    const o = parseOwner(p.owner);
+    const key = p.owner || p.exec_id || `pid:${p.pid}`;
+    if (!by.has(key)) {
+      by.set(key, {
+        key, kind: o ? 'svc' : p.exec_id ? 'run' : 'etc', service: o ? o.service : '', host: o ? o.host : p.host,
+        exec_id: o ? '' : p.exec_id || '', flow_id: p.flow_id || '', step_id: p.step_id || '', auto: !!p.auto, procs: [],
+      });
+    }
+    by.get(key).procs.push(p);
+  }
+  const gs = [...by.values()];
+  for (const g of gs) {
+    g.procs.sort((a, b) => (b.leader ? 1 : 0) - (a.leader ? 1 : 0) || a.started_at - b.started_at || a.pid - b.pid);
+    g.start = Math.min(...g.procs.map((p) => p.started_at || 0));
+  }
+  const rank = { svc: 0, run: 1, etc: 2 };
+  return gs.sort((a, b) => rank[a.kind] - rank[b.kind] || (a.kind === 'svc' ? a.service.localeCompare(b.service) : b.start - a.start));
+}
+// 서비스에 맞지 않은 상주 프로세스: 주인이 실행이고 그 스텝은 끝남(살아 있는 리더가 없다)
+export function unmatchedResident(p, list) {
+  return !p.service && !parseOwner(p.owner) && !!p.exec_id && !p.leader
+    && !(list || []).some((q) => q.exec_id === p.exec_id && q.leader && !q.ended_at);
+}
+// model.AutoServiceID와 같은 규칙: 소문자, 허용 밖 글자는 '_', 첫 글자가 허용 밖이면 'p', 64자까지
+export function autoServiceID(comm) {
+  let s = String(comm || '').toLowerCase().replace(/[^a-z0-9_.-]/g, '_');
+  if (!s) return 'proc';
+  if (!/^[a-z0-9]/.test(s)) s = 'p' + s;
+  return s.slice(0, 64);
+}
+// 서비스 정의 조각(매니저 services/ 폴더의 파일 하나): id · title · group · match(exe·comm)
+export function serviceYAML(p, group) {
+  const y = (v) => (/^[\p{L}\p{N}_./-]+$/u.test(v) ? v : JSON.stringify(v));
+  const id = autoServiceID(p.comm);
+  const m = [];
+  if (p.exe && p.exe.startsWith('/')) m.push(`exe: ${y(p.exe)}`);
+  if (p.comm) m.push(`comm: ${y(p.comm.slice(0, 15))}`);
+  return [`id: ${id}`, `title: ${y(p.comm || id)}`, group ? `group: ${y(group)}` : null, 'match:',
+    ...m.map((l, i) => (i ? '    ' : '  - ') + l)].filter((l) => l != null).join('\n') + '\n';
+}
+// 서비스 칩 → 서비스 타임머신(at: 그 시각)
+function svcChip(service, host, at, auto) {
+  const href = `#svc/${encodeURIComponent(service)}?host=${encodeURIComponent(host || '')}` + (at ? `&at=${Math.round(at)}` : '');
+  return el('span', { class: 'srv-svcw' },
+    el('a', { class: 'srv-svc', href, onclick: (ev) => ev.stopPropagation() }, service),
+    auto ? el('span', { class: 'srv-auto', text: '자동' }) : null);
+}
+const PCOLS = [['프로세스'], ['서비스'], ['기동'], ['CPU 사용률', 'num'], ['RSS', 'num'], ['스레드', 'num'], ['가동 시간', 'num']];
 
 async function drawProc(body, grp, ctx) {
-  const hostBox = el('div'), tblBox = el('div'), detail = el('div', { class: 'srv-detail' }), recent = el('div');
-  // 지금 도는 실행이 먼저, 서버 전체 추이는 그 아래
+  const hostBox = el('div'), tblBox = el('div'), detail = el('div', { class: 'srv-detail' }), recent = el('div'), endedBox = el('div');
+  // 지금 떠 있는 프로세스가 먼저, 그다음 끝난 프로세스(종료 보고서), 서버 전체 추이는 그 아래
   body.replaceChildren(
-    el('h3', { class: 'sec' }, '이음 실행 프로세스 ', info('이음이 띄운 실행만 보인다(보안 최소선). CPU 사용률은 코어 1개 = 100%. 줄을 누르면 그 실행의 차트')),
+    el('h3', { class: 'sec' }, '실행 중 프로세스 ', info('이음이 띄운 실행의 프로세스와 서비스 규칙에 맞은 프로세스(보안 최소선). CPU 사용률은 코어 1개 = 100%. 머리 줄을 누르면 그 서비스·실행의 차트')),
     tblBox, detail,
+    el('div', { class: 'srv-sech' },
+      el('h3', { class: 'sec' }, '종료된 프로세스 ', info('고른 시간 구간에 이 서버에서 끝난 프로세스의 종료 보고서. 신호로 죽었거나 0이 아닌 코드로 끝난 것, 상주 서비스의 종료. 줄을 누르면 보고서')),
+      el('a', { class: 'srv-more', href: '#exits?host=' + encodeURIComponent(ctx.hostId), text: '종료 보고서 목록 →' })),
+    endedBox,
     el('h3', { class: 'sec', text: '서버 전체' }), hostBox,
     el('h3', { class: 'sec', text: '최근 실행' }), recent);
   const stops = [];
-  let sel = null, detailStop = null;
+  let sel = '', selG = null, detailStop = null;
   const stopHost = await drawCharts(hostBox, grp ? chartsOf(grp) : [], ctx);
   if (stopHost) stops.push(stopHost);
 
+  // 고른 주인의 차트: 서비스는 Scope svc를 주인 키로, 실행은 Scope job을 실행 ID로
   async function drawDetail() {
     if (detailStop) { detailStop(); detailStop = null; }
-    if (!sel) { detail.replaceChildren(); return; }
-    const link = el('a', { class: 'srv-tm', href: '#run/' + encodeURIComponent(sel.exec_id), text: '타임머신 →' });
+    const g = selG;
+    if (!g || g.kind === 'etc') { detail.replaceChildren(); return; }
+    const svc = g.kind === 'svc';
+    const link = el('a', { class: 'srv-tm', href: svc ? `#svc/${encodeURIComponent(g.service)}?host=${encodeURIComponent(g.host)}` : '#run/' + encodeURIComponent(g.exec_id),
+      text: svc ? '서비스 타임머신 →' : '타임머신 →' });
     const charts = el('div');
-    detail.replaceChildren(el('div', { class: 'srv-dhead' }, el('b', { text: `${sel.flow_id} › ${sel.step_id}` }), ' ', link), charts);
-    detailStop = await drawCharts(charts, grp ? chartsOf(grp, 'job') : [], ctx, { execId: sel.exec_id });
+    detail.replaceChildren(el('div', { class: 'srv-dhead' }, el('b', { text: svc ? `서비스 ${g.service}` : `${g.flow_id} › ${g.step_id}` }), ' ', link), charts);
+    detailStop = await drawCharts(charts, grp ? chartsOf(grp, svc ? 'svc' : 'job') : [], ctx, { execId: svc ? svcOwner(g.service, g.host) : g.exec_id });
   }
   stops.push(() => { if (detailStop) detailStop(); });
 
-  function drawProcs(list) {
-    if (!list.length) { tblBox.replaceChildren(el('div', { class: 'empty srv-empty', text: '이음이 띄운 프로세스 없음' })); }
+  async function openRegister(p) {
+    let group = '';
+    try { group = (((await api('/hosts')).hosts || []).find((h) => h.id === p.host) || {}).group || ''; } catch (e) { /* 그룹 없이 */ }
+    const yaml = serviceYAML(p, group);
+    const d = openDrawer('서비스로 등록');
+    d.body.append(
+      el('div', { class: 'srv-reg-m' }, el('b', { text: p.comm }), ` · pid ${p.pid}`, p.exec_id ? ` · 기동 ${p.flow_id || DASH} › ${p.step_id || DASH}` : ''),
+      el('div', { class: 'srv-reg-h' }, el('code', { text: `services/${autoServiceID(p.comm)}.yaml` }), el('span', { class: 'grow' }),
+        el('button', { type: 'button', text: '복사', onclick: () => { navigator.clipboard?.writeText(yaml).then(() => toast('복사함'), () => toast('복사하지 못함')); } })),
+      el('pre', { class: 'srv-yaml', text: yaml }),
+      el('div', { class: 'srv-reg-m' }, '매니저 services/ 폴더에 두고 다시 읽기'));
+  }
+
+  const numTd = (html) => { const td = el('td', { class: 'num' }); td.innerHTML = html; return td; };
+  function drawProcs(list, now) {
+    if (!list.length) { tblBox.replaceChildren(el('div', { class: 'empty srv-empty', text: '실행 중 프로세스 없음' })); }
     else {
-      const t = table({ columns: PROC_COLS, rows: list, onRow: (p) => { sel = p; drawProcs(list); drawDetail(); } });
-      t.querySelectorAll('tbody tr').forEach((tr2, i) => { if (sel && list[i].exec_id === sel.exec_id) tr2.classList.add('sel'); });
+      const t = el('table', { class: 'tbl srv-ptbl' });
+      t.append(el('thead', {}, el('tr', {}, PCOLS.map(([h, c]) => el('th', { class: c || '', text: h })))));
+      const tb = el('tbody');
+      for (const g of groupProcs(list)) {
+        const sum = (k) => g.procs.reduce((a, p) => a + (Number(p[k]) || 0), 0);
+        const name = g.kind === 'svc' ? [el('span', { class: 'srv-gk', text: '서비스' }), el('b', { text: g.service }), g.auto ? el('span', { class: 'srv-auto', text: '자동' }) : null]
+          : g.kind === 'run' ? [el('span', { class: 'srv-gk', text: '실행' }), el('b', { text: `${g.flow_id || DASH} › ${g.step_id || DASH}` }), el('span', { class: 'dim', text: shortExec(g.exec_id) })]
+            : [el('span', { class: 'srv-gk', text: '주인 없음' })];
+        const pick = () => { sel = sel === g.key ? '' : g.key; selG = sel ? g : null; drawProcs(list, now); drawDetail(); };
+        const head = el('tr', { class: 'srv-grp' + (g.kind === 'etc' ? '' : ' click') + (sel === g.key ? ' sel' : ''), tabindex: g.kind === 'etc' ? false : '0',
+          onclick: g.kind === 'etc' ? null : pick, onkeydown: (ev) => { if (ev.key === 'Enter' && g.kind !== 'etc') pick(); } },
+          el('td', { colspan: '3' }, el('span', { class: 'srv-gn' }, ...name, el('span', { class: 'dim', text: `프로세스 ${fmtNum(g.procs.length, 0)}` }))),
+          numTd(numUnit(sum('cpu'), '%')), numTd(rateHTML(sum('rss_mb'), 'MB')), numTd(esc(fmtNum(sum('threads'), 0))), el('td'));
+        tb.append(head);
+        g.procs.forEach((p, i) => {
+          const svcCell = p.service ? svcChip(p.service, p.host || ctx.hostId, 0, p.auto)
+            : unmatchedResident(p, list) ? el('button', { type: 'button', class: 'srv-reg', text: '서비스로 등록', onclick: () => openRegister(p) }) : DASH;
+          const runCell = p.exec_id && !parseOwner(p.exec_id)
+            ? el('a', { class: 'srv-run', href: '#run/' + encodeURIComponent(p.exec_id), text: `${p.flow_id || DASH} › ${p.step_id || DASH}` })
+            : el('span', { class: 'dim', text: '이음 밖 기동' });
+          tb.append(el('tr', { class: 'srv-prow' },
+            el('td', {}, el('span', { class: 'srv-tree', text: i === g.procs.length - 1 ? '└' : '├' }), el('b', { text: p.comm || DASH }), ' ', el('span', { class: 'dim num', text: String(p.pid ?? DASH) })),
+            el('td', {}, svcCell), el('td', { class: 'cut' }, runCell),
+            numTd(numUnit(p.cpu, '%')), numTd(rateHTML(p.rss_mb, 'MB')), numTd(esc(fmtNum(p.threads, 0))),
+            el('td', { class: 'num', text: p.started_at ? fmtDuration(now - p.started_at) : DASH })));
+        });
+      }
+      t.append(tb);
       tblBox.replaceChildren(t);
     }
-    if (sel && !list.some((p) => p.exec_id === sel.exec_id)) { sel = null; drawDetail(); }
+    if (sel) {
+      const g = groupProcs(list).find((x) => x.key === sel);
+      if (!g) { sel = ''; selG = null; drawDetail(); } else selG = g;
+    }
   }
-  stops.push(poll(async () => { const r = await api(`/hosts/${encodeURIComponent(ctx.hostId)}/procs`); drawProcs(r.procs || []); }, ctx.tr.current().live ? 2000 : 5000));
+  stops.push(poll(async () => { const r = await api(`/hosts/${encodeURIComponent(ctx.hostId)}/procs`); drawProcs(r.processes || [], r.now || Date.now()); }, ctx.tr.current().live ? 2000 : 5000));
+  const ENDED = 10;
+  async function drawEnded() {
+    const rg = ctx.tr.current();
+    const p = new URLSearchParams({ host: ctx.hostId, from: String(Math.round(rg.from)), limit: String(ENDED + 1) });
+    if (!rg.live) p.set('to', String(Math.round(rg.to)));
+    const all = (await api('/exits?' + p)).exits || [];
+    const rows = all.slice(0, ENDED);
+    endedBox.replaceChildren(table({
+      empty: '이 구간에 끝난 프로세스 없음', rows,
+      onRow: (x) => { location.hash = '#exit/' + encodeURIComponent(x.id); },
+      columns: [
+        { key: 'ended_at', label: '종료 시각', render: (x) => el('span', { title: new Date(x.ended_at).toLocaleString(), text: relTime(x.ended_at) }) },
+        { key: 'comm', label: '프로세스', render: (x) => el('span', {}, el('b', { text: x.comm || DASH }), ` · ${x.pid ?? DASH}`) },
+        { key: 'service', label: '서비스', render: (x) => (x.service ? svcChip(x.service, x.host || ctx.hostId, x.ended_at) : DASH) },
+        { key: 'end', label: '신호·코드', render: (x) => endBadge(x) },
+        { key: 'title', label: '원인', render: (x) => el('span', { class: 'srv-why', title: x.title || '' }, el('span', { class: 'ex-cat', text: CATEGORY_TEXT[x.category] || x.category || DASH }), ' ', x.title || '') },
+        { key: 'run', label: '기동한 실행', render: (x) => (x.exec_id ? `${x.flow_id || ''} › ${x.step_id || ''}` : '이음 밖 기동') },
+      ],
+    }));
+    if (all.length > ENDED) endedBox.append(el('a', { class: 'srv-more', href: '#exits?host=' + encodeURIComponent(ctx.hostId), text: '더 보기 →' }));
+  }
+  stops.push(poll(() => drawEnded().catch(() => {}), 10000));
   const r = await api(`/runs?host=${encodeURIComponent(ctx.hostId)}&limit=20`);
   recent.replaceChildren(table({
     empty: EMPTY.none, rows: r.runs || [],

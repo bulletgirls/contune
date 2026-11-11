@@ -32,6 +32,9 @@ type Deps struct {
 	Wake  func()
 	Now   func() time.Time
 	NewID func() string
+	// Services는 그 호스트(그룹)에 내려 줄 서비스 정의와 그 판이다(06, 카드 P-D). AgentConfig.Services에 싣고
+	// 판은 AgentConfig.Rev에 섞는다(정의가 바뀌면 에이전트가 다시 받음). nil이면 서비스 없음.
+	Services func(host, group string) ([]model.ServiceDef, string)
 }
 
 // 요청 중계·본문 한도.
@@ -147,7 +150,9 @@ func (c *Collect) Poll(host, rev string) (string, []model.CollectRequest) {
 		}
 	}
 	delete(c.queue, host)
-	return revOf(merge(c.sets, host, c.groupOfLocked(host, live))), reqs
+	group := c.groupOfLocked(host, live)
+	_, want := c.agentRev(host, group, merge(c.sets, host, group))
+	return want, reqs
 }
 
 // groupOfLocked는 호스트의 그룹이다: 라이브(에이전트가 지표와 함께 보낸 그룹)가 먼저, 없으면 /agent/config에서 받은 것.
@@ -189,7 +194,7 @@ func (c *Collect) hostsLocked(live []model.Host) []HostCollect {
 	out := make([]HostCollect, 0, len(ids))
 	for _, id := range ids {
 		group := c.groupOfLocked(id, live)
-		want := revOf(merge(c.sets, id, group))
+		_, want := c.agentRev(id, group, merge(c.sets, id, group))
 		st := c.statusLocked(id)
 		hc := HostCollect{Host: id, Group: group, WantRev: want, State: hostState(want, st, c.polls[id].rev), Polled: c.polls[id].ts}
 		if st != nil {

@@ -22,6 +22,7 @@ var roleTable = map[string]string{
 	"POST /api/v1/flows/validate":          RoleOperator,
 	"POST /api/v1/flows/reload":            RoleOperator,
 	"POST /api/v1/assist/flow":             RoleOperator,
+	"POST /api/v1/exits/{id}/analyze":      RoleOperator,
 	"PUT /api/v1/flows/{id}":               RoleAdmin,
 	"DELETE /api/v1/flows/{id}":            RoleAdmin,
 	"POST /api/v1/risk/train":              RoleAdmin,

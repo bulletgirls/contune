@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"eum/internal/manager/live"
+	"eum/internal/manager/procs"
 	"eum/internal/manager/store"
 	"eum/internal/model"
 )
@@ -18,6 +19,7 @@ type Deps struct {
 	Panels     *PanelBook // 업무 패널(알림 감시자와 같은 것). nil이면 패널 없음
 	Thresholds model.HostThresholds
 	Catalog    []model.MetricGroup
+	Procs      *procs.Registry // 프로세스 기록(06, 카드 P-C). nil이면 프로세스 목록 없음
 	Now        func() time.Time
 }
 

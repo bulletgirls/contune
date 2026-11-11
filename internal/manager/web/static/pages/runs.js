@@ -7,6 +7,7 @@ import { el, fmtDuration, fmtNum, shortExec, info, DASH } from '../ui.js';
 import { fmtTime, fmtTick, TIME_INCRS } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
 import { fmtDT, runStatusHTML, TRIGGER_TEXT } from './batch.js';
+import { endText, exitLevel } from './exit.js';
 
 const LIMIT = 1000;
 
@@ -110,6 +111,41 @@ export function matchText(r, q) {
   return [r.flow_id, r.step_id, r.exec_id, r.host].some((v) => String(v || '').toLowerCase().includes(s));
 }
 
+// 실행 메뉴의 두 화면: 실행 이력(#runs) · 종료 보고서(#exits)
+export function runTabs(active) {
+  const tab = (id, href, text) => el('a', { href, class: active === id ? 'on' : '', text, ...(active === id ? { 'aria-current': 'page' } : {}) });
+  return el('nav', { class: 'rn-tabs', 'aria-label': '실행 보기' }, tab('runs', '#runs', '실행 이력'), tab('exits', '#exits', '종료 보고서'));
+}
+// 기동한 프로세스 칩(06 §7, 카드 P-E): 실행 중 ●, 종료 보고서 있으면 ■ → #exit/, 그냥 끝났으면 ○. 서비스면 #svc/<id>?host=.
+// list: /runs의 procs 맵 한 칸이나 /runs/{id}의 procs. 리더(스텝 명령 자신)는 빼고 띄운 순서로 max개까지 + +n.
+export function procChips(list, host, max = 3) {
+  const ps = (list || []).filter((p) => !p.leader).sort((a, b) => a.started_at - b.started_at || a.pid - b.pid);
+  if (!ps.length) return null;
+  const enc = encodeURIComponent;
+  const chip = (p) => {
+    const st = !p.ended_at ? 'up' : p.exit_id ? 'down' : 'end';
+    const href = p.exit_id ? '#exit/' + enc(p.exit_id) : p.service ? `#svc/${enc(p.service)}?host=${enc(host || '')}` : '';
+    const title = [`${p.comm} · pid ${p.pid}`, p.service ? `서비스 ${p.service}${p.auto ? ' (자동)' : ''}` : '', st === 'up' ? '실행 중' : st === 'down' ? '종료 보고서' : '종료']
+      .filter(Boolean).join(' · ');
+    const kids = [el('i', { text: st === 'up' ? '●' : st === 'down' ? '■' : '○' }), p.comm];
+    return href ? el('a', { class: 'rn-pc ' + st, href, title, onclick: (ev) => ev.stopPropagation() }, ...kids) : el('span', { class: 'rn-pc ' + st, title }, ...kids);
+  };
+  return el('span', { class: 'rn-pcs' }, ps.slice(0, max).map(chip),
+    ps.length > max ? el('span', { class: 'rn-pcn', text: `+${ps.length - max}`, title: ps.slice(max).map((p) => p.comm).join(', ') }) : null);
+}
+
+// 실행 줄의 종료 표시: 그 실행에 딸린 종료 보고(가장 최근 것) 한 칸, 여럿이면 +n
+function exitMark(items) {
+  if (!items || !items.length) return null;
+  const it = items[0];
+  const lv = exitLevel(it.category, it.resident) || 'info';
+  return el('a', {
+    class: 'rn-exit ' + lv, href: '#exit/' + encodeURIComponent(it.id),
+    title: `종료 보고서: ${it.comm} ${endText(it)} — ${it.title}` + (items.length > 1 ? ` 외 ${items.length - 1}건` : ''),
+    onclick: (ev) => ev.stopPropagation(),
+  }, `${lv === 'crit' ? '■' : lv === 'warn' ? '▲' : '●'} ${it.comm} ${endText(it).replace('종료 코드 ', '코드 ')}`, items.length > 1 ? el('span', { class: 'n', text: ` +${items.length - 1}` }) : null);
+}
+
 // ---- 화면 ----
 let stopFn = null;
 let tr = null;
@@ -118,8 +154,10 @@ export async function render(host, params, query = {}) {
   const f = { flow: query.flow || '', host: query.host || '', status: parseStatus(query.status), type: query.type || '', q: query.q || '' };
   let win = null; // 막대를 눌러 고른 시간대 {from, to}
   let runs = [];
+  let exitsBy = new Map(); // exec_id → 종료 보고(끝난 시각 내림차순)
+  let procsBy = {}; // exec_id → 기동한 프로세스(축약, /runs procs 맵)
 
-  const head = el('div', { class: 'rn-head' }, el('h2', { class: 'sec', text: '실행 이력' }));
+  const head = el('div', { class: 'rn-head' }, runTabs('runs'));
   const rangeBar = el('div', { class: 'rn-range' });
   const filters = el('div', { class: 'rn-filters' });
   const kpis = el('div', { class: 'bt-kpis rn-kpis' });
@@ -232,6 +270,11 @@ export async function render(host, params, query = {}) {
       el('span', { class: 'dtrack' }, d == null ? null : el('i', { class: 'dbar' + (r.ended_at ? '' : ' live') + (slow ? ' slow' : ''), style: `width:${Math.max(2, (d / maxDur) * 100)}%` })),
       slow ? el('span', { class: 'slow-tag', text: `${slow.toFixed(1)}×`, title: `같은 스텝 소요 시간 중앙값 ${fmtDuration(med.get(r.flow_id + '/' + r.step_id))}의 ${slow.toFixed(1)}배` }) : null));
   }
+  // 칩(■)으로 이미 보이는 종료 보고서는 종료 표시에서 뺀다(같은 사실 두 번 금지)
+  function exitsOnly(id) {
+    const shown = new Set((procsBy[id] || []).map((p) => p.exit_id).filter(Boolean));
+    return (exitsBy.get(id) || []).filter((x) => !shown.has(x.id));
+  }
   function drawTable(rows) {
     const now = Date.now();
     const med = stepMedians(runs);
@@ -247,9 +290,11 @@ export async function render(host, params, query = {}) {
       const tr2 = el('tr', { class: 'click g-' + statusGroup(r.status), tabindex: '0' },
         st,
         el('td', { class: 'num at', text: fmtDT(startOf(r)), title: r.started_at ? '' : '예정 시각' }),
-        el('td', { class: 'name' }, el('a', { href: '#runs?flow=' + encodeURIComponent(r.flow_id), class: 'fl', text: r.flow_id, title: '이 플로우만 보기',
-          onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); f.flow = r.flow_id; keepQuery(); syncSelects(); load(); } }),
-          el('span', { class: 'sep', text: ' › ' }), el('span', { class: 'step', text: r.step_id })),
+        el('td', { class: 'name' }, el('div', { class: 'rn-nm' },
+          el('span', { class: 'fs' }, el('a', { href: '#runs?flow=' + encodeURIComponent(r.flow_id), class: 'fl', text: r.flow_id, title: '이 플로우만 보기',
+            onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); f.flow = r.flow_id; keepQuery(); syncSelects(); load(); } }),
+          el('span', { class: 'sep', text: ' › ' }), el('span', { class: 'step', text: r.step_id, title: r.step_id })),
+          procChips(procsBy[r.exec_id], r.host), exitMark(exitsOnly(r.exec_id)))),
         el('td', { class: 'cut', text: r.host || DASH }),
         el('td', { class: 'num' + (r.attempt > 1 ? ' retry' : ''), text: String(r.attempt ?? DASH) }),
         durCell(r, now, med, maxDur),
@@ -285,9 +330,20 @@ export async function render(host, params, query = {}) {
     const t = tr.current();
     const q = new URLSearchParams({ limit: String(LIMIT), from: String(Math.round(t.from)), to: String(Math.round(t.to)) });
     for (const k of ['flow', 'host']) if (f[k]) q.set(k, f[k]);
-    const r = await api('/runs?' + q);
+    // 종료 보고는 그 구간에 시작한 실행의 프로세스가 구간 뒤에 죽었을 수 있어 끝을 열어 둔다
+    const [r, ex] = await Promise.all([
+      api('/runs?' + q),
+      api('/exits?' + new URLSearchParams({ from: String(Math.round(t.from)), limit: '1000', ...(f.host ? { host: f.host } : {}) })).catch(() => ({ exits: [] })),
+    ]);
     if (my !== seq) return;
     runs = r.runs || [];
+    procsBy = r.procs || {};
+    exitsBy = new Map();
+    for (const it of ex.exits || []) {
+      if (!it.exec_id) continue;
+      if (!exitsBy.has(it.exec_id)) exitsBy.set(it.exec_id, []);
+      exitsBy.get(it.exec_id).push(it);
+    }
     draw();
   }
   tr.onChange(() => { win = null; load().catch(() => {}); });

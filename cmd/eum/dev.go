@@ -78,6 +78,7 @@ type devHost struct {
 	host, group string
 	seed        int
 	push        string                        // 업무 프로세스 push 수신 포트 플래그("" = 없음)
+	service     string                        // push 수신구의 서비스 ID(06). 수신 지표의 주인이 서비스 인스턴스가 된다
 	logs        func() []logtail.SourceConfig // 업무 프로세스 로그 출처(nil = 없음)
 	profile     bool                          // perf가 있으면 함수 추적
 }
@@ -85,10 +86,10 @@ type devHost struct {
 // devHosts는 실제 에이전트 4대다. 업무 프로세스 둘은 서버·push 포트·로그·실행 ID를 따로 쓴다:
 // match-01의 체결 서비스(matching_svc, market-open), feed-01의 시세 서비스(quote_svc, quote-open).
 var devHosts = []devHost{
-	{host: "match-01", group: "매매/체결", seed: 1, push: "push-port", logs: matchingLogs, profile: true},
+	{host: "match-01", group: "매매/체결", seed: 1, push: "push-port", service: "matching", logs: matchingLogs, profile: true},
 	{host: "gw-01", group: "매매/주문접수", seed: 2},
 	{host: "batch-01", group: "사후처리/배치", seed: 3, profile: true},
-	{host: "feed-01", group: "매매/시세", seed: 4, push: "quote-push-port", logs: quoteLogs, profile: true},
+	{host: "feed-01", group: "매매/시세", seed: 4, push: "quote-push-port", service: "quote", logs: quoteLogs, profile: true},
 }
 
 // parseDev는 dev 플래그를 해석해 매니저·에이전트 설정을 만든다(파일은 --config만 읽는다).
@@ -101,6 +102,7 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 	storeKind := fs.String("store", "sqlite", "sqlite | memory")
 	flows := fs.String("flows", "./flows", "플로우 폴더")
 	panels := fs.String("panels", "./panels", "업무 패널 폴더")
+	services := fs.String("services", "./services", "서비스 정의 폴더(06)")
 	cfgPath := fs.String("config", "", "매니저 설정 파일(있으면 이 파일 위에 플래그가 덮음)")
 	fleetPath := fs.String("fleet", "", "fleet.yaml(있으면 모의 서버를 같은 프로세스에서 띄움)")
 	pushPort := fs.Int("push-port", 9101, "match-01(체결 서비스)의 push 수신 포트")
@@ -137,7 +139,7 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 			return devSetup{}, err
 		}
 		cfg.WebAuth = wa
-		for _, n := range []string{"listen", "data", "store", "flows", "panels"} {
+		for _, n := range []string{"listen", "data", "store", "flows", "panels", "services"} {
 			set[n] = true
 		}
 	} else {
@@ -160,6 +162,7 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 	override("store", &cfg.Store, *storeKind)
 	override("flows", &cfg.Flows, *flows)
 	override("panels", &cfg.Panels, *panels)
+	override("services", &cfg.Services, *services)
 	if *cfgPath == "" {
 		// 수집 설정(05 §17): dev는 데이터 폴더 안에 두고 화면에서 고칠 수 있게 켠다.
 		cfg.Collect = collect.Config{Dir: filepath.Join(cfg.Data, "collect"), Enabled: true}
@@ -205,7 +208,7 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 			Remote: agent.RemoteConfig{Enabled: true},
 		}
 		if h.push != "" {
-			a.Probes = append(a.Probes, map[string]any{"type": "push", "listen": push})
+			a.Probes = append(a.Probes, map[string]any{"type": "push", "listen": push, "service": h.service})
 		}
 		if h.logs != nil {
 			a.Logs = h.logs()
@@ -224,10 +227,10 @@ func matchingLogs() []logtail.SourceConfig { return serviceLogs("matching", "mat
 // quoteLogs는 feed-01의 로그 출처다(시세 서비스 로그 + 스텝 실행 로그).
 func quoteLogs() []logtail.SourceConfig { return serviceLogs("quote", "quote_svc") }
 
-// serviceLogs는 업무 프로세스 로그((E)·(W) 줄)와 스텝 실행 로그((E) 줄)다. deploy/agent-*.yaml의 logs와 같다.
+// serviceLogs는 업무 프로세스 로그((E)·(W) 줄, 주인은 서비스 name — 06·카드 P)와 스텝 실행 로그((E) 줄)다. deploy/agent-*.yaml의 logs와 같다.
 func serviceLogs(name, bin string) []logtail.SourceConfig {
 	return []logtail.SourceConfig{
-		{Name: name, Path: "{log_dir}/" + bin + ".{exec_id}.log", Match: []logtail.MatchRule{
+		{Name: name, Service: name, Path: "{log_dir}/" + bin + ".{exec_id}.log", Match: []logtail.MatchRule{
 			{Re: `^\(E\)`, Level: "error"},
 			{Re: `^\(W\)`, Level: "warn"},
 		}},

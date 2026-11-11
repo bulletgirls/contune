@@ -2,7 +2,7 @@
 // 넓은 화면(2026-11-11): 카드는 자기 폭을 보고(컨테이너 쿼리) 이상 서버·주목할 배치·세 번째 요인을 더 보이고,
 // 서버 맵 칸은 가장 큰 그룹이 한 줄을 채우도록 늘어나며(30~120px) 넓으면 칸 안에 서버 이름을 쓴다.
 import { api, poll } from '../api.js';
-import { el, esc, fmtNum, fmtClock, relTime, numUnit, badgeHTML, info, EMPTY, DASH, LEVEL_TEXT } from '../ui.js';
+import { el, esc, fmtNum, fmtClock, relTime, numUnit, badgeHTML, info, EMPTY, DASH, LEVEL_TEXT, parseOwner, shortExec } from '../ui.js';
 import { flowState } from '../tree.js';
 import { openValue, openLevel, acceptsOf, todoFactors, baselineText, placeText, factorHref, incidentText } from '../riskfmt.js';
 
@@ -112,11 +112,51 @@ export function ackText(a) {
   const who = String(a.acked_by || '').replace(/^user:/, '');
   return { text: `✓ ${who || '확인'}`, title: `${who ? who + ' ' : ''}확인 · ${fmtClock(a.acked_at)}` };
 }
+// ---- 서비스 링크(06, 카드 P-F). 업무·관제·알림·종료 보고서가 함께 쓴다 ----
+// 서비스 타임머신 주소. at(ms)이 있으면 그 시각 앞뒤 15분을 본다
+export function svcHash(service, host, at) {
+  const p = new URLSearchParams();
+  if (host) p.set('host', host);
+  if (at) p.set('at', String(Math.round(at)));
+  const s = p.toString();
+  return '#svc/' + encodeURIComponent(service) + (s ? '?' + s : '');
+}
+// 주인 키(exec_id 칸) → 주소: 서비스 주인이면 #svc/, 실행이면 #run/, 비면 null
+export function ownerHash(owner, at) {
+  const o = parseOwner(owner);
+  if (o) return svcHash(o.service, o.host, at);
+  return owner ? '#run/' + encodeURIComponent(owner) : null;
+}
+// 주인 이름표: 서비스면 "체결 · match-01"(titles: 서비스 ID → 이름), 실행이면 실행 번호 뒤 6자
+export function ownerText(owner, titles) {
+  const o = parseOwner(owner);
+  if (!o) return owner ? shortExec(owner) : DASH;
+  return `${(titles && titles[o.service]) || o.service} · ${o.host}`;
+}
+// 타일을 누르면 갈 서비스 타임머신(패널 service: 또는 값의 주인이 서비스일 때), 아니면 null
+export function tileHash(t, panel) {
+  const o = parseOwner(t.exec_id);
+  const service = t.service || (panel && panel.service) || (o && o.service) || '';
+  return service ? svcHash(service, (o && o.host) || t.host || '', t.ts) : null;
+}
+// 서비스 ID → 이름(GET /services). 1분 동안 같은 답을 쓴다. 못 읽으면 빈 객체(ID를 그대로 보인다)
+export function servicesOf(r) { return Array.isArray(r) ? r : (r && (r.services || r.items)) || []; }
+let titlesP = null, titlesAt = 0;
+export function serviceTitles() {
+  if (!titlesP || Date.now() - titlesAt > 60000) {
+    titlesAt = Date.now();
+    titlesP = api('/services').then((r) => Object.fromEntries(servicesOf(r).map((it) => [it.def.id, it.def.title || it.def.id]))).catch(() => ({}));
+  }
+  return titlesP;
+}
+
 export function alertTarget(a, panels) {
   switch (a.kind) {
     case 'host': return a.host ? `#host/${encodeURIComponent(a.host)}/overview` : '#hosts';
-    case 'run': return `#run/${encodeURIComponent(a.exec_id)}`;
+    case 'run': return ownerHash(a.exec_id) || '#runs';
+    case 'service': return a.name ? svcHash(a.name, a.host) : '#svcs';
     case 'risk': return '#risk';
+    case 'exit': return `#exit/${encodeURIComponent(String(a.dedup_key || '').replace(/^exit:/, ''))}`;
     default: {
       const p = (panels || []).find((x) => x.group === a.group) || (panels || []).find((x) => inGroup(a.group, x.group));
       return p ? `#biz/${encodeURIComponent(p.id)}` : '#biz';
@@ -184,7 +224,7 @@ export function cellWidth(w, cols) {
 // (패널이 늘어도 시세 끊김 같은 위험이 정의 순서에 밀려 숨지 않게). 같은 수준끼리는 정의 순서.
 export function kpiTiles(panels, max = 3) {
   const out = [];
-  for (const p of panels) for (const t of p.tiles || []) if (t.kpi) out.push({ ...t, panel: p.id });
+  for (const p of panels) for (const t of p.tiles || []) if (t.kpi) out.push({ ...t, panel: p.id, ...(p.service && !t.service ? { service: p.service } : {}) });
   const rank = (t) => (t.state === 'crit' ? 0 : t.state === 'warn' ? 1 : 2);
   return out.map((t, i) => [t, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).slice(0, max).map(([t]) => t);
 }
@@ -396,10 +436,11 @@ function bizCard(tiles) {
     const sub = v.stale ? `<div class="kstale">${esc(v.stale)}</div>` : '';
     const bullet = hasLimit(t) && !v.none && !v.off ? bulletSVG(t.value, t.warn, t.crit, v.st, t.warn_below, t.crit_below) : '';
     const tip = hasLimit(t) ? `${t.title} · ${limitText(t)}${t.unit ? ' ' + t.unit : ''}` : t.title;
-    return `<div class="kpi" data-p="${esc(t.panel)}" title="${esc(tip)}"><div class="kl"><span class="kn">${esc(t.title)}${off}</span><span class="kv">${val}${mark}</span></div>${sub}${bullet}</div>`;
+    const href = tileHash(t) || '#biz/' + encodeURIComponent(t.panel);
+    return `<div class="kpi" data-go="${esc(href)}" title="${esc(tip)}"><div class="kl"><span class="kn">${esc(t.title)}${off}</span><span class="kv">${val}${mark}</span></div>${sub}${bullet}</div>`;
   }).join('') : `<div class="empty">${DASH}</div>`;
   const c = card('biz', '업무 지표', '#biz', body);
-  c.querySelectorAll('.kpi').forEach((k) => k.addEventListener('click', (e) => { e.preventDefault(); go('#biz/' + encodeURIComponent(k.dataset.p)); }));
+  c.querySelectorAll('.kpi').forEach((k) => k.addEventListener('click', (e) => { e.preventDefault(); go(k.dataset.go); }));
   return c;
 }
 

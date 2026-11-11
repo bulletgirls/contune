@@ -4,6 +4,7 @@ package statesql
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -55,6 +56,12 @@ CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL,
   target TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS ix_audit_ts ON audit(ts);
+CREATE TABLE IF NOT EXISTS exits (
+  id TEXT PRIMARY KEY, ended_at INTEGER NOT NULL, host TEXT NOT NULL, exec_id TEXT NOT NULL,
+  pid INTEGER NOT NULL DEFAULT 0, comm TEXT NOT NULL DEFAULT '', how TEXT NOT NULL DEFAULT '',
+  signal INTEGER NOT NULL DEFAULT 0, exit_code INTEGER, report_json TEXT NOT NULL, llm_json TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS ix_exits_ended ON exits(ended_at);
+CREATE INDEX IF NOT EXISTS ix_exits_exec ON exits(exec_id);
 `
 
 // Store는 state.db다. 쓰기 연결은 1개, 읽기는 별도 풀이다.
@@ -82,6 +89,10 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	if err := addColumn(w, "incidents", "confirmed", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		w.Close()
+		return nil, err
+	}
+	if err := migrateProcs(w); err != nil { // procs.go(카드 P-C)
 		w.Close()
 		return nil, err
 	}
@@ -590,4 +601,110 @@ func (s *Store) AuditStats(ctx context.Context, from, to int64) (model.AuditStat
 		rows.Close()
 	}
 	return st, nil
+}
+
+// 종료 보고서(카드 T3). 보고서와 LLM 초안은 JSON 그대로(report_json·llm_json), 거르는 칸만 따로 둔다.
+
+func (s *Store) AddExit(ctx context.Context, r model.ExitReport) error {
+	if r.ID == "" {
+		return errors.New("종료 보고서 id가 비었음")
+	}
+	b, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	var code any
+	if r.ExitCode != nil {
+		code = *r.ExitCode
+	}
+	_, err = s.w.ExecContext(ctx, `INSERT INTO exits(id,ended_at,host,exec_id,pid,comm,how,signal,exit_code,report_json,llm_json)
+VALUES(?,?,?,?,?,?,?,?,?,?,'')`, r.ID, r.EndedAt, r.Host, r.ExecID, r.PID, r.Comm, r.How, r.Signal, code, string(b))
+	return err
+}
+
+func scanExit(sc scanner) (model.ExitRecord, error) {
+	var rep, lj string
+	if err := sc.Scan(&rep, &lj); err != nil {
+		return model.ExitRecord{}, err
+	}
+	var rec model.ExitRecord
+	if err := json.Unmarshal([]byte(rep), &rec.Report); err != nil {
+		return rec, fmt.Errorf("exits.report_json: %w", err)
+	}
+	if lj != "" {
+		var d model.ExitDiagnosis
+		if err := json.Unmarshal([]byte(lj), &d); err != nil {
+			return rec, fmt.Errorf("exits.llm_json: %w", err)
+		}
+		rec.LLM = &d
+	}
+	return rec, nil
+}
+
+func (s *Store) GetExit(ctx context.Context, id string) (model.ExitRecord, error) {
+	rec, err := scanExit(s.r.QueryRowContext(ctx, `SELECT report_json,llm_json FROM exits WHERE id=?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.ExitRecord{}, store.ErrNotFound
+	}
+	return rec, err
+}
+
+func (s *Store) ListExits(ctx context.Context, f model.ExitFilter) ([]model.ExitRecord, error) {
+	var where []string
+	var args []any
+	if f.ExecID != "" {
+		where, args = append(where, "exec_id=?"), append(args, f.ExecID)
+	}
+	if f.Host != "" {
+		where, args = append(where, "host=?"), append(args, f.Host)
+	}
+	if f.Comm != "" {
+		where, args = append(where, "comm=?"), append(args, f.Comm)
+	}
+	if f.From != 0 {
+		where, args = append(where, "ended_at>=?"), append(args, f.From)
+	}
+	if f.To != 0 {
+		where, args = append(where, "ended_at<?"), append(args, f.To)
+	}
+	limit := f.Limit
+	if limit <= 0 {
+		limit = 200
+	}
+	q := `SELECT report_json,llm_json FROM exits`
+	if len(where) > 0 {
+		q += " WHERE " + strings.Join(where, " AND ")
+	}
+	q += fmt.Sprintf(" ORDER BY ended_at DESC, id DESC LIMIT %d", limit)
+	rows, err := s.r.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.ExitRecord
+	for rows.Next() {
+		rec, err := scanExit(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) SetExitLLM(ctx context.Context, id string, d model.ExitDiagnosis) error {
+	b, err := json.Marshal(d)
+	if err != nil {
+		return err
+	}
+	res, err := s.w.ExecContext(ctx, `UPDATE exits SET llm_json=? WHERE id=?`, string(b), id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return store.ErrNotFound
+	}
+	return nil
 }

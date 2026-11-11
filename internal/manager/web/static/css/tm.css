@@ -5,7 +5,24 @@
 .tm-crumb a { color:var(--t2); text-decoration:none; } .tm-crumb a:hover { color:var(--accent); text-decoration:underline; }
 .tm-title { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .tm-title h2 { margin:0; font-size:20px; }
-.tm-live { color:var(--st-running); font-size:13px; }
+.tm-pcs .rn-pcs { margin-left:0; }
+/* 기동한 프로세스(06 §7.1): comm · pid · 상태 · CPU · RSS · 서비스 → */
+.tm-procs .tm-ch { margin-bottom:4px; align-items:baseline; }
+.tp-cnt { font-size:12px; color:var(--t3); }
+.tp-list { display:flex; flex-direction:column; }
+.tp-row { display:grid; grid-template-columns:minmax(96px,140px) 84px minmax(150px,200px) 96px 120px minmax(0,1fr); gap:12px; align-items:baseline; padding:4px 2px; font-size:13px; border-bottom:1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.tp-row:last-child { border-bottom:0; }
+.tp-c { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tp-pid { color:var(--t3); font-size:12px; }
+.tp-up { color:var(--ok); } .tp-down { color:var(--crit); font-weight:600; } .tp-end { color:var(--t3); }
+.tp-down .num, .tp-end .num { font-weight:400; font-size:12px; color:var(--t3); }
+.tp-n { text-align:right; white-space:nowrap; } .tp-n .tl { font-size:12px; color:var(--t3); margin-right:2px; }
+.tp-n .unit { font-size:11px; color:var(--t3); margin-left:2px; }
+.tp-row a { color:var(--accent); text-decoration:none; white-space:nowrap; } .tp-row a:hover { text-decoration:underline; }
+@media (max-width:700px) { .tp-row { grid-template-columns:1fr 1fr; } }
+/* 서비스로 옮겨 간 프로세스: 실행 지표 트랙 위 한 줄 */
+.tm-moved { font-size:13px; color:var(--t2); margin:0 0 6px; padding:4px 10px; border-left:3px solid var(--accent); background:color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+.tm-moved a { color:var(--accent); text-decoration:none; font-weight:600; } .tm-moved a:hover { text-decoration:underline; }
 .tm-dls { display:flex; gap:6px; }
 .tm-dl { text-decoration:none; font-size:12px; color:var(--t2); border:1px solid var(--line); border-radius:4px; padding:2px 8px; background:var(--surface); white-space:nowrap; }
 .tm-dl:hover { border-color:var(--accent); color:var(--accent); }
@@ -95,3 +112,13 @@
 .tm-evs .et { color:var(--t2); width:160px; flex:none; }
 .tm-evs .es { display:inline-flex; align-items:center; gap:4px; }
 .tm-evs .er { color:var(--t2); }
+
+/* 프로세스 종료 띠(카드 T5): 이 실행의 종료 보고서로 */
+.tm-exit { display:flex; align-items:center; gap:8px; padding:7px 12px; border-radius:6px; border:1px solid var(--line); background:var(--surface); text-decoration:none; color:var(--t1); font-size:13px; min-width:0; }
+.tm-exit.crit { border-color:var(--crit); background:color-mix(in srgb, var(--crit) 8%, var(--surface)); }
+.tm-exit.warn { border-color:var(--warn); background:color-mix(in srgb, var(--warn) 8%, var(--surface)); }
+.tm-exit .mk { flex:none; color:var(--t3); } .tm-exit.crit .mk { color:var(--crit); } .tm-exit.warn .mk { color:var(--warn); }
+.tm-exit .tx { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tm-exit .go { flex:none; color:var(--accent); font-weight:600; }
+.tm-exit:hover { border-color:var(--accent); } .tm-exit:hover .tx { text-decoration:underline; }
+@media (max-width:700px) { .tm-exit .tx { white-space:normal; } }

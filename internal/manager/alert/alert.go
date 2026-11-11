@@ -45,8 +45,26 @@ type Deps struct {
 	Risk       func() (open, index float64, accepted int, ok bool) // 미확인 지수(용인 뺀 값)·원래 지수·용인 수(05 §6.4)
 	RiskWarn   float64
 	RiskCrit   float64
-	Cfg        Config
-	Now        func() time.Time
+	// Exits는 끝난 시각이 since 이후인 종료 보고서와 그 규칙 진단이다(카드 T3, 계약 8). nil이면 종료 알림 없음.
+	Exits func(ctx context.Context, since int64) []Exit
+	// Services는 서비스 조건(서비스 미기동·선언한 서비스가 뜨지 않음, 06·카드 P-D)이다. nil이면 서비스 알림 없음.
+	// 조건이 목록에 있는 동안 알림(kind service)이 열려 있고, 빠지면 닫힌다.
+	Services func(ctx context.Context, now int64) []ServiceCond
+	Cfg      Config
+	Now      func() time.Time
+}
+
+// Exit는 종료 알림 하나의 재료다: 종료 보고서 요약과 규칙 진단(exits가 채운다).
+type Exit struct {
+	ID       string
+	EndedAt  int64
+	Host     string
+	ExecID   string
+	Comm     string
+	Resident bool   // 스텝이 끝난 뒤에도 살아 있던 서비스
+	Category string // 규칙 진단(model.Exit*)
+	Title    string // 규칙 진단 한 줄
+	Final    bool   // 끝난 지 30초가 지나 계산해 더 바뀌지 않는 진단
 }
 
 const (
@@ -69,9 +87,10 @@ type fired struct {
 type Watcher struct {
 	d Deps
 
-	fire    map[string]*fired
-	lastLog int64
-	seenRun map[string]int64
+	fire     map[string]*fired
+	lastLog  int64
+	seenRun  map[string]int64
+	seenExit map[string]int64 // 알림을 열었거나(또는 열지 않기로 정한) 종료 보고서 id → 그때
 
 	critSince  int64 // 위험 상태가 시작된 시각, 0 = 아님
 	clearSince int64 // 위험이 모두 풀린 시각, 0 = 아님
@@ -98,7 +117,7 @@ func New(d Deps) *Watcher {
 	if d.Panels == nil {
 		d.Panels = query.PanelsOf(nil)
 	}
-	w := &Watcher{d: d, fire: map[string]*fired{}, seenRun: map[string]int64{}}
+	w := &Watcher{d: d, fire: map[string]*fired{}, seenRun: map[string]int64{}, seenExit: map[string]int64{}}
 	w.lastLog = d.Now().UnixMilli()
 	w.resume(context.Background())
 	return w
@@ -117,6 +136,14 @@ func (w *Watcher) resume(ctx context.Context) {
 		if a.Kind == "run" {
 			w.seenRun[strings.TrimPrefix(a.DedupKey, "run:")] = a.TS
 		}
+	}
+	// 종료 알림은 이미 닫힌 것도 다시 열지 않는다(Exits가 보는 구간 안의 것만 기억하면 된다).
+	ex, err := w.d.State.ListAlerts(ctx, model.AlertFilter{Kind: "exit", Since: w.d.Now().UnixMilli() - 2*runSpan, Limit: 10000})
+	if err != nil {
+		slog.Warn("종료 알림 이어받기 실패", "err", err)
+	}
+	for _, a := range ex {
+		w.seenExit[strings.TrimPrefix(a.DedupKey, "exit:")] = a.TS
 	}
 	ins, err := w.d.State.ListIncidents(ctx, 0, 1<<60)
 	if err != nil {
@@ -223,6 +250,8 @@ func (w *Watcher) step(t time.Time) {
 	}
 	w.stepLogs(ctx, now, group)
 	w.stepRuns(ctx, now)
+	w.stepExits(ctx, now, group)
+	w.stepServices(ctx, now, group)
 	w.stepRisk(ctx, now)
 	w.stepIncident(ctx, now, crit)
 }
@@ -471,6 +500,61 @@ func (w *Watcher) stepRuns(ctx context.Context, now int64) {
 		w.open(ctx, now, model.Alert{
 			Kind: "run", DedupKey: "run:" + id, Level: "crit", Host: r.Host, Name: r.FlowID + "/" + r.StepID, ExecID: id,
 			Message: fmt.Sprintf("%s/%s 실행 %s (시도 %d)", r.FlowID, r.StepID, r.Status, r.Attempt),
+		})
+	}
+}
+
+// exitLevel은 규칙 진단의 알림 수준이다(계약 8). ""면 알림 없음.
+func exitLevel(category string, resident bool) string {
+	switch {
+	case strings.HasPrefix(category, "crash."), category == model.ExitOOM:
+		return "crit"
+	case category == model.ExitKilledOther, category == model.ExitError, category == model.ExitUnknown && resident:
+		return "warn"
+	}
+	return ""
+}
+
+// stepExits는 종료 보고서마다 알림을 한 번만 연다(실행 알림처럼 1분 뒤 닫는다).
+// crit은 처음 볼 때 바로, warn·알림 없음은 진단이 고정된 뒤(끝난 지 30초) 정한다: 지표가 늦게 와서
+// 밖에서 SIGKILL(warn)이 메모리 부족(crit)으로, 원인 미상이 다른 실행의 종료(없음)로 바뀔 수 있다.
+func (w *Watcher) stepExits(ctx context.Context, now int64, group map[string]string) {
+	for k, f := range w.fire {
+		if strings.HasPrefix(k, "exit:") && now-f.openedAt >= minute {
+			w.closeKey(ctx, now, k)
+		}
+	}
+	for id, ts := range w.seenExit {
+		if now-ts > 2*runSpan {
+			delete(w.seenExit, id)
+		}
+	}
+	if w.d.Exits == nil || w.d.State == nil {
+		return
+	}
+	xs := w.d.Exits(ctx, now-runSpan)
+	sort.SliceStable(xs, func(i, j int) bool {
+		if xs[i].EndedAt != xs[j].EndedAt {
+			return xs[i].EndedAt < xs[j].EndedAt
+		}
+		return xs[i].ID < xs[j].ID
+	})
+	for _, x := range xs {
+		if _, seen := w.seenExit[x.ID]; seen {
+			continue
+		}
+		level := exitLevel(x.Category, x.Resident)
+		if level != "crit" && !x.Final {
+			continue // 진단이 아직 바뀔 수 있다
+		}
+		w.seenExit[x.ID] = now
+		if level == "" {
+			continue
+		}
+		w.open(ctx, now, model.Alert{
+			Kind: "exit", DedupKey: "exit:" + x.ID, Level: level, Host: x.Host, Group: group[x.Host],
+			Name: x.Comm, ExecID: x.ExecID,
+			Message: fmt.Sprintf("%s 종료 · %s — %s", x.Comm, x.Host, x.Title),
 		})
 	}
 }

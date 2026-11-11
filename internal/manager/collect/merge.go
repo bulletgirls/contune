@@ -133,6 +133,20 @@ func revOf(eff []model.EffectiveSource) string {
 	return shaOf(b)
 }
 
+// agentRev는 그 호스트에 내려 줄 서비스 정의(Deps.Services)와 에이전트 판이다: 합친 출처의 판(revOf)에 서비스 정의의 판을
+// 섞는다(정의만 바뀌어도 에이전트가 다시 받음). 서비스 정의가 없으면 revOf 그대로다. c.mu를 쥔 채 불러도 된다.
+func (c *Collect) agentRev(host, group string, eff []model.EffectiveSource) ([]model.ServiceDef, string) {
+	rev := revOf(eff)
+	if c.d.Services == nil {
+		return nil, rev
+	}
+	defs, svcRev := c.d.Services(host, group)
+	if svcRev == "" && len(defs) == 0 {
+		return nil, rev
+	}
+	return defs, shaOf([]byte(rev + "+services:" + svcRev))
+}
+
 // 서버별 적용 상태(화면 이름: 꺼짐·실패·적용 대기·일부 적용·적용됨·모름).
 const (
 	stateDisabled = "disabled"

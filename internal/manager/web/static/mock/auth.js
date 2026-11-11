@@ -23,6 +23,7 @@ export function needOf(method, pathname) {
     || (method === 'PATCH' && /^\/incidents\/[^/]+$/.test(pathname))
     || (method === 'POST' && pathname === '/risk/holds')
     || (method === 'DELETE' && /^\/risk\/holds\/[^/]+$/.test(pathname))
+    || (method === 'POST' && /^\/exits\/[^/]+\/analyze$/.test(pathname))
     || ['/flows/validate', '/flows/reload', '/assist/flow'].includes(pathname);
   return op ? 'operator' : 'admin';
 }

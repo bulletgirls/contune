@@ -14,6 +14,14 @@ probes:
   - type: sim
     profile: host
     seed: 2
+exit:                          # 종료 보고서(없으면 아래 기본값으로 켜짐)
+  enabled: true
+  subreaper: true
+  core_limit: 256MiB
+  core_keep: 3
+  output_lines: 40
+  gdb: auto
+  kmsg: true
 log_dir: /var/lib/eum/logs
 work_dir: /var/lib/eum/work
 remote:                        # 로그 수집 설정을 매니저 화면(#collect)에서 받기(05 §17). 꺼져 있으면 아래 logs만 돈다

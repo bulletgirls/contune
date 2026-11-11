@@ -1,0 +1,10 @@
+# 체결 서비스: match-01의 matching_svc. 경로 glob(exe)은 절대 경로여야 해서 이름(comm)으로 알아본다.
+id: matching
+title: 체결
+group: 매매/체결
+match:
+  - comm: matching_svc
+profile: true
+expect:
+  count: 1
+  active: mon-fri 08:30-15:40

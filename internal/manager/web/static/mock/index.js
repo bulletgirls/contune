@@ -11,8 +11,11 @@ import * as alert from './alert.js';
 import * as auth from './auth.js';
 import * as audit from './audit.js';
 import * as collect from './collect.js';
+import * as exit from './exit.js';
+import * as procs from './procs.js';
+import * as services from './services.js';
 
-const ROUTES = [auth, audit, core, server, ops, editor, biz, alert, collect].flatMap((m) => m.routes);
+const ROUTES = [auth, audit, core, server, ops, editor, biz, alert, collect, exit, procs, services].flatMap((m) => m.routes);
 
 function pageFlags(opts, q) {
   const s = new URLSearchParams(opts.search ?? (typeof location !== 'undefined' ? location.search : ''));
@@ -25,6 +28,8 @@ function pageFlags(opts, q) {
     role: get('role'),
     login: get('login') === '1',
     hold: get('hold') || '', // 미리보기: 처음부터 용인해 둘 요인(쉼표 목록)
+    llmOff: get('llm') === '0', // 종료 보고서: LLM 없음 미리보기(기본은 mock LLM 있음)
+    core: get('core') || '', // 종료 보고서: builtin이면 내장 분석(추정 칸)
   };
 }
 
