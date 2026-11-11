@@ -4,6 +4,7 @@ data: /data
 flows: /flows
 panels: /panels
 services: /services
+dashboards: /dashboards
 token: ${EUM_TOKEN}
 tz: Asia/Seoul
 web_auth:                      # 화면 로그인(보안 S1). 시연 계정 admin/eum-admin · operator/eum-operator · viewer/eum-viewer

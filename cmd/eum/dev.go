@@ -103,6 +103,7 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 	flows := fs.String("flows", "./flows", "플로우 폴더")
 	panels := fs.String("panels", "./panels", "업무 패널 폴더")
 	services := fs.String("services", "./services", "서비스 정의 폴더(06)")
+	dashboards := fs.String("dashboards", "./dashboards", "사용자 보드 폴더(07)")
 	cfgPath := fs.String("config", "", "매니저 설정 파일(있으면 이 파일 위에 플래그가 덮음)")
 	fleetPath := fs.String("fleet", "", "fleet.yaml(있으면 모의 서버를 같은 프로세스에서 띄움)")
 	pushPort := fs.Int("push-port", 9101, "match-01(체결 서비스)의 push 수신 포트")
@@ -139,7 +140,7 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 			return devSetup{}, err
 		}
 		cfg.WebAuth = wa
-		for _, n := range []string{"listen", "data", "store", "flows", "panels", "services"} {
+		for _, n := range []string{"listen", "data", "store", "flows", "panels", "services", "dashboards"} {
 			set[n] = true
 		}
 	} else {
@@ -163,6 +164,7 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 	override("flows", &cfg.Flows, *flows)
 	override("panels", &cfg.Panels, *panels)
 	override("services", &cfg.Services, *services)
+	override("dashboards", &cfg.Dashboards, *dashboards)
 	if *cfgPath == "" {
 		// 수집 설정(05 §17): dev는 데이터 폴더 안에 두고 화면에서 고칠 수 있게 켠다.
 		cfg.Collect = collect.Config{Dir: filepath.Join(cfg.Data, "collect"), Enabled: true}

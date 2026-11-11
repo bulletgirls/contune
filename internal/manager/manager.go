@@ -22,6 +22,7 @@ import (
 	"eum/internal/manager/alert"
 	"eum/internal/manager/assist"
 	"eum/internal/manager/collect"
+	"eum/internal/manager/dash"
 	"eum/internal/manager/editor"
 	"eum/internal/manager/exits"
 	"eum/internal/manager/flowdef"
@@ -184,6 +185,10 @@ func New(cfg Config) (*Manager, error) {
 	})
 	pr.Mount(m.mux)
 	svc.Mount(m.mux)
+	dash.Mount(m.mux, dash.Deps{ // 사용자 보드(07, 카드 W)
+		Dir: cfg.Dashboards, ReadOnly: cfg.DashboardsReadOnly, Metrics: m.metrics, State: m.state, Live: lv,
+		Panels: panels, Catalog: model.Catalog(), Loc: loc, Now: now,
+	})
 	m.sched.Mount(m.mux)
 	col.Mount(m.mux)
 	editor.Mount(m.mux, edDeps)

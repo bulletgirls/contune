@@ -48,7 +48,7 @@ func (m *metricStore) Write(ctx context.Context, batch []model.Sample) error {
 	return nil
 }
 
-// Query는 Hosts(비면 전부), Name(끝이 *면 접두사, 비면 전부), ExecID(비면 무관), From~To(포함)로 거른다.
+// Query는 Hosts(비면 전부), Name(끝이 *면 접두사, 비면 전부), ExecID(끝이 *면 접두사, 비면 무관), From~To(포함)로 거른다.
 // To가 0 이하면 끝이 열린 구간이다. StepSec가 0보다 크면 floor(ts/step)*step 구간 평균이다.
 // 결과는 (host, name, exec_id) 순이고 점은 시각순이다.
 func (m *metricStore) Query(ctx context.Context, q model.SeriesQuery) ([]model.Series, error) {
@@ -56,7 +56,7 @@ func (m *metricStore) Query(ctx context.Context, q model.SeriesQuery) ([]model.S
 	defer m.mu.RUnlock()
 	var out []model.Series
 	for k, pts := range m.series {
-		if !hostOK(q.Hosts, k.host) || !nameOK(q.Name, k.name) || (q.ExecID != "" && q.ExecID != k.execID) {
+		if !hostOK(q.Hosts, k.host) || !nameOK(q.Name, k.name) || !nameOK(q.ExecID, k.execID) {
 			continue
 		}
 		var sel []model.Point
@@ -214,7 +214,7 @@ func (m *metricStore) QueryLogs(ctx context.Context, q model.LogQuery) ([]model.
 	defer m.mu.RUnlock()
 	var out []model.LogEvent
 	for _, e := range m.logs {
-		if !hostOK(q.Hosts, e.Host) || (q.ExecID != "" && q.ExecID != e.ExecID) {
+		if !hostOK(q.Hosts, e.Host) || !nameOK(q.ExecID, e.ExecID) {
 			continue
 		}
 		if len(q.Levels) > 0 && !slices.Contains(q.Levels, e.Level) {

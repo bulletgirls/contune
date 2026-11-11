@@ -410,6 +410,7 @@ export function tileView(t, now = Date.now(), short = false) {
 export const offTip = (t) => `감시 시간 ${t.active || ''}: 이 시간 밖에서는 기준을 보지 않음`;
 
 // ---- 화면 ----
+// 카드·맵·이벤트·시간대 렌더러는 사용자 보드의 도메인 위젯(widgets/domain.js, 07)도 쓴다. 바꾸면 보드도 같이 본다.
 const go = (h) => { location.hash = h; };
 function card(cls, title, href, inner) {
   const c = el('a', { class: `dcard ${cls}`, href });
@@ -427,7 +428,7 @@ export function todoHTML(f, i, ctx) {
     (sub ? `<span class="rk-s">${esc(sub)}</span>` : '') + '</span>';
 }
 
-function riskCard(risk, ctx, now) {
+export function riskCard(risk, ctx, now) {
   if (!risk) return card('risk', '장애 위험도', '#risk', `<div class="dc-body">${gaugeSVG(null, 'ok')}<div class="dc-side"><span class="empty">${DASH}</span></div></div>`);
   const lv = openLevel(risk), ov = openValue(risk);
   const acc = acceptsOf(risk).length;
@@ -451,7 +452,7 @@ function riskCard(risk, ctx, now) {
 
 const HOST_ROW_MARK = { crit: '■', warn: '▲', silent: '○' };
 const goRows = (c) => c.querySelectorAll('.dl-row[data-go]').forEach((k) => k.addEventListener('click', (e) => { e.preventDefault(); go(k.dataset.go); }));
-function serverCard(hs, alerts) {
+export function serverCard(hs, alerts) {
   const s = summarizeHosts(hs);
   const ring = ringSVG([{ key: 'crit', n: s.crit }, { key: 'warn', n: s.warn }, { key: 'silent', n: s.silent }, { key: 'ok', n: s.ok }],
     s.total, fmtNum(s.bad), `/ ${fmtNum(s.total)}`);
@@ -468,7 +469,7 @@ function serverCard(hs, alerts) {
   return c;
 }
 
-function batchCard(sum, flows, now) {
+export function batchCard(sum, flows, now) {
   const t = sum.total;
   const pct = sum.n ? Math.round((t.done / sum.n) * 100) : 0;
   const ring = ringSVG(['done', 'running', 'failed', 'gated'].map((k) => ({ key: k, n: t[k] })), sum.n,
@@ -486,7 +487,7 @@ function batchCard(sum, flows, now) {
   return c;
 }
 
-function bizCard(tiles) {
+export function bizCard(tiles) {
   const now = Date.now();
   const body = tiles.length ? tiles.map((t) => {
     const v = tileView(t, now, true);
@@ -504,7 +505,7 @@ function bizCard(tiles) {
   return c;
 }
 
-function serverMap(hs) {
+export function serverMap(hs) {
   const lg = el('span', { class: 'legend', title: `CPU 0–25 · 25–45 · 45–60 · 60–70 / ${LEVEL_TEXT.warn} · ${LEVEL_TEXT.crit} · ${LEVEL_TEXT.silent}` });
   lg.innerHTML = '<span class="lt">CPU</span><span class="c ok l1"></span><span class="c ok l2"></span><span class="c ok l3"></span><span class="c ok l4"></span>' +
     '<span class="c warn">!</span><span class="c crit">✕</span><span class="c silent">–</span>';
@@ -528,7 +529,7 @@ function serverMap(hs) {
   return box;
 }
 
-function eventList(alerts, panels, hs, flows) {
+export function eventList(alerts, panels, hs, flows) {
   const c = countLevels(alerts);
   const counts = el('span', { class: 'dp-c' });
   // 그 등급을 모두 확인했으면 배지도 흐리게(수는 그대로: 아직 진행 중이다)
@@ -559,7 +560,7 @@ function eventList(alerts, panels, hs, flows) {
 }
 
 // 시간대별 배치: 막대(시간마다 플로우 수) + 고른 시간의 플로우 목록. pick은 고른 칸의 from(ms) 또는 null
-function timeline(hours, now, pick, onPick) {
+export function timeline(hours, now, pick, onPick) {
   const counts = hours.map(hourCounts);
   const max = Math.max(1, ...hours.map((hr) => hr.flows.length));
   const cur = hourOf(hours, now);
@@ -663,7 +664,7 @@ export function render(el0, params, query) {
   }
 }
 let ro = null;
-function fitMap(root) {
+export function fitMap(root) {
   const m = root.querySelector('.dmap');
   const c = m && m.querySelector('.cells');
   if (!c || !c.clientWidth) return;

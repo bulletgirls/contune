@@ -88,6 +88,9 @@ export function parseRoute(hash, boards = new Set()) {
     case 'run': params = { id: segs[1] || '' }; break;
     case 'svc': params = { id: segs[1] || '' }; break; // 서비스 타임머신 #svc/<id>?host=&from=&to= (06, 카드 P-F)
     case 'svcs': break; // 서비스 목록
+    case 'dashes': break; // 사용자 보드 목록(07)
+    case 'dash': params = { id: segs[1] || '' }; break; // 보드 보기 #dash/<id>?tv=1&from=&to=
+    case 'dashedit': params = { id: segs[1] || '' }; break; // 보드 편집 #dashedit/<id>, 새 보드 #dashedit/?from=<템플릿>
     case 'alerts': break;
     case 'risk': break;
     case 'audit': break;

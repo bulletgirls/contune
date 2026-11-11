@@ -23,6 +23,9 @@ var roleTable = map[string]string{
 	"POST /api/v1/flows/reload":            RoleOperator,
 	"POST /api/v1/assist/flow":             RoleOperator,
 	"POST /api/v1/exits/{id}/analyze":      RoleOperator,
+	"PUT /api/v1/dashboards/{id}":          RoleOperator, // 사용자 보드(07): 보기만 하는 정의라 운영이 고친다(감사 기록)
+	"DELETE /api/v1/dashboards/{id}":       RoleOperator,
+	"POST /api/v1/dashboards/data":         RoleViewer, // 편집기 미리보기(읽기만)
 	"PUT /api/v1/flows/{id}":               RoleAdmin,
 	"DELETE /api/v1/flows/{id}":            RoleAdmin,
 	"POST /api/v1/risk/train":              RoleAdmin,

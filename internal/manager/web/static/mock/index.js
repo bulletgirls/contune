@@ -14,8 +14,9 @@ import * as collect from './collect.js';
 import * as exit from './exit.js';
 import * as procs from './procs.js';
 import * as services from './services.js';
+import * as dash from './dash.js';
 
-const ROUTES = [auth, audit, core, server, ops, editor, biz, alert, collect, exit, procs, services].flatMap((m) => m.routes);
+const ROUTES = [auth, audit, core, server, ops, editor, biz, alert, collect, exit, procs, services, dash].flatMap((m) => m.routes);
 
 function pageFlags(opts, q) {
   const s = new URLSearchParams(opts.search ?? (typeof location !== 'undefined' ? location.search : ''));
@@ -36,6 +37,7 @@ function pageFlags(opts, q) {
 export function reset() {
   resetWorld();
   collect.reset();
+  dash.reset();
 }
 
 export async function handle(path, opts = {}) {

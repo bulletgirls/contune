@@ -123,6 +123,7 @@ func cmdManager(ctx context.Context, args []string, stderr io.Writer) error {
 	flows := fs.String("flows", "", "플로우 폴더")
 	panels := fs.String("panels", "", "업무 패널 폴더")
 	services := fs.String("services", "", "서비스 정의 폴더")
+	dashboards := fs.String("dashboards", "", "사용자 보드 폴더")
 	storeKind := fs.String("store", "", "sqlite | memory")
 	if err := parse(fs, args); err != nil {
 		return err
@@ -143,6 +144,7 @@ func cmdManager(ctx context.Context, args []string, stderr io.Writer) error {
 	override("flows", &cfg.Flows, *flows)
 	override("panels", &cfg.Panels, *panels)
 	override("services", &cfg.Services, *services)
+	override("dashboards", &cfg.Dashboards, *dashboards)
 	override("store", &cfg.Store, *storeKind)
 
 	m, err := manager.New(cfg)
