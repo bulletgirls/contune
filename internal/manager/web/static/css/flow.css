@@ -1,1 +1,64 @@
-/* 업무 흐름 위젯(bizflow, 카드 U2). 클래스 접두사 .bf- */
+/* 업무 흐름 위젯(bizflow, 카드 U2). 클래스 접두사 .bf- · 색은 style.css 변수만 쓴다(밝음·어두움).
+   뿌리 .bf가 몸통(.dw-b)을 채운다: 오른쪽 위 ⓘ 줄 + 스크롤 칸(.bf-view) > 크기 칸(.bf-size, 줄인 크기, 가운데) > 그림(.bf-canvas, 원래 크기를 transform으로 줄임).
+   그림 안: 화살표 SVG(상자 뒤) · 이름표 · 상자. 상자 크기는 widgets/flow.js의 BOX_W·BOX_H와 같아야 한다. */
+.bf { position:relative; height:100%; min-width:0; display:flex; flex-direction:column; }
+.bf-top { flex:none; display:flex; justify-content:flex-end; height:16px; line-height:16px; font-size:12px; }
+.bf-top .tip .tipbox { left:auto; right:0; top:1.5em; white-space:pre-line; font-weight:400; }
+.bf-view { flex:1 1 0; min-height:0; overflow:auto; overscroll-behavior:contain; }
+.bf-size { position:relative; margin:0 auto; overflow:hidden; }
+.bf-canvas { position:absolute; left:0; top:0; transform-origin:0 0; }
+.bf-empty { margin:0; padding:8px 0; }
+
+/* 화살표: 상자 뒤. 상자에 마우스를 올리면 닿은 화살표만 진하게(나머지는 흐리게) */
+.bf-edges { position:absolute; left:0; top:0; overflow:visible; pointer-events:none; }
+.bf-edge { fill:none; stroke:var(--t3); stroke-width:1.5; transition:opacity .12s; }
+.bf-ah { fill:var(--t3); }
+.bf-ah.hl { fill:var(--accent); }
+.bf.hovering .bf-edge { opacity:.22; }
+.bf.hovering .bf-edge.hl { opacity:1; stroke:var(--accent); stroke-width:2; }
+
+/* 화살표 이름표(앞 업무의 out): 타일 제목 / 값 단위 두 줄. 지나가는 선 위에서도 읽히게 바탕을 깐다 */
+.bf-lbl { position:absolute; display:flex; flex-direction:column; align-items:flex-start; padding:0 3px; border-radius:3px; background:var(--surface);
+  font-size:11px; line-height:13px; white-space:nowrap; transition:opacity .12s; }
+.bf-lbl.end { transform:translateX(-100%); align-items:flex-end; }
+.bf-lbl > span { max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+.bf-et { color:var(--t3); }
+.bf-ev { color:var(--t1); font-weight:600; font-variant-numeric:tabular-nums; }
+.bf-ev .unit { font-weight:400; }
+.bf-lbl.st-warn .bf-ev { color:var(--warn); } .bf-lbl.st-crit .bf-ev { color:var(--crit); }
+.bf.hovering .bf-lbl { opacity:.3; }
+.bf.hovering .bf-lbl.hl { opacity:1; }
+
+/* 상자: 왼쪽 띠·테두리 = 패널 타일 중 가장 나쁜 판정(정상은 띠만), 시간 외·값 없음은 회색 띠, 패널 없음은 점선 */
+.bf-box { position:absolute; width:216px; height:104px; display:flex; flex-direction:column; gap:1px; padding:6px 10px 6px 14px; overflow:hidden;
+  background:var(--surface); border:1px solid var(--line); border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,.06); font-size:12px; --c:var(--line); }
+.bf-box::before { content:''; position:absolute; left:0; top:0; bottom:0; width:5px; background:var(--c); }
+.bf-box.st-ok { --c:var(--ok); }
+.bf-box.st-off { --c:var(--silent); }
+.bf-box.st-warn { --c:var(--warn); border-color:var(--warn); background:color-mix(in srgb, var(--warn) 6%, var(--surface)); }
+.bf-box.st-crit { --c:var(--crit); border-color:var(--crit); background:color-mix(in srgb, var(--crit) 7%, var(--surface)); }
+.bf-box.st-miss { border-style:dashed; background:var(--bg); box-shadow:none; }
+.bf-box.go { cursor:pointer; }
+.bf-box.go:hover { box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent), 0 2px 8px rgba(0,0,0,.12); }
+.bf-box:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+
+/* 머리: 제목(넘치면 말줄임) · 판정 · 시간 외 */
+.bf-h { display:flex; align-items:baseline; gap:6px; min-width:0; height:21px; margin-bottom:1px; }
+.bf-t { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:700; color:var(--t1); }
+.bf-st { flex:none; font-size:11px; font-weight:600; white-space:nowrap; }
+.bf-st.warn { color:var(--warn); } .bf-st.crit { color:var(--crit); }
+.bf-off { flex:none; font-size:11px; line-height:15px; color:var(--t3); border:1px solid var(--line); border-radius:8px; padding:0 5px; white-space:nowrap; }
+
+/* 줄: 타일 제목 · 값(판정 색) */
+.bf-r { display:flex; align-items:baseline; justify-content:space-between; gap:8px; min-width:0; height:21px; line-height:21px; }
+.bf-rl { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--t2); }
+.bf-rv { flex:none; white-space:nowrap; font-size:13px; font-weight:600; color:var(--t1); font-variant-numeric:tabular-nums; }
+.bf-rv .unit, .bf-rv .empty { font-weight:400; }
+.bf-mk { font-style:normal; font-size:10px; margin-right:3px; }
+.bf-r.st-warn .bf-rv, .bf-r.st-warn .unit { color:var(--warn); }
+.bf-r.st-crit .bf-rv, .bf-r.st-crit .unit { color:var(--crit); }
+.bf-r.stock { border-top:1px dashed var(--line); }
+.bf-r.diff .bf-rl { color:var(--t3); }
+.bf-r.diff .bf-rv { font-weight:400; color:var(--t2); }
+.bf-r.miss .bf-rl, .bf-miss { color:var(--t3); }
+.bf-miss { margin-top:4px; font-size:12px; overflow-wrap:anywhere; }
