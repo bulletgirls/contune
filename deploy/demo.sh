@@ -3,7 +3,7 @@
 # 업무 프로세스 둘: 체결(match-01 matching_svc, run·surge), 시세(feed-01 quote_svc, quote·quote-surge·quote-rate)
 # 환경변수: EUM_URL(기본 http://localhost:8080) EUM_MODE(dev|compose, 기본 dev) EUM_DATA(기본 ./data-dev)
 #          EUM_COMPOSE(compose 파일, 기본 deploy/docker-compose.yml) EUM_DEV_FLAGS(eum dev에 더 넘길 플래그)
-#          EUM_HOSTS(up이 기다리는 호스트 수, 기본 43) EUM_BIN(eum 실행 파일, 기본 deploy/bin/eum) EUM_TOKEN(기본 dev)
+#          EUM_HOSTS(up이 기다리는 호스트 수, 기본 46) EUM_BIN(eum 실행 파일, 기본 deploy/bin/eum) EUM_TOKEN(기본 dev)
 #          EUM_USER·EUM_PASS(화면 로그인 계정, 기본 admin/eum-admin. 로그인이 꺼져 있으면 쓰지 않음)
 set -eu
 
@@ -15,7 +15,7 @@ EUM_MODE="${EUM_MODE:-dev}"
 EUM_DATA="${EUM_DATA:-./data-dev}"
 EUM_COMPOSE="${EUM_COMPOSE:-deploy/docker-compose.yml}"
 EUM_DEV_FLAGS="${EUM_DEV_FLAGS:-}"
-EUM_HOSTS="${EUM_HOSTS:-43}"   # up이 기다리는 호스트 수
+EUM_HOSTS="${EUM_HOSTS:-46}"   # up이 기다리는 호스트 수
 EUM_BIN="${EUM_BIN:-deploy/bin/eum}"
 export EUM_TOKEN="${EUM_TOKEN:-dev}"
 export EUM_USER="${EUM_USER:-admin}"

@@ -266,7 +266,7 @@ func TestExampleBoards(t *testing.T) {
 	for _, it := range items {
 		ids[it.ID] = true
 	}
-	for _, id := range []string{"ops-wall", "trading", "settle"} {
+	for _, id := range []string{"ops-wall", "trading", "settle", "bizflow"} {
 		if !ids[id] {
 			t.Errorf("예시 보드 %s가 없음(%v)", id, items)
 		}
