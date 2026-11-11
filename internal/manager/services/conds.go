@@ -124,7 +124,7 @@ func (b *Book) startsConds(ctx context.Context, w *world) ([]alert.ServiceCond, 
 			}
 			out = append(out, alert.ServiceCond{
 				Key: svc + "@" + r.Host + ":starts:" + r.ExecID, Service: svc, Host: r.Host, ExecID: r.ExecID, Level: "warn",
-				Message: fmt.Sprintf("%s › %s이 선언한 %s가 뜨지 않음", r.FlowID, r.StepID, svc),
+				Message: fmt.Sprintf("선언한 서비스 %s 미기동: %s › %s 성공 뒤 1분", svc, r.FlowID, r.StepID),
 			})
 		}
 	}

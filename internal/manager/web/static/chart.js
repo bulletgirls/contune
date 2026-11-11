@@ -402,8 +402,11 @@ export function lineChart(host, opts) {
           }
           ctx.restore();
         }
-        // 세로 표시선(실행 시작·종료)
-        for (const m of marks) {
+        // 세로 표시선(실행 시작·종료, 서비스 사건). 이름표는 겹치지 않게 두 줄까지 놓고, 자리가 없으면 선만 그린다
+        // (사건이 몰리면 이름은 말풍선·사건 목록에서 본다).
+        const rows = [[], []]; // 줄마다 차지한 [x1, x2]
+        const fits = (r, a, b) => rows[r].every(([p, q]) => b < p || a > q);
+        for (const m of [...marks].sort((p, q) => p.at - q.at)) {
           const x = Math.round(u.valToPos(m.at / 1000, 'x', true)) + 0.5;
           if (x < left || x > left + width) continue;
           const col = cssVar(m.color || '--t2');
@@ -418,8 +421,13 @@ export function lineChart(host, opts) {
             ctx.textBaseline = 'top';
             const w = ctx.measureText(m.label).width;
             const right = x + 4 * pr + w > left + width;
-            ctx.textAlign = right ? 'right' : 'left';
-            ctx.fillText(m.label, right ? x - 4 * pr : x + 4 * pr, top + 2 * pr);
+            const x1 = right ? x - 4 * pr - w : x + 4 * pr, x2 = x1 + w + 6 * pr;
+            const r = fits(0, x1, x2) ? 0 : fits(1, x1, x2) ? 1 : -1;
+            if (r >= 0) {
+              rows[r].push([x1, x2]);
+              ctx.textAlign = right ? 'right' : 'left';
+              ctx.fillText(m.label, right ? x - 4 * pr : x + 4 * pr, top + (2 + r * 13) * pr);
+            }
           }
           ctx.restore();
         }

@@ -470,7 +470,7 @@ func TestAlertConds(t *testing.T) {
 	e.addRun(model.Run{ExecID: "R1", FlowID: "BATCH_JOB", StepID: "start", Host: "feed-01", ScheduledAt: now - 40*mins,
 		Status: model.StatusSucceeded, StartedAt: now - 40*mins, EndedAt: now - 35*mins})
 	want := "matching@match-02:down|crit|체결(match-02) 서비스 미기동: 살아 있는 프로세스 1 / 2\n" +
-		"svr_a@feed-01:starts:R1|warn|BATCH_JOB › start이 선언한 svr_a가 뜨지 않음"
+		"svr_a@feed-01:starts:R1|warn|선언한 서비스 svr_a 미기동: BATCH_JOB › start 성공 뒤 1분"
 	cs := e.b.AlertConds(ctx, now)
 	if got := condKeys(cs); got != want {
 		t.Fatalf("선언 확인\n%s", got)
