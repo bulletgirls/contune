@@ -34,6 +34,7 @@ var kindPrefixes = map[string][]string{
 	"audit":   {"audit."},
 	"collect": {"collect."},
 	"panels":  {"panels."},
+	"dash":    {"dash."}, // 사용자 보드(07)
 	"exit":    {"exit."},
 }
 

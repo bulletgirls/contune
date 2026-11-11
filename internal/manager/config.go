@@ -27,7 +27,10 @@ type Config struct {
 	Flows    string `yaml:"flows"`    // 배치판 폴더들
 	Panels   string `yaml:"panels"`   // 업무 패널 YAML
 	Services string `yaml:"services"` // 서비스 정의 YAML 폴더(06, 카드 P). 비면 자동 서비스만
-	Token    string `yaml:"token"`    // 공유 에이전트 토큰(호스트 묶음 없음). ${VAR}는 환경변수로 바꿈
+	// Dashboards는 사용자 보드 YAML 폴더(07, 카드 W). 비면 보드 없음. DashboardsReadOnly면 화면 저장·삭제를 끈다.
+	Dashboards         string `yaml:"dashboards"`
+	DashboardsReadOnly bool   `yaml:"dashboards_readonly"`
+	Token              string `yaml:"token"` // 공유 에이전트 토큰(호스트 묶음 없음). ${VAR}는 환경변수로 바꿈
 	// AgentTokens는 호스트별 에이전트 토큰(host → token, 보안 S3). 이 토큰으로 온 요청은 그 호스트 이름으로만 말할 수 있다.
 	AgentTokens map[string]string `yaml:"agent_tokens"`
 	// TLS는 매니저 HTTPS(보안 S3). Cert·Key가 둘 다 있으면 HTTPS로 듣는다.
@@ -55,17 +58,18 @@ type Config struct {
 // DefaultConfig는 설정 파일이 없을 때의 기본값이다.
 func DefaultConfig() Config {
 	c := Config{
-		Listen:    ":8080",
-		Data:      "/data",
-		Flows:     "/flows",
-		Panels:    "/panels",
-		Services:  "/services",
-		TZ:        "Asia/Seoul",
-		Store:     "sqlite",
-		HostState: model.HostThresholds{CPUWarn: 70, CPUCrit: 90, MemWarn: 80, MemCrit: 90, SilentAfter: 10 * time.Second},
-		Retention: 168 * time.Hour,
-		Editor:    editor.Config{Enabled: false, Allow: []string{}},
-		LLM:       map[string]any{"type": "none"},
+		Listen:     ":8080",
+		Data:       "/data",
+		Flows:      "/flows",
+		Panels:     "/panels",
+		Services:   "/services",
+		Dashboards: "/dashboards",
+		TZ:         "Asia/Seoul",
+		Store:      "sqlite",
+		HostState:  model.HostThresholds{CPUWarn: 70, CPUCrit: 90, MemWarn: 80, MemCrit: 90, SilentAfter: 10 * time.Second},
+		Retention:  168 * time.Hour,
+		Editor:     editor.Config{Enabled: false, Allow: []string{}},
+		LLM:        map[string]any{"type": "none"},
 		Risk: risk.Config{
 			Model: "logreg", ScoreEvery: 10 * time.Second, TrainEvery: 10 * time.Minute,
 			TrainWindow: 168 * time.Hour, Lead: 5 * time.Minute, MinIncidents: 3, Warn: 30, Crit: 60,

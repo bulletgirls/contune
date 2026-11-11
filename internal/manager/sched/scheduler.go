@@ -264,7 +264,7 @@ func (s *Scheduler) flowRunning(ctx context.Context, f model.Flow) (bool, error)
 func (s *Scheduler) Mount(mux *http.ServeMux) {
 	s.mountAgent(mux) // B4: /agent/commands, /agent/events
 	s.mountRun(mux)   // B4: /flows/{id}/run
-	s.mountAPI(mux)   // B5: /flows, /runs, /runs/{id}, /export/runs
+	s.mountAPI(mux)   // B5: /flows, /flows/hours, /runs, /runs/{id}, /export/runs
 	s.mountOps(mux)   // B7: /runs/{id}/force-ok · rerun · kill
 }
 

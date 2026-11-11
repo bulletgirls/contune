@@ -144,6 +144,17 @@ func (s *Store) Write(ctx context.Context, batch []model.Sample) error {
 }
 
 // likeEscape는 LIKE 패턴에서 \, %, _를 글자 그대로 만든다(ESCAPE '\').
+// execWhere는 주인 키 조건이다. 비면 무관, 끝이 *면 접두사(보드의 서비스 범위 svc:<서비스>@*, 07), 아니면 같은 값.
+func execWhere(col, v string, where *[]string, args *[]any) {
+	if p, ok := strings.CutSuffix(v, "*"); ok {
+		*where = append(*where, col+` LIKE ? ESCAPE '\'`)
+		*args = append(*args, likeEscape(p)+"%")
+	} else if v != "" {
+		*where = append(*where, col+" = ?")
+		*args = append(*args, v)
+	}
+}
+
 func likeEscape(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
 }
@@ -179,10 +190,7 @@ func (s *Store) Query(ctx context.Context, q model.SeriesQuery) ([]model.Series,
 		where = append(where, "s.name = ?")
 		args = append(args, q.Name)
 	}
-	if q.ExecID != "" {
-		where = append(where, "s.exec_id = ?")
-		args = append(args, q.ExecID)
-	}
+	execWhere("s.exec_id", q.ExecID, &where, &args)
 	var stmt string
 	if q.StepSec > 0 {
 		step := int64(q.StepSec) * 1000
@@ -300,10 +308,7 @@ func (s *Store) QueryLogs(ctx context.Context, q model.LogQuery) ([]model.LogEve
 	args := []any{q.From, upper(q.To)}
 	inClause("host", q.Hosts, &where, &args)
 	inClause("level", q.Levels, &where, &args)
-	if q.ExecID != "" {
-		where = append(where, "exec_id = ?")
-		args = append(args, q.ExecID)
-	}
+	execWhere("exec_id", q.ExecID, &where, &args)
 	if q.Text != "" {
 		where = append(where, `message LIKE ? ESCAPE '\'`)
 		args = append(args, "%"+likeEscape(q.Text)+"%")

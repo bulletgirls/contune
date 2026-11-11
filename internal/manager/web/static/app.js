@@ -14,8 +14,9 @@ const PAGES = {
   'dev/flame': './pages/devflame.js',
   exit: './pages/exit.js', exits: './pages/exits.js',
   svc: './pages/svc.js', svcs: './pages/svc.js',
+  dashes: './pages/dash.js', dash: './pages/dash.js', dashedit: './pages/dashedit.js', // 사용자 보드(07)
 };
-const MENU = { dashboard: 'dashboard', hosts: 'hosts', host: 'hosts', collect: 'hosts', board: 'board', edit: 'board', biz: 'biz', runs: 'runs', run: 'runs', exit: 'runs', exits: 'runs', svc: 'biz', svcs: 'biz' };
+const MENU = { dashboard: 'dashboard', hosts: 'hosts', host: 'hosts', collect: 'hosts', board: 'board', edit: 'board', biz: 'biz', runs: 'runs', run: 'runs', exit: 'runs', exits: 'runs', svc: 'biz', svcs: 'biz', dashes: 'dashes', dash: 'dashes', dashedit: 'dashes' };
 
 let boards = new Set();
 let current = null;

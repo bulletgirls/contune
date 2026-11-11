@@ -34,9 +34,10 @@ type procBrief struct {
 	ExitID    string `json:"exit_id,omitempty"`
 }
 
-// mountAPI는 GET /api/v1/flows, /runs, /runs/{exec_id}, /export/runs를 붙인다.
+// mountAPI는 GET /api/v1/flows, /flows/hours, /runs, /runs/{exec_id}, /export/runs를 붙인다.
 func (s *Scheduler) mountAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/flows", s.handleFlows)
+	mux.HandleFunc("GET /api/v1/flows/hours", s.handleHours)
 	mux.HandleFunc("GET /api/v1/runs", s.handleRuns)
 	mux.HandleFunc("GET /api/v1/runs/{exec_id}", s.handleRunDetail)
 	mux.HandleFunc("GET /api/v1/export/runs", s.handleExportRuns)

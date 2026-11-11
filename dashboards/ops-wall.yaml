@@ -1,0 +1,14 @@
+# 운영 벽면: 템플릿 "ops"(관제와 같은 구성) 그대로. 벽면 화면(#dash/ops-wall)에 띄워 둔다.
+# 12칸 격자에 이 순서로 채우면 관제 모양이 된다: 첫 줄 4개(3칸씩), 서버 맵 옆에 이벤트(4줄), 그 아래 시간대별 배치.
+id: ops-wall
+title: 운영 벽면
+desc: 관제와 같은 구성(위험도·서버·배치·업무 지표·서버 맵·이벤트·시간대별 배치)
+range: 1h
+widgets:
+  - { id: risk,      type: risk,      w: 3, h: 2 }
+  - { id: servers,   type: servers,   w: 3, h: 2 }
+  - { id: batch,     type: batch,     w: 3, h: 2 }
+  - { id: kpi,       type: kpi,       w: 3, h: 2 }
+  - { id: servermap, type: servermap, w: 8, h: 3 }
+  - { id: events,    type: events,    w: 4, h: 5 }
+  - { id: hours,     type: hours,     w: 8, h: 2 }

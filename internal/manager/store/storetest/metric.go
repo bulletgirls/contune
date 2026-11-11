@@ -91,6 +91,14 @@ func RunMetric(t *testing.T, open OpenMetric) {
 			{"a", "x", "E2", []model.Point{pt(1000, 2)}},
 		})
 	})
+	run("QueryExecIDPrefix", func(t *testing.T, m store.MetricStore) { // 보드의 서비스 범위(07): svc:<서비스>@*
+		mustWrite(t, m, smp(1000, "a", "x", 1, "svc:m@a"), smp(1000, "b", "x", 2, "svc:m@b"), smp(1000, "a", "x", 3, "svc:q@a"),
+			smp(1000, "a", "x", 4, "svc:m_x@a"), smp(1000, "a", "x", 5, ""))
+		expect(t, m, model.SeriesQuery{Name: "x", ExecID: "svc:m@*", To: 5000}, []ser{
+			{"a", "x", "svc:m@a", []model.Point{pt(1000, 1)}},
+			{"b", "x", "svc:m@b", []model.Point{pt(1000, 2)}},
+		})
+	})
 	run("QueryBounds", func(t *testing.T, m store.MetricStore) {
 		mustWrite(t, m, smp(999, "a", "x", 0, ""), smp(1000, "a", "x", 1, ""), smp(2000, "a", "x", 2, ""),
 			smp(3000, "a", "x", 3, ""), smp(3001, "a", "x", 4, ""))
@@ -187,6 +195,9 @@ func RunMetric(t *testing.T, open OpenMetric) {
 		eq(q(model.LogQuery{To: 9000, Text: "100%"}), []int64{1000})    // %도 글자 그대로
 		eq(q(model.LogQuery{From: 2000, To: 4000}), []int64{4000, 3000, 2000})
 		eq(q(model.LogQuery{To: 9000, Limit: 2}), []int64{5000, 4000})
+		if got := q(model.LogQuery{To: 9000, ExecID: "E*"}); len(got) == 0 { // 접두사(07)
+			t.Fatalf("exec_id 접두사 결과 없음")
+		}
 		out, _ := m.QueryLogs(ctx, model.LogQuery{To: 9000, ExecID: "E1", Levels: []string{"error"}})
 		if len(out) != 1 || out[0].Message != "reject order_7" || out[0].Source != "matching" || out[0].Host != "m1" {
 			t.Fatalf("fields %+v", out)

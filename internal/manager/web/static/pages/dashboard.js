@@ -1,4 +1,4 @@
-// 관제 대시보드(#dashboard): 요약 카드 4장(게이지·고리·불릿) · 서버 맵 · 실시간 이벤트 · 배치 시간대.
+// 관제 대시보드(#dashboard): 요약 카드 4장(게이지·고리·불릿) · 서버 맵 · 실시간 이벤트 · 시간대별 배치.
 // 넓은 화면(2026-11-11): 카드는 자기 폭을 보고(컨테이너 쿼리) 이상 서버·주목할 배치·세 번째 요인을 더 보이고,
 // 서버 맵 칸은 가장 큰 그룹이 한 줄을 채우도록 늘어나며(30~120px) 넓으면 칸 안에 서버 이름을 쓴다.
 import { api, poll } from '../api.js';
@@ -61,22 +61,82 @@ export function summarizeBatch(flows, now) {
   return { total, n: flows.length };
 }
 
-// 배치 시간대: 시(0~23)마다 오늘 시작한 최근 실행의 상태 수 + 오늘 남은 다음 실행(plan) 수.
-// /flows에는 플로우마다 최근 실행 하나와 다음 실행 하나만 있으므로 반복 플로우는 두 번까지만 잡힌다.
-export function hourBuckets(flows, now) {
-  const day0 = startOfDay(now), day1 = day0 + 86400000;
-  const out = Array.from({ length: 24 }, () => ({ done: 0, running: 0, failed: 0, gated: 0, plan: 0 }));
+// ---- 시간대별 배치(05 §14.3) ----
+// GET /flows/hours: 오늘(매니저 시간대) 시간마다 {h, from, to, flows: [{id, board, state, runs, failed, plans, at, flow_run_id}]}.
+// 막대 하나 = 그 시간에 시작한 플로우 수(같은 플로우가 여러 번 돌면 나쁜 상태로 한 번), 점선 = 지금 뒤 남은 예정.
+export const HOUR_KEYS = ['failed', 'running', 'gated', 'done', 'plan'];
+export const HOUR_TEXT = { failed: BATCH_TEXT.failed[0], running: BATCH_TEXT.running[0], gated: BATCH_TEXT.gated[0], done: BATCH_TEXT.done[0], plan: BATCH_TEXT.wait[0] };
+export const HOUR_MARK = { failed: BATCH_TEXT.failed[1], running: BATCH_TEXT.running[1], gated: BATCH_TEXT.gated[1], done: BATCH_TEXT.done[1], plan: BATCH_TEXT.wait[1] };
+const HOUR_RANK = Object.fromEntries(HOUR_KEYS.map((k, i) => [k, i]));
+const sortHourFlows = (fs) => fs.sort((a, b) => HOUR_RANK[a.state] - HOUR_RANK[b.state] || a.at - b.at || (a.id < b.id ? -1 : 1));
+
+// 매니저가 /flows/hours를 모르면(이전 판) /flows의 최근·다음 실행 하나씩으로 같은 모양을 만든다(브라우저 시각).
+// 이때 반복 플로우는 시간마다 두 번까지만 잡힌다.
+export function hoursFromFlows(flows, now) {
+  const day0 = startOfDay(now);
+  const at = (h) => { const d = new Date(day0); d.setHours(h); return d.getTime(); };
+  const hours = Array.from({ length: 24 }, (_, h) => ({ h, from: at(h), to: at(h + 1), flows: [] }));
+  const put = (t, x) => {
+    const hr = hours.find((o) => t >= o.from && t < o.to);
+    if (!hr) return;
+    const cur = hr.flows.find((o) => o.id === x.id);
+    if (cur) cur.plans = (cur.plans || 0) + (x.plans || 0);
+    else hr.flows.push(x);
+  };
   for (const f of flows) {
-    const l = f.last;
-    if (l && l.started_at >= day0 && l.started_at < day1) {
-      const s = todayState(f, now);
-      if (s !== 'wait') out[new Date(l.started_at).getHours()][s]++;
-    }
-    if (f.next_run && f.next_run >= now && f.next_run < day1) out[new Date(f.next_run).getHours()].plan++;
+    const l = f.last, s = todayState(f, now);
+    if (l && l.started_at >= day0 && s !== 'wait') put(l.started_at, { id: f.id, board: f.board, state: s, runs: 1, failed: s === 'failed' ? 1 : 0, at: l.started_at, flow_run_id: l.flow_run_id });
+    if (f.next_run && f.next_run >= now) put(f.next_run, { id: f.id, board: f.board, state: 'plan', runs: 0, plans: 1, at: f.next_run });
   }
-  return out;
+  for (const hr of hours) sortHourFlows(hr.flows);
+  return hours;
 }
-export const bucketCount = (b) => b.done + b.running + b.failed + b.gated + b.plan;
+// 시간 하나의 상태별 플로우 수: {failed, running, gated, done, plan}
+export function hourCounts(hr) {
+  const c = { failed: 0, running: 0, gated: 0, done: 0, plan: 0 };
+  for (const f of hr.flows) c[f.state] = (c[f.state] || 0) + 1;
+  return c;
+}
+// 하루 합: 플로우 실행 수 · 그중 실패 · 남은 예정 수
+export function daySummary(hours) {
+  const s = { runs: 0, failed: 0, plans: 0 };
+  for (const hr of hours) for (const f of hr.flows) { s.runs += f.runs || 0; s.failed += f.failed || 0; s.plans += f.plans || 0; }
+  return s;
+}
+export const hourOf = (hours, t) => hours.findIndex((o) => t >= o.from && t < o.to);
+// 시간 칸 기준 시각 'HH:MM'(칸의 h는 매니저 시각이라 막대 눈금과 목록 시각이 어긋나지 않는다)
+export function hourClock(hours, t) {
+  const hr = hours[hourOf(hours, t)];
+  if (!hr) return fmtClock(t).slice(0, 5);
+  return `${String(hr.h).padStart(2, '0')}:${String(Math.floor((t - hr.from) / 60000)).padStart(2, '0')}`;
+}
+const hh = (h) => `${String(h).padStart(2, '0')}시`;
+// 목록 한 줄의 글자: '실패 · 05:30' · '12회 · 실패 1 · 05:30' · '3회 · 모두 성공 · 09:40' · '15:40 예정' · '17:05부터 7회 예정'
+export function hourRowText(f, clock) {
+  const t = clock(f.at);
+  const out = [];
+  if (f.runs) {
+    const st = f.runs > 1 && f.state === 'done' ? '모두 성공' : f.state === 'failed' && f.runs > 1 ? `실패 ${f.failed || 1}` : HOUR_TEXT[f.state];
+    const open = f.state === 'running' || f.state === 'gated' ? '~' : '';
+    out.push(...(f.runs > 1 ? [`${f.runs}회`] : []), st, t + open);
+    if (f.plans) out.push(`남은 예정 ${f.plans}`);
+    return out.join(' · ');
+  }
+  return f.plans > 1 ? `${t}부터 ${f.plans}회 예정` : `${t} 예정`;
+}
+// 목록 한 줄을 누르면: 실행이 있으면 그 실행의 플로우 그래프, 예정만 있으면 플로우
+export function hourRowHref(f) {
+  const base = flowHref(f);
+  return f.flow_run_id ? `${base}?tab=graph&run=${encodeURIComponent(f.flow_run_id)}` : base;
+}
+// 막대 말풍선: '09시 · 플로우 5개' / '실패 1 · 성공 4' / 이름 몇 개
+export function hourTip(hr) {
+  const c = hourCounts(hr);
+  const n = hr.flows.length;
+  if (!n) return `${hh(hr.h)} · 플로우 없음`;
+  const names = hr.flows.slice(0, 6).map((f) => `${HOUR_MARK[f.state]} ${f.id}`).join('\n') + (n > 6 ? `\n외 ${n - 6}개` : '');
+  return `${hh(hr.h)} · 플로우 ${n}개\n${HOUR_KEYS.filter((k) => c[k]).map((k) => `${HOUR_TEXT[k]} ${c[k]}`).join(' · ')}\n${names}`;
+}
 
 // 실시간 이벤트의 firing 알림. 확인(ack)해도 조건이 풀릴 때까지 firing이라 목록에 남는다(05 §5).
 // 확인한 줄은 지우지 않고 흐리게 그리고, 같은 등급 안에서 확인 안 한 줄 아래로 보낸다.
@@ -350,6 +410,7 @@ export function tileView(t, now = Date.now(), short = false) {
 export const offTip = (t) => `감시 시간 ${t.active || ''}: 이 시간 밖에서는 기준을 보지 않음`;
 
 // ---- 화면 ----
+// 카드·맵·이벤트·시간대 렌더러는 사용자 보드의 도메인 위젯(widgets/domain.js, 07)도 쓴다. 바꾸면 보드도 같이 본다.
 const go = (h) => { location.hash = h; };
 function card(cls, title, href, inner) {
   const c = el('a', { class: `dcard ${cls}`, href });
@@ -367,7 +428,7 @@ export function todoHTML(f, i, ctx) {
     (sub ? `<span class="rk-s">${esc(sub)}</span>` : '') + '</span>';
 }
 
-function riskCard(risk, ctx, now) {
+export function riskCard(risk, ctx, now) {
   if (!risk) return card('risk', '장애 위험도', '#risk', `<div class="dc-body">${gaugeSVG(null, 'ok')}<div class="dc-side"><span class="empty">${DASH}</span></div></div>`);
   const lv = openLevel(risk), ov = openValue(risk);
   const acc = acceptsOf(risk).length;
@@ -391,7 +452,7 @@ function riskCard(risk, ctx, now) {
 
 const HOST_ROW_MARK = { crit: '■', warn: '▲', silent: '○' };
 const goRows = (c) => c.querySelectorAll('.dl-row[data-go]').forEach((k) => k.addEventListener('click', (e) => { e.preventDefault(); go(k.dataset.go); }));
-function serverCard(hs, alerts) {
+export function serverCard(hs, alerts) {
   const s = summarizeHosts(hs);
   const ring = ringSVG([{ key: 'crit', n: s.crit }, { key: 'warn', n: s.warn }, { key: 'silent', n: s.silent }, { key: 'ok', n: s.ok }],
     s.total, fmtNum(s.bad), `/ ${fmtNum(s.total)}`);
@@ -408,7 +469,7 @@ function serverCard(hs, alerts) {
   return c;
 }
 
-function batchCard(sum, flows, now) {
+export function batchCard(sum, flows, now) {
   const t = sum.total;
   const pct = sum.n ? Math.round((t.done / sum.n) * 100) : 0;
   const ring = ringSVG(['done', 'running', 'failed', 'gated'].map((k) => ({ key: k, n: t[k] })), sum.n,
@@ -426,7 +487,7 @@ function batchCard(sum, flows, now) {
   return c;
 }
 
-function bizCard(tiles) {
+export function bizCard(tiles) {
   const now = Date.now();
   const body = tiles.length ? tiles.map((t) => {
     const v = tileView(t, now, true);
@@ -444,7 +505,7 @@ function bizCard(tiles) {
   return c;
 }
 
-function serverMap(hs) {
+export function serverMap(hs) {
   const lg = el('span', { class: 'legend', title: `CPU 0–25 · 25–45 · 45–60 · 60–70 / ${LEVEL_TEXT.warn} · ${LEVEL_TEXT.crit} · ${LEVEL_TEXT.silent}` });
   lg.innerHTML = '<span class="lt">CPU</span><span class="c ok l1"></span><span class="c ok l2"></span><span class="c ok l3"></span><span class="c ok l4"></span>' +
     '<span class="c warn">!</span><span class="c crit">✕</span><span class="c silent">–</span>';
@@ -468,7 +529,7 @@ function serverMap(hs) {
   return box;
 }
 
-function eventList(alerts, panels, hs, flows) {
+export function eventList(alerts, panels, hs, flows) {
   const c = countLevels(alerts);
   const counts = el('span', { class: 'dp-c' });
   // 그 등급을 모두 확인했으면 배지도 흐리게(수는 그대로: 아직 진행 중이다)
@@ -498,28 +559,65 @@ function eventList(alerts, panels, hs, flows) {
   return box;
 }
 
-const HOUR_KEYS = ['failed', 'running', 'gated', 'done', 'plan'];
-const HOUR_TEXT = { ...Object.fromEntries(Object.entries(BATCH_TEXT).map(([k, v]) => [k, v[0]])), plan: BATCH_TEXT.wait[0] };
-function timeline(flows, now) {
-  const bs = hourBuckets(flows, now);
-  const max = Math.max(1, ...bs.map(bucketCount));
-  const curH = new Date(now).getHours();
-  const cols = el('div', { class: 'tl-cols' });
-  bs.forEach((b, h) => {
-    const n = bucketCount(b);
-    const tip = `${String(h).padStart(2, '0')}시` + (n ? ' · ' + HOUR_KEYS.filter((k) => b[k]).map((k) => `${HOUR_TEXT[k]} ${b[k]}`).join(' · ') : '');
-    const col = el('div', { class: `tl-col${h === curH ? ' now' : ''}${h < curH ? ' past' : ''}`, title: tip });
-    for (const k of HOUR_KEYS) if (b[k]) col.append(el('span', { class: `tl-seg ${k}`, style: `height:${((b[k] / max) * 100).toFixed(1)}%` }));
-    if (h === curH) col.append(el('i', { class: 'tl-now', style: `left:${((new Date(now).getMinutes() / 60) * 100).toFixed(1)}%` }));
+// 시간대별 배치: 막대(시간마다 플로우 수) + 고른 시간의 플로우 목록. pick은 고른 칸의 from(ms) 또는 null
+export function timeline(hours, now, pick, onPick) {
+  const counts = hours.map(hourCounts);
+  const max = Math.max(1, ...hours.map((hr) => hr.flows.length));
+  const cur = hourOf(hours, now);
+  const cols = el('div', { class: 'tl-cols', role: 'group', 'aria-label': '시간대별 플로우 수' });
+  hours.forEach((hr, i) => {
+    const n = hr.flows.length, c = counts[i];
+    const on = pick === hr.from;
+    const col = el('button', {
+      type: 'button', class: `tl-col${i === cur ? ' now' : ''}${i < cur ? ' past' : ''}${n ? '' : ' z'}${on ? ' on' : ''}`,
+      title: hourTip(hr), 'aria-label': hourTip(hr).split('\n').slice(0, 2).join(' · '), 'aria-pressed': on ? 'true' : 'false',
+      disabled: !n, onclick: () => onPick(on ? null : hr.from),
+    });
+    if (n) {
+      const pct = (n / max) * 100;
+      const stack = el('span', { class: 'tl-stack', style: `height:${pct.toFixed(1)}%` });
+      for (const k of HOUR_KEYS) if (c[k]) stack.append(el('i', { class: `tl-seg ${k}`, style: `flex:${c[k]} 1 0` }));
+      col.append(stack, el('span', { class: 'tl-n num', style: `bottom:${pct.toFixed(1)}%`, text: String(n) }));
+    }
+    if (i === cur) col.append(el('i', { class: 'tl-now', style: `left:${(((now - hr.from) / (hr.to - hr.from)) * 100).toFixed(1)}%` }));
     cols.append(col);
   });
   const axis = el('div', { class: 'tl-axis' });
-  for (const h of [0, 6, 12, 18, 24]) axis.append(el('span', { style: `left:${((h / 24) * 100).toFixed(2)}%`, text: String(h).padStart(2, '0') }));
-  const lg = el('div', { class: 'tl-lg' });
-  lg.innerHTML = ['done', 'running', 'failed', 'plan'].map((k) => `<span class="${k}"><i></i>${esc(HOUR_TEXT[k])}</span>`).join('');
-  return el('section', { class: 'dpanel dtl' },
-    el('div', { class: 'tl-h' }, el('h2', { class: 'sec', text: '배치 시간대' }), lg),
-    el('div', { class: 'tl-body' }, cols, axis));
+  hours.forEach((hr, i) => { if (hr.h % 3 === 0) axis.append(el('span', { style: `left:${((i / hours.length) * 100).toFixed(2)}%`, text: String(hr.h).padStart(2, '0') })); });
+  if (hours.length) axis.append(el('span', { class: 'end', style: 'left:100%', text: '24' }));
+  const sum = daySummary(hours);
+  const sumEl = el('span', { class: 'tl-sum' }, `오늘 실행 ${fmtNum(sum.runs)}회`,
+    sum.failed ? el('b', { class: 'bad', text: ` · 실패 ${fmtNum(sum.failed)}` }) : null, ` · 남은 예정 ${fmtNum(sum.plans)}회`);
+  const lg = el('span', { class: 'tl-lg' });
+  lg.innerHTML = HOUR_KEYS.map((k) => `<span class="${k}"><i></i>${esc(HOUR_TEXT[k])}</span>`).join('');
+  const box = el('section', { class: 'dpanel dtl' },
+    el('div', { class: 'dp-h' }, el('h2', { class: 'sec', text: '시간대별 배치' }), sumEl,
+      info('오늘 0~24시. 막대 = 그 시간에 시작한 플로우 수(같은 플로우가 여러 번 돌면 가장 나쁜 상태로 하나), 숫자 = 플로우 수, 점선 = 지금 뒤 남은 예정, 세로선 = 지금. 막대를 누르면 그 시간의 플로우 목록'),
+      el('span', { class: 'grow' }), lg),
+    el('div', { class: 'tl-plot' }, el('div', { class: 'tl-y num' }, el('span', { text: fmtNum(max) }), el('span', { text: '0' })),
+      el('div', { class: 'tl-main' }, cols, axis)));
+  const hr = pick == null ? null : hours.find((o) => o.from === pick);
+  if (hr) box.append(hourPanel(hours, hr, now, () => onPick(null)));
+  return box;
+}
+
+// 고른 시간의 플로우 목록: 머리(시간 · 플로우·실행 수 · 실행 이력 링크 · 닫기) + 줄(누르면 그 실행의 플로우 그래프)
+function hourPanel(hours, hr, now, close) {
+  const clock = (t) => hourClock(hours, t);
+  const runs = hr.flows.reduce((a, f) => a + (f.runs || 0), 0);
+  const failed = hr.flows.reduce((a, f) => a + (f.failed || 0), 0);
+  const plans = hr.flows.reduce((a, f) => a + (f.plans || 0), 0);
+  const facts = [`플로우 ${hr.flows.length}개`, runs ? `실행 ${fmtNum(runs)}회` : '', failed ? `실패 ${fmtNum(failed)}` : '', plans ? `남은 예정 ${fmtNum(plans)}회` : ''].filter(Boolean).join(' · ');
+  const head = el('div', { class: 'tl-ph' },
+    el('b', { text: `${hh(hr.h)}–${hh((hr.h + 1) % 24 || 24)}` }), el('span', { class: 'tl-pf', text: facts }), el('span', { class: 'grow' }),
+    hr.from <= now ? el('a', { class: 'tl-runs', href: `#runs?from=${hr.from}&to=${hr.to}`, text: '실행 이력' }) : null,
+    el('button', { type: 'button', class: 'tl-x', title: '닫기', 'aria-label': '닫기', text: '✕', onclick: close }));
+  const list = el('div', { class: 'tl-list' }, hr.flows.map((f) => {
+    const txt = hourRowText(f, clock);
+    return el('a', { class: `tl-row ${f.state}`, href: hourRowHref(f), title: `${f.board ? f.board + ' › ' : ''}${f.id} · ${txt}` },
+      el('i', { class: 'tl-m', text: HOUR_MARK[f.state] }), el('b', { text: f.id }), el('span', { class: 'tl-t', text: txt }));
+  }));
+  return el('div', { class: 'tl-pick' }, head, list);
 }
 
 export function render(el0, params, query) {
@@ -529,9 +627,16 @@ export function render(el0, params, query) {
   const root = el('div', { class: 'dash' });
   el0.append(root);
   let lastSig = '';
+  let pick = null, hoursNow = []; // 시간대별 배치에서 고른 칸(from ms)과 마지막으로 그린 시간 칸
+  const onPick = (v) => {
+    pick = v;
+    const old = root.querySelector('.dtl');
+    if (old) old.replaceWith(timeline(hoursNow, Date.now(), pick, onPick));
+  };
   poll(async () => {
-    const [h, f, p, a, r] = await Promise.all([
-      api('/hosts'), api('/flows'), api('/panels'), api('/alerts?state=firing'), api('/risk').catch(() => null)]);
+    const [h, f, p, a, r, hz] = await Promise.all([
+      api('/hosts'), api('/flows'), api('/panels'), api('/alerts?state=firing'), api('/risk').catch(() => null),
+      api('/flows/hours').catch(() => null)]);
     const now = Date.now();
     const hs = hostsInScope(h.hosts || [], g);
     const ids = new Set(hs.map((x) => x.id));
@@ -539,13 +644,16 @@ export function render(el0, params, query) {
     const flows = f.flows || [];
     const alerts = alertsInScope(a.alerts || [], g, ids);
     const bsum = summarizeBatch(flows, now);
-    // 바뀐 것이 없으면 다시 그리지 않는다(시간대 띠의 "지금" 선은 분 단위로 움직인다).
-    const sig = JSON.stringify([hs, panels, flows, alerts, r, bsum, Math.floor(now / 60000)]);
+    // 바뀐 것이 없으면 다시 그리지 않는다(시간대별 배치의 "지금" 선은 분 단위로 움직인다).
+    const hours = hz && Array.isArray(hz.hours) && hz.hours.length ? hz.hours : hoursFromFlows(flows, now);
+    const sig = JSON.stringify([hs, panels, flows, alerts, r, bsum, hours, Math.floor(now / 60000)]);
     if (sig === lastSig && root.childNodes.length) return;
     lastSig = sig;
+    hoursNow = hours;
+    if (pick != null && !hours.some((o) => o.from === pick)) pick = null; // 날이 바뀌면 고른 칸을 푼다
     const cards = el('div', { class: 'cards' }, riskCard(r, { hosts: h.hosts || [], panels: p.panels || [] }, now), serverCard(hs, alerts), batchCard(bsum, flows, now), bizCard(kpiTiles(panels)));
-    // 아래쪽: 왼쪽에 서버 맵과 배치 시간대, 오른쪽에 두 줄 높이의 실시간 이벤트
-    const lower = el('div', { class: 'lower' }, serverMap(hs), eventList(alerts, panels, hs, flows), timeline(flows, now));
+    // 아래쪽: 왼쪽에 서버 맵과 시간대별 배치, 오른쪽에 두 줄 높이의 실시간 이벤트
+    const lower = el('div', { class: 'lower' }, serverMap(hs), eventList(alerts, panels, hs, flows), timeline(hours, now, pick, onPick));
     root.replaceChildren(cards, lower);
     fitMap(root);
   }, 2000);
@@ -556,7 +664,7 @@ export function render(el0, params, query) {
   }
 }
 let ro = null;
-function fitMap(root) {
+export function fitMap(root) {
   const m = root.querySelector('.dmap');
   const c = m && m.querySelector('.cells');
   if (!c || !c.clientWidth) return;

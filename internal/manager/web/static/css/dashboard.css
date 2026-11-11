@@ -66,7 +66,7 @@
 .ring .rnum { font-size:20px; font-weight:700; fill:var(--t1); font-variant-numeric:tabular-nums; }
 .ring .rsub { font-size:11px; fill:var(--t3); font-variant-numeric:tabular-nums; }
 .bks .bk { display:flex; align-items:center; gap:5px; white-space:nowrap; }
-.bk i, .tl-lg i { display:inline-block; width:9px; height:9px; border-radius:2px; flex:none; }
+.bk i { display:inline-block; width:9px; height:9px; border-radius:2px; flex:none; }
 .bk.done i { background:var(--st-succeeded); opacity:.6; } .bk.running i { background:var(--st-running); }
 .bk.failed i { background:var(--st-failed); } .bk.gated i { background:var(--st-gated); }
 .bk.wait i { border:1px dashed var(--t3); }
@@ -96,7 +96,7 @@
 .bullet .bb.ok { fill:var(--line); opacity:.5; } .bullet .bb.warn { fill:var(--line); } .bullet .bb.crit { fill:var(--t3); opacity:.55; }
 .bullet .bv.ok { fill:var(--t1); } .bullet .bv.warn { fill:var(--warn); } .bullet .bv.crit { fill:var(--crit); }
 
-/* 아래쪽: 왼쪽에 서버 맵과 배치 시간대를 쌓고, 실시간 이벤트는 두 줄에 걸쳐 왼쪽 높이에 맞춘다(목록은 안에서 스크롤) */
+/* 아래쪽: 왼쪽에 서버 맵과 시간대별 배치를 쌓고, 실시간 이벤트는 두 줄에 걸쳐 왼쪽 높이에 맞춘다(목록은 안에서 스크롤) */
 .lower { display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); grid-template-areas:"map ev" "tl ev"; gap:12px; align-items:start; }
 .lower .dmap { grid-area:map; } .lower .dtl { grid-area:tl; }
 .lower .dwatch { grid-area:ev; align-self:stretch; display:flex; flex-direction:column; }
@@ -148,26 +148,55 @@
 .dwatch .dp-c { margin-left:auto; flex-wrap:wrap; justify-content:flex-end; }
 .wok { margin-top:8px; color:var(--ok); font-size:13px; }
 
-/* 배치 시간대 */
-.dtl { display:flex; gap:16px; align-items:stretch; }
-.tl-h { width:110px; flex:none; display:flex; flex-direction:column; gap:6px; }
-.tl-h .sec { margin:0; }
-.tl-lg { display:flex; flex-wrap:wrap; gap:2px 8px; font-size:11px; color:var(--t3); }
+/* 시간대별 배치: 머리(제목 · 오늘 합 · ⓘ · 범례), 막대(시간마다 플로우 수, 숫자는 막대 위), 고른 시간의 플로우 목록 */
+.dtl .dp-h { flex-wrap:wrap; row-gap:2px; }
+.dtl .dp-h .sec { flex:none; }
+.dtl .grow { flex:1; }
+.tl-sum { font-size:12px; color:var(--t3); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.tl-sum .bad { color:var(--st-failed); font-weight:600; }
+.tl-lg { display:flex; flex-wrap:wrap; gap:2px 10px; font-size:11px; color:var(--t3); }
 .tl-lg span { display:inline-flex; align-items:center; gap:3px; }
-.tl-body { flex:1; min-width:0; display:flex; flex-direction:column; }
-.tl-cols { display:flex; gap:2px; height:40px; border-bottom:1px solid var(--line); }
-.tl-col { position:relative; flex:1; display:flex; flex-direction:column-reverse; gap:1px; border-radius:2px 2px 0 0; }
+.tl-lg i { display:inline-block; width:9px; height:9px; border-radius:2px; flex:none; }
+.tl-plot { display:flex; gap:6px; margin-top:4px; }
+.tl-y { display:flex; flex-direction:column; justify-content:space-between; width:18px; flex:none; height:56px; margin-top:14px; font-size:10px; color:var(--t3); text-align:right; }
+.tl-main { flex:1; min-width:0; display:flex; flex-direction:column; }
+.tl-cols { display:flex; gap:2px; height:56px; margin-top:14px; border-bottom:1px solid var(--line); }
+.tl-col { position:relative; flex:1; min-width:0; padding:0; border:0; border-radius:2px 2px 0 0; background:none; font:inherit; color:inherit; cursor:pointer; }
+.tl-col.z { cursor:default; }
 .tl-col.now { background:var(--bg); }
-.tl-seg { display:block; min-height:3px; border-radius:1px; }
+.tl-col:not(.z):hover, .tl-col:focus-visible { background:var(--bg); outline:1px solid var(--accent); outline-offset:-1px; }
+.tl-col.on { background:var(--bg); outline:2px solid var(--accent); outline-offset:-2px; }
+.tl-stack { position:absolute; left:2px; right:2px; bottom:0; display:flex; flex-direction:column-reverse; gap:1px; min-height:3px; }
+.tl-seg { display:block; min-height:2px; border-radius:1px; }
 .tl-seg.done, .tl-lg .done i { background:var(--st-succeeded); opacity:.6; }
 .tl-seg.running, .tl-lg .running i { background:var(--st-running); }
 .tl-seg.failed, .tl-lg .failed i { background:var(--st-failed); }
-.tl-seg.gated { background:var(--st-gated); }
+.tl-seg.gated, .tl-lg .gated i { background:var(--st-gated); }
 .tl-seg.plan, .tl-lg .plan i { border:1px dashed var(--t3); background:none; }
-.tl-now { position:absolute; top:-2px; bottom:-2px; width:2px; margin-left:-1px; background:var(--accent); }
+.tl-n { position:absolute; left:0; right:0; z-index:1; margin-bottom:1px; font-size:10px; line-height:12px; color:var(--t3); text-align:center; background:inherit; pointer-events:none; }
+.tl-col.on .tl-n, .tl-col:hover .tl-n { color:var(--t1); font-weight:600; }
+.tl-now { position:absolute; top:-14px; bottom:-2px; width:2px; margin-left:-1px; background:var(--accent); pointer-events:none; }
 .tl-axis { position:relative; height:14px; font-size:11px; color:var(--t3); font-variant-numeric:tabular-nums; }
 .tl-axis span { position:absolute; top:1px; transform:translateX(-50%); }
-.tl-axis span:first-child { transform:none; } .tl-axis span:last-child { transform:translateX(-100%); }
+.tl-axis span:first-child { transform:none; } .tl-axis span.end { transform:translateX(-100%); }
+/* 고른 시간의 플로우 목록: 줄은 폭에 맞춰 여러 열 */
+.tl-pick { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
+.tl-ph { display:flex; align-items:baseline; gap:8px; margin-bottom:6px; font-size:13px; }
+.tl-ph b { font-variant-numeric:tabular-nums; }
+.tl-pf { font-size:12px; color:var(--t3); font-variant-numeric:tabular-nums; }
+.tl-ph .grow { flex:1; }
+.tl-runs { font-size:12px; color:var(--accent); text-decoration:underline; text-underline-offset:2px; }
+.tl-x { border:0; background:none; color:var(--t3); cursor:pointer; font-size:12px; padding:0 2px; }
+.tl-x:hover { color:var(--t1); }
+.tl-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:2px 16px; max-height:180px; overflow:auto; }
+.tl-row { display:flex; align-items:baseline; gap:6px; min-width:0; padding:2px 0; font-size:12px; color:var(--t2); text-decoration:none; white-space:nowrap; }
+.tl-row b { font-weight:600; color:var(--t1); flex:none; max-width:55%; overflow:hidden; text-overflow:ellipsis; }
+.tl-row .tl-t { min-width:0; overflow:hidden; text-overflow:ellipsis; color:var(--t3); font-variant-numeric:tabular-nums; }
+.tl-row:hover b { color:var(--accent); text-decoration:underline; }
+.tl-m { font-style:normal; font-size:11px; flex:none; width:12px; text-align:center; color:var(--t3); }
+.tl-row.failed .tl-m, .tl-row.failed .tl-t { color:var(--st-failed); }
+.tl-row.running .tl-m { color:var(--st-running); } .tl-row.gated .tl-m { color:var(--st-gated); }
+.tl-row.done .tl-m { color:var(--st-succeeded); }
 
 @media (max-width:1100px) {
   .cards { grid-template-columns:repeat(2,minmax(0,1fr)); }
