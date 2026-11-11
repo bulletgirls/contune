@@ -1,4 +1,6 @@
 // 관제 대시보드(#dashboard): 요약 카드 4장(게이지·고리·불릿) · 서버 맵 · 실시간 이벤트 · 배치 시간대.
+// 넓은 화면(2026-11-11): 카드는 자기 폭을 보고(컨테이너 쿼리) 이상 서버·주목할 배치·세 번째 요인을 더 보이고,
+// 서버 맵 칸은 가장 큰 그룹이 한 줄을 채우도록 늘어나며(30~120px) 넓으면 칸 안에 서버 이름을 쓴다.
 import { api, poll } from '../api.js';
 import { el, esc, fmtNum, fmtClock, relTime, numUnit, badgeHTML, info, EMPTY, DASH, LEVEL_TEXT } from '../ui.js';
 import { flowState } from '../tree.js';
@@ -128,6 +130,55 @@ export function alertReason(a) {
   return m.startsWith(n + ' · ') ? m.slice(n.length + 3) : m;
 }
 export const ALERT_MARK = { crit: '■', warn: '▲' };
+
+// 서버 카드가 넓을 때 보이는 이상 서버 목록: 위험 → 경고 → 무응답, 같은 등급은 이름순.
+// 이유는 그 서버의 firing 알림 문구(서버 이름 뺀 것), 알림이 없으면 등급 글자.
+const HOST_RANK = { crit: 0, warn: 1, silent: 2 };
+export function problemHosts(hosts, alerts) {
+  const why = new Map();
+  for (const a of alerts) if (a.kind === 'host' && a.host && !why.has(a.host)) why.set(a.host, alertReason(a));
+  return hosts.filter((h) => h.state !== 'ok')
+    .sort((a, b) => (HOST_RANK[a.state] ?? 3) - (HOST_RANK[b.state] ?? 3) || (a.id < b.id ? -1 : 1))
+    .map((h) => ({ id: h.id, state: h.state, why: why.get(h.id) || HOST_LABEL[h.state] || h.state }));
+}
+// 금일 배치 카드가 넓을 때 보이는 줄(최대 max): 실패 → 실행 중 → 조건 대기(같은 상태는 최근 시작부터),
+// 마지막 한 줄은 가장 가까운 다음 실행으로 남겨 둔다. [{k, id, board, t}]
+const BATCH_RANK = { failed: 0, running: 1, gated: 2 };
+export function batchHighlights(flows, now, max = 4) {
+  const hot = flows.map((f) => ({ f, k: todayState(f, now) })).filter((x) => x.k in BATCH_RANK)
+    .sort((a, b) => BATCH_RANK[a.k] - BATCH_RANK[b.k] || b.f.last.started_at - a.f.last.started_at)
+    .map(({ f, k }) => ({ k, id: f.id, board: f.board, t: f.last.started_at }));
+  const next = flows.filter((f) => f.next_run && f.next_run >= now).sort((a, b) => a.next_run - b.next_run)
+    .map((f) => ({ k: 'plan', id: f.id, board: f.board, t: f.next_run }));
+  const out = hot.slice(0, max - Math.min(1, next.length));
+  return out.concat(next.slice(0, max - out.length));
+}
+// 배치 줄의 시각: 오늘이면 '09:00', 내일이면 '내일 09:00', 그 뒤면 '11-14 09:00'
+export function whenText(t, now) {
+  const hm = fmtClock(t).slice(0, 5);
+  const day = Math.floor((startOfDay(t) - startOfDay(now)) / 86400000);
+  if (day <= 0) return hm;
+  if (day === 1) return `내일 ${hm}`;
+  const d = new Date(t);
+  return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${hm}`;
+}
+// '실패 · 02:31' · '실행 중 · 03:37~' · '조건 대기 · 03:37~' · '09:00 예정'
+export const BATCH_ROW = { failed: ['✕', '실패'], running: ['▶', '실행 중'], gated: ['⏸', '조건 대기'], plan: ['◷', '예정'] };
+export function batchRowText(x, now) {
+  const w = whenText(x.t, now);
+  if (x.k === 'plan') return `${w} ${BATCH_ROW.plan[1]}`;
+  return `${BATCH_ROW[x.k][1]} · ${w}${x.k === 'failed' ? '' : '~'}`;
+}
+export const flowHref = (x) => '#board/' + String(x.board || '').split('/').filter(Boolean).map(encodeURIComponent).concat(encodeURIComponent(x.id)).join('/');
+
+// 서버 맵 칸 너비: 가장 큰 그룹(cols대)이 한 줄을 채우도록 30~120px. 88px 이상이면 칸 안에 서버 이름(이름 9자 + 값이 잘리지 않는 폭).
+// w는 칸이 들어갈 자리의 폭, 칸 사이 3px.
+export const CELL_MIN = 30, CELL_MAX = 120, CELL_NAMED = 88;
+export function cellWidth(w, cols) {
+  const n = Math.max(1, cols || 1);
+  const cw = Math.max(CELL_MIN, Math.min(CELL_MAX, Math.floor((w - (n - 1) * 3) / n)));
+  return { cw, named: cw >= CELL_NAMED };
+}
 
 // kpiTiles는 관제 화면에 올릴 KPI 타일이다. 칸이 모자라면 위험·경고 타일을 먼저 올린다
 // (패널이 늘어도 시세 끊김 같은 위험이 정의 순서에 밀려 숨지 않게). 같은 수준끼리는 정의 순서.
@@ -280,7 +331,7 @@ function riskCard(risk, ctx, now) {
   if (!risk) return card('risk', '장애 위험도', '#risk', `<div class="dc-body">${gaugeSVG(null, 'ok')}<div class="dc-side"><span class="empty">${DASH}</span></div></div>`);
   const lv = openLevel(risk), ov = openValue(risk);
   const acc = acceptsOf(risk).length;
-  const todo = todoFactors(risk, 2);
+  const todo = todoFactors(risk, 3);
   const total = !acc ? '' : risk.index > ov ? `<span class="rk-total">전체 ${esc(fmtNum(risk.index, 0))} · 이상 없음 ${acc}</span>` : `<span class="rk-total">이상 없음 ${acc}</span>`;
   const items = todo.map((f, i) => todoHTML(f, i, ctx)).join('') ||
     `<span class="rk-none">${acc ? '남은 확인 요인 없음' : '두드러진 요인 없음'}</span>`;
@@ -298,24 +349,41 @@ function riskCard(risk, ctx, now) {
   return c;
 }
 
-function serverCard(hs) {
+const HOST_ROW_MARK = { crit: '■', warn: '▲', silent: '○' };
+const goRows = (c) => c.querySelectorAll('.dl-row[data-go]').forEach((k) => k.addEventListener('click', (e) => { e.preventDefault(); go(k.dataset.go); }));
+function serverCard(hs, alerts) {
   const s = summarizeHosts(hs);
   const ring = ringSVG([{ key: 'crit', n: s.crit }, { key: 'warn', n: s.warn }, { key: 'silent', n: s.silent }, { key: 'ok', n: s.ok }],
     s.total, fmtNum(s.bad), `/ ${fmtNum(s.total)}`);
   const parts = [['crit', s.crit], ['warn', s.warn], ['silent', s.silent]].filter(([, n]) => n)
     .map(([k, n]) => badgeHTML(k, `${HOST_LABEL[k]} ${n}`)).join('');
   const side = parts || `<span class="allok">✓ 전체 정상</span>`;
-  return card('srv', '서버', '#hosts', `<div class="dc-body">${ring}<div class="dc-side"><span class="dc-cap">이상</span>${side}</div></div>`);
+  const ph = problemHosts(hs, alerts);
+  const more = ph.length > 4 ? `<span class="dl-more">외 ${ph.length - 4}대</span>` : '';
+  const list = ph.length ? `<div class="dc-list">${ph.slice(0, 4).map((p) =>
+    `<span class="dl-row" data-go="#host/${esc(encodeURIComponent(p.id))}/overview" title="${esc(`${p.id} · ${p.why}`)}">` +
+    `<i class="dl-m ${esc(p.state)}">${HOST_ROW_MARK[p.state] || '•'}</i><b>${esc(p.id)}</b><span class="dl-t">${esc(p.why)}</span></span>`).join('')}${more}</div>` : '';
+  const c = card('srv', '서버', '#hosts', `<div class="dc-body">${ring}<div class="dc-side"><span class="dc-cap">이상</span>${side}</div>${list}</div>`);
+  goRows(c);
+  return c;
 }
 
-function batchCard(sum) {
+function batchCard(sum, flows, now) {
   const t = sum.total;
   const pct = sum.n ? Math.round((t.done / sum.n) * 100) : 0;
   const ring = ringSVG(['done', 'running', 'failed', 'gated'].map((k) => ({ key: k, n: t[k] })), sum.n,
     sum.n ? `${pct}%` : DASH, `${fmtNum(t.done)}/${fmtNum(sum.n)}`);
   const rows = BATCH_KEYS.filter((k) => k === 'done' || t[k])
     .map((k) => `<span class="bk ${k}"><i></i>${esc(BATCH_TEXT[k][0])} <b class="num">${fmtNum(t[k])}</b></span>`).join('');
-  return card('bat', '금일 배치', '#board/', `<div class="dc-body">${ring}<div class="dc-side bks">${rows}</div></div>`);
+  const hl = batchHighlights(flows, now);
+  const list = hl.length ? `<div class="dc-list">${hl.map((x) => {
+    const txt = batchRowText(x, now);
+    return `<span class="dl-row bh ${x.k}" data-go="${esc(flowHref(x))}" title="${esc(`${x.id} · ${txt}`)}">` +
+      `<i class="dl-m">${BATCH_ROW[x.k][0]}</i><b>${esc(x.id)}</b><span class="dl-t">${esc(txt)}</span></span>`;
+  }).join('')}</div>` : '';
+  const c = card('bat', '금일 배치', '#board/', `<div class="dc-body">${ring}<div class="dc-side bks">${rows}</div>${list}</div>`);
+  goRows(c);
+  return c;
 }
 
 function bizCard(tiles) {
@@ -340,14 +408,18 @@ function serverMap(hs) {
   lg.innerHTML = '<span class="lt">CPU</span><span class="c ok l1"></span><span class="c ok l2"></span><span class="c ok l3"></span><span class="c ok l4"></span>' +
     '<span class="c warn">!</span><span class="c crit">✕</span><span class="c silent">–</span>';
   const box = el('section', { class: 'dpanel dmap' }, el('div', { class: 'dp-h' }, el('h2', { class: 'sec', text: '서버 맵' }), lg));
-  for (const r of groupRows(hs)) {
+  const rows = groupRows(hs);
+  box.dataset.cols = String(Math.max(1, ...rows.map((r) => r.hosts.length)));
+  for (const r of rows) {
     const cells = el('div', { class: 'cells' });
     for (const h of r.hosts) {
       const ok = h.state === 'ok';
       const cls = ok ? `c ok l${cpuLevel(h.cpu)}` : `c ${h.state}`;
       const tip = `${h.id} · ${h.group}\nCPU ${fmtNum(h.cpu)}% · 메모리 ${fmtNum(h.mem)}%\n${HOST_LABEL[h.state] || h.state}`;
       const text = ok ? (h.cpu == null ? '' : String(Math.round(h.cpu))) : HOST_MARK[h.state] || '';
-      cells.append(el('a', { class: cls, href: `#host/${encodeURIComponent(h.id)}/overview`, title: tip, 'data-id': h.id, text }));
+      const a = el('a', { class: cls, href: `#host/${encodeURIComponent(h.id)}/overview`, title: tip, 'data-id': h.id });
+      a.innerHTML = `<span class="cn">${esc(h.id)}</span><span class="cv">${esc(text)}</span>`;
+      cells.append(a);
     }
     box.append(el('div', { class: 'grow-row' }, el('span', { class: 'gl', title: r.group, text: r.label }), el('span', { class: 'gn num', text: String(r.hosts.length) }), cells));
   }
@@ -410,6 +482,7 @@ function timeline(flows, now) {
 }
 
 export function render(el0, params, query) {
+  dispose();
   const g = (query && query.g) || '';
   el0.innerHTML = '';
   const root = el('div', { class: 'dash' });
@@ -429,9 +502,25 @@ export function render(el0, params, query) {
     const sig = JSON.stringify([hs, panels, flows, alerts, r, bsum, Math.floor(now / 60000)]);
     if (sig === lastSig && root.childNodes.length) return;
     lastSig = sig;
-    const cards = el('div', { class: 'cards' }, riskCard(r, { hosts: h.hosts || [], panels: p.panels || [] }, now), serverCard(hs), batchCard(bsum), bizCard(kpiTiles(panels)));
-    const mid = el('div', { class: 'mid' }, serverMap(hs), eventList(alerts, panels, hs, flows));
-    root.replaceChildren(cards, mid, timeline(flows, now));
+    const cards = el('div', { class: 'cards' }, riskCard(r, { hosts: h.hosts || [], panels: p.panels || [] }, now), serverCard(hs, alerts), batchCard(bsum, flows, now), bizCard(kpiTiles(panels)));
+    // 아래쪽: 왼쪽에 서버 맵과 배치 시간대, 오른쪽에 두 줄 높이의 실시간 이벤트
+    const lower = el('div', { class: 'lower' }, serverMap(hs), eventList(alerts, panels, hs, flows), timeline(flows, now));
+    root.replaceChildren(cards, lower);
+    fitMap(root);
   }, 2000);
+  // 다시 그릴 때마다 맵이 새로 생기므로 칸 너비는 root의 CSS 변수(--cw)로 둔다. 화면 폭이 바뀌면 다시 잰다.
+  if (typeof ResizeObserver !== 'undefined') {
+    ro = new ResizeObserver(() => fitMap(root));
+    ro.observe(root);
+  }
 }
-export function dispose() {}
+let ro = null;
+function fitMap(root) {
+  const m = root.querySelector('.dmap');
+  const c = m && m.querySelector('.cells');
+  if (!c || !c.clientWidth) return;
+  const { cw, named } = cellWidth(c.clientWidth, Number(m.dataset.cols));
+  root.style.setProperty('--cw', cw + 'px');
+  root.classList.toggle('named', named);
+}
+export function dispose() { if (ro) { ro.disconnect(); ro = null; } }
