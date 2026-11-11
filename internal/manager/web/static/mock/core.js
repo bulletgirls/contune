@@ -250,6 +250,9 @@ const QUOTE_PANEL = {
   id: 'quote',
   title: '시세',
   group: '매매/시세',
+  active: 'mon-fri 08:00-15:30', // 업무 관제 1단계 칸(05 §19.3)
+  flows: ['ext-recv-price'],
+  main: '1분 시세량',
   tiles: [
     { title: '1분 시세량', signal: 'traffic', metric: 'biz.quote.count_1m', agg: 'min', unit: '건/분', kpi: true, warn_below: 60000, crit_below: 10000, stale: '30s', active: 'mon-fri 09:00-15:30' },
     { title: '시세 수신량', signal: 'traffic', metric: 'biz.quote.tps', agg: 'sum', unit: '건/초' },
