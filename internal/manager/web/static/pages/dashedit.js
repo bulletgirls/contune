@@ -149,20 +149,9 @@ export function dashProblem(st, dash) {
   return null;
 }
 
-// 미리보기 복사본: 매니저 검증(POST /dashboards/data)을 지나도록 ID·제목을 채우고,
-// 아직 그릴 수 없는 위젯은 같은 자리·크기의 글 위젯(문제 문구)으로 바꾼다.
-export function previewOf(dash, id) {
-  const d = clone(dash);
-  d.id = dashIdOk(id) ? id : 'preview';
-  if (!String(d.title || '').trim()) d.title = '미리보기';
-  d.widgets = (d.widgets || []).map((w) => {
-    const p = widgetProblem(w);
-    if (!p) return w;
-    const s = sized(w);
-    return { id: w.id, type: 'text', title: widgetTitle(w), w: s.w, h: s.h, scope: {}, text: p };
-  });
-  return d;
-}
+// 미리보기에는 바뀔 때마다 새 복사본을 넘긴다(mountBoard가 틀마다 정의를 견주어 바뀐 틀만 새로 그린다).
+// 빈칸이 있는 지표 위젯은 mountBoard가 그 틀 몸통에 문구를 보이고 나머지만 묻는다.
+export const previewOf = (dash) => clone(dash);
 
 // ---- 정의 보기: 저장될 모양을 간단한 YAML로(읽기 전용) ----
 const DASH_KEYS = ['id', 'title', 'desc', 'range', 'group', 'widgets'];
@@ -388,7 +377,7 @@ function mount(page, st, refs, ctx) {
   }
   const markSel = () => { for (const f of frames()) f.classList.toggle('de-sel', f.dataset.id === ui.sel); };
 
-  const board = mountBoard(stage, previewOf(dash, st.id), {
+  const board = mountBoard(stage, previewOf(dash), {
     preview: true, edit: true, g: ctx.query.g || '', onFrame, onSelect: (wid) => {
       select(wid);
       // 한 칸 화면(좁은 폭)에서는 폼이 미리보기 아래라 폼으로 내려간다.
@@ -404,7 +393,7 @@ function mount(page, st, refs, ctx) {
     ui.dirty = true;
     showMsg('');
     drawBar();
-    if (redraw) board.setDash(previewOf(dash, st.id));
+    if (redraw) board.setDash(previewOf(dash));
     if (ui.yaml) drawSide();
   }
   function select(wid, scroll) {
@@ -492,7 +481,7 @@ function mount(page, st, refs, ctx) {
       replaceWidget(w, nw);
       touch(); drawSide();
     }, { disabled: types.length < 2 })));
-    kids.push(row('제목', el('input', { type: 'text', value: w.title || '', maxlength: String(MAX_TITLE), placeholder: t.title,
+    kids.push(row('제목', el('input', { type: 'text', value: w.title || '', maxlength: String(MAX_TITLE), placeholder: widgetTitle({ ...w, title: '' }),
       oninput: (e) => { setStr(w, 'title', e.target.value); touch(); } })));
     const s = sized(w);
     kids.push(el('div', { class: 'de-row2' },
@@ -772,8 +761,12 @@ function mount(page, st, refs, ctx) {
     const ws = dash.widgets.slice();
     [ws[i], ws[j]] = [ws[j], ws[i]];
     dash.widgets = ws;
-    ui.scrollTo = wid;
     touch(); drawSide();
+    // 순서만 바뀐 틀은 같은 요소를 옮긴다(onFrame 없음): setDash 묶음(300ms) 뒤에 보이게 한다.
+    setTimeout(() => {
+      const f = alive && stage.querySelector(`section.dw[data-id="${CSS.escape(wid)}"]`);
+      if (f) f.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }, 350);
     const b = side.querySelector(`[data-act="${act}"]`);
     (b && !b.disabled ? b : side.querySelector('[data-act]:not([disabled])') || side).focus();
   }
