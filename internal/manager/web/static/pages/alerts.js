@@ -3,9 +3,10 @@ import { api, poll } from '../api.js';
 import { el, esc, relTime, fmtClock, table, badgeHTML, toast, DASH, LEVEL_TEXT as LV } from '../ui.js';
 import { alertTarget, panelsInScope } from './dashboard.js';
 import { gate } from '../auth.js';
+import { exitHashOfAlert } from './exit.js';
 
 // ---- 순수 함수 (DOM 없이 호출) ----
-export const KIND_TEXT = { host: '서버', run: '실행', tile: '업무', log: '로그', risk: '장애 위험도' };
+export const KIND_TEXT = { host: '서버', run: '실행', tile: '업무', log: '로그', risk: '장애 위험도', exit: '프로세스 종료' };
 export const LEVEL_TEXT = { crit: LV.crit, warn: LV.warn };
 export const STATE_TEXT = { firing: '진행 중', resolved: '해소' };
 const LEVEL_RANK = { crit: 0, warn: 1 };
@@ -47,7 +48,7 @@ export function render(root, params, query) {
       columns: [
         { label: '등급', render: (a) => badgeHTML(a.level, LEVEL_TEXT[a.level]), html: true },
         { label: '종류', render: (a) => KIND_TEXT[a.kind] || a.kind },
-        { label: '대상', render: (a) => el('a', { href: alertTarget(a, panels), text: alertTargetName(a) }) },
+        { label: '대상', render: (a) => el('a', { href: a.kind === 'exit' ? exitHashOfAlert(a) : alertTarget(a, panels), text: alertTargetName(a) }) },
         { label: '메시지', key: 'message' },
         { label: '시각', render: (a) => `${fmtClock(a.ts)} (${relTime(a.ts, now)})` },
         { label: '상태', render: (a) => STATE_TEXT[a.state] || a.state },
