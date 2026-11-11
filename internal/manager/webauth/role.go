@@ -23,9 +23,12 @@ var roleTable = map[string]string{
 	"POST /api/v1/flows/reload":            RoleOperator,
 	"POST /api/v1/assist/flow":             RoleOperator,
 	"PUT /api/v1/flows/{id}":               RoleAdmin,
-	"DELETE /api/v1/flows/{id}":            RoleAdmin,
-	"POST /api/v1/risk/train":              RoleAdmin,
-	"POST /api/v1/incidents/import":        RoleAdmin,
+	// 업무 관제 보기(05 §19.15): 개인 보기는 누구나 자기 것을 만든다. 주인 · 공유(관리)는 핸들러가 본다.
+	"PUT /api/v1/bizwatch/views/{id}":    RoleViewer,
+	"DELETE /api/v1/bizwatch/views/{id}": RoleViewer,
+	"DELETE /api/v1/flows/{id}":          RoleAdmin,
+	"POST /api/v1/risk/train":            RoleAdmin,
+	"POST /api/v1/incidents/import":      RoleAdmin,
 	// 감사 기록에는 로그인 실패(입력한 아이디·출처)가 담긴다. GET 기본값(조회)에 맡기지 않는다.
 	"GET /api/v1/audit": RoleAdmin,
 }

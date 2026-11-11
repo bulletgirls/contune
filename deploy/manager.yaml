@@ -26,6 +26,7 @@ editor:
     - '^\$\{DEMO\}/scripts/[A-Za-z0-9_-]+\.sh( |$)'
     - '^sleep [0-9]+$'
     - '^echo( |$)'
+views: ""                      # 업무 관제 보기 폴더(05 §19.15). 비면 <data>/views(개인 · 공유 보기 파일, 화면 '보기 편집'이 쓴다)
 collect:                       # 로그 수집(05 §17): 파일 하나 = 적용 대상 하나(all | group:<경로> | host:<id>). 화면 #collect에서 고친다
   dir: /collect
   enabled: true                # 끄면 조회만. 에이전트는 자기 YAML의 remote.enabled가 켜져 있어야 받는다

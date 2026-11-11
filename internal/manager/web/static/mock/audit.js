@@ -4,7 +4,7 @@ import { MIN, hash32, rnd } from './util.js';
 const ok = (body, status = 200) => ({ status, body });
 const err = (status, msg) => ({ status, body: { error: msg } });
 
-const KINDS = { login: ['login.', 'logout'], flow: ['flow.'], run: ['run.'], alert: ['alert.'], risk: ['risk.', 'incident.'], audit: ['audit.'], collect: ['collect.'], panels: ['panels.'] };
+const KINDS = { login: ['login.', 'logout'], flow: ['flow.'], run: ['run.'], alert: ['alert.'], risk: ['risk.', 'incident.'], audit: ['audit.'], collect: ['collect.'], panels: ['panels.'], view: ['view.'] };
 const inKind = (action, kind) => (KINDS[kind] || []).some((p) => action.startsWith(p));
 
 const U = 'user:admin', O = 'user:operator';

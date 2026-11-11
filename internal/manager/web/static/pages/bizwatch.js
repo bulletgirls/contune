@@ -2,12 +2,15 @@
 // 업무 = 패널 하나. 관제(#dashboard)가 IT 자원 관점이라면 여기는 업무 관점이고, 숫자 상세와 로그는 업무 탭(#biz/<panel>)이 맡는다.
 // 카드는 대표 지표 하나와 근거(등급을 정한 증상) · 원인(그룹 서버 · 관련 배치 · 함수) · 일정(감시 시간)만 싣는다.
 // 업무 배치(2단계) = 플로우 YAML에 deadline이 적힌 배치: 마감까지 남은 시간(조건 대기면 gate 조건과 남은 양)과 오늘 실행 기록.
-// 업무 흐름(3단계) = 패널 in · out · next: 화살표 = 앞 업무의 out, 쌓임 = in − out.
+// 업무 흐름(3단계) = 패널 in · out + 보기의 앞뒤 잇기: 화살표 = 앞 업무의 out, 쌓임 = in − out.
+// 보기(05 §19.15) = 고를 업무 · 순서 · 흐름 · 칸 숨기기. 머리에서 고르고, 고른 보기는 브라우저에 사용자별로 기억한다.
 // 매니저 GET /api/v1/bizwatch(05 §19.7)를 읽는다. mock(?mock=1)도 같은 응답 모양이다.
-// 주소: #bizwatch[?g=<그룹>&cmp=day|week&at=HH:MM] (at: mock 전용, 감시 시간 · 업무 마감 판단 시각 KST)
-import { api, poll, isMock } from '../api.js';
-import { el, esc, fmtNum, relTime, info, DASH } from '../ui.js';
+// 주소: #bizwatch[?view=<보기>&g=<그룹>&cmp=day|week&at=HH:MM] (at: mock 전용, 감시 시간 · 업무 마감 판단 시각 KST)
+import { api, poll, isMock, ApiError } from '../api.js';
+import { el, esc, fmtNum, relTime, info, toast, DASH } from '../ui.js';
 import { hashWith } from '../tree.js';
+import { me } from '../auth.js';
+import { viewPicker, openViewEditor, recallView, rememberView, forgetView, foldable, placeNodes } from './bizview.js';
 
 // 등급 기호 · 이름(ui.js STATE_TEXT와 같은 기호에 시간 외 · 지표 없음 · 참고를 더함)
 export const LV = { ok: ['●', '정상'], warn: ['▲', '경고'], crit: ['■', '위험'], off: ['◷', '시간 외'], none: ['–', '지표 없음'], info: ['›', '참고'] };
@@ -56,29 +59,19 @@ export function span(from, to, win) {
   const l = pos(from, win);
   return [l, Math.max(0, pos(to, win) - l)];
 }
-// 업무 흐름 배치(순수): 열 = next를 거슬러 간 가장 긴 길이(앞 업무가 없으면 0), 줄 = 그 열 안에서 나온 순서.
+// 업무 흐름 배치(순수): 보기 layout의 [열, 줄], 없으면 열 = 화살표를 거슬러 간 가장 긴 길이, 줄 = 그 열의 빈 자리.
 export const FN = { w: 232, h: 100, gx: 156, gy: 18, pad: 8, top: 8 };
-export function flowLayout(f) {
+export function flowLayout(f, layout) {
   const ids = f.nodes.map((n) => n.id);
-  const prev = new Map(ids.map((id) => [id, []]));
-  for (const e of f.edges) if (prev.has(e.to) && prev.has(e.from)) prev.get(e.to).push(e.from);
-  const col = new Map();
-  const depth = (id, seen) => {
-    if (col.has(id)) return col.get(id);
-    if (seen.has(id)) return 0; // 돌아오는 연결은 매니저가 읽지 않는다(방어)
-    seen.add(id);
-    const d = Math.max(0, ...prev.get(id).map((p) => depth(p, seen) + 1));
-    col.set(id, d);
-    return d;
-  };
-  for (const id of ids) depth(id, new Set());
-  const rows = new Map(), pos = new Map();
-  for (const id of ids) {
-    const c = col.get(id), r = rows.get(c) || 0;
-    rows.set(c, r + 1);
+  const cells = placeNodes(ids, f.edges, layout);
+  const pos = new Map();
+  let maxC = 0, maxR = 0;
+  for (const [id, [c, r]] of cells) {
     pos.set(id, { x: FN.pad + c * (FN.w + FN.gx), y: FN.top + r * (FN.h + FN.gy), col: c, row: r });
+    maxC = Math.max(maxC, c);
+    maxR = Math.max(maxR, r);
   }
-  const ncol = ids.length ? Math.max(...col.values()) + 1 : 0, nrow = Math.max(1, ...rows.values());
+  const ncol = ids.length ? maxC + 1 : 0, nrow = maxR + 1;
   return { pos, width: FN.pad * 2 + ncol * FN.w + Math.max(0, ncol - 1) * FN.gx, height: FN.top + nrow * FN.h + (nrow - 1) * FN.gy + FN.pad };
 }
 // 상태 이력 칸 → 그 구간(앞뒤 10분)의 업무 탭
@@ -99,7 +92,7 @@ function atPicker(query) {
   return el('label', { class: 'bw-at', title: 'mock 전용: 감시 시간 · 업무 마감을 이 시각으로 판단한다(값은 지금 값)' }, 'mock 시각 ', sel);
 }
 
-function head(d, query) {
+function head(d, query, vc) {
   const cmp = CMP[query.cmp] ? query.cmp : 'day';
   const counts = el('div', { class: 'bw-counts' });
   counts.innerHTML = ['crit', 'warn', 'ok', 'off'].filter((k) => d.counts[k]).map((k) => badge(k, d.counts[k])).join('');
@@ -111,7 +104,18 @@ function head(d, query) {
   const right = el('div', { class: 'bw-hr' },
     el('span', { class: 'bw-now', text: `${d.day} ${d.clock}` }), isMock() ? atPicker(query) : '',
     el('span', { class: 'bw-dim', text: '평소 대비' }), seg);
-  return el('div', { class: 'bw-head' }, el('h1', { text: '업무 관제' }), counts, right);
+  const v = d.view;
+  const tools = el('div', { class: 'bw-vt' }, viewPicker(vc.views, v ? v.id : '', vc.pick),
+    v && v.editable ? el('button', { type: 'button', text: '보기 편집', onclick: () => vc.edit(v.id) }) : '',
+    el('button', { type: 'button', class: 'ghost', text: '새 보기', title: v ? '이 보기를 바탕으로 새 보기' : '새 보기', onclick: () => vc.create(v ? v.id : '') }));
+  return el('div', { class: 'bw-head' }, el('h1', { text: '업무 관제' }), tools, counts, right);
+}
+
+// 보기 알림: 보기가 가리키는데 지금 없는 업무 · 타일(보기는 그대로 읽는다)
+function notesEl(d) {
+  const notes = (d.view && d.view.notes) || [];
+  if (!notes.length) return '';
+  return el('div', { class: 'bw-notes', role: 'status' }, el('b', { text: '보기 알림' }), ...notes.map((n) => el('span', { text: n })));
 }
 
 // 근거 · 원인 · 일정의 한 줄
@@ -163,11 +167,17 @@ function cards(d, cmpLabel) {
   for (const s of d.services) grid.append(serviceCard(s, cmpLabel));
   if (!d.services.length) grid.append(el('p', { class: 'empty', text: '이 범위에 업무(패널) 없음' }));
   sec.append(grid);
-  return sec;
+  return foldable(sec, 'cards');
 }
 
-function eventSec(d) {
+function eventSec(d, hide) {
+  if (hide.has('events') && hide.has('due')) return '';
   const sec = el('section', { class: 'bw-card bw-ev' });
+  if (hide.has('events')) {
+    sec.append(foldable(dueSec(d.batches || []), 'due'));
+    sec.classList.add('bw-ev-due');
+    return sec;
+  }
   const c = { crit: 0, warn: 0 };
   for (const g of d.events) for (const r of g.rows) if (r.kind === 'alert' && r.level in c) c[r.level]++;
   const counts = el('span', { class: 'bw-counts' });
@@ -188,8 +198,9 @@ function eventSec(d) {
     for (const r of causes) list.append(el('a', { class: 'bw-ec', href: r.href || '#' }, el('b', { text: '↳' }), el('span', { text: r.text })));
   }
   if (!d.events.length) list.append(el('p', { class: 'empty', text: '활성 알림 없음' }));
-  sec.append(list, dueSec(d.batches || []));
-  return sec;
+  sec.append(list);
+  if (!hide.has('due')) sec.append(foldable(dueSec(d.batches || []), 'due'));
+  return foldable(sec, 'events');
 }
 
 // 업무 마감: 플로우 deadline이 있는 배치마다 오늘 마감까지 남은 시간 · 상태(조건 대기면 gate 조건과 남은 양)
@@ -233,17 +244,18 @@ function bandRow(b, win, nowPct) {
 }
 
 // 업무 흐름: 노드 = 업무(등급 · in · out · 쌓임), 화살표 = 앞 업무의 out(그 타일의 지금 값과 판정 색)
-function flowSec(d) {
+function flowSec(d, hide) {
+  if (hide.has('flow')) return '';
   const f = d.bizflow || { nodes: [], edges: [] };
   const sec = el('section', { class: 'bw-card bw-flow' });
   sec.append(el('div', { class: 'bw-h' }, el('h2', { text: '업무 흐름' }),
     el('span', { class: 'bw-dim', text: '화살표 = 앞 업무의 out · 쌓임 = in − out' }),
-    info('패널 YAML의 in · out(타일 제목)과 next(다음 업무 패널)로만 그린다. 값은 그 타일의 지금 값, 화살표 색은 그 타일의 판정. 쌓임은 기준이 없어 판정하지 않는다. 업무 등급에는 넣지 않는다')));
+    info('패널 YAML의 in · out(타일 제목)과 보기에서 이은 앞뒤로만 그린다(보기 편집). 값은 그 타일의 지금 값, 화살표 색은 그 타일의 판정. 쌓임은 기준이 없어 판정하지 않는다. 업무 등급에는 넣지 않는다')));
   if (!f.nodes.length) {
-    sec.append(el('p', { class: 'empty', text: '업무 흐름 칸이 적힌 업무 없음(패널 in · out · next)' }));
-    return sec;
+    sec.append(el('p', { class: 'empty', text: '업무 흐름 칸이 적힌 업무 없음(패널 in · out, 보기 흐름)' }));
+    return foldable(sec, 'flow');
   }
-  const L = flowLayout(f);
+  const L = flowLayout(f, d.view ? d.view.layout : null);
   const box = el('div', { class: 'bw-flowc', style: `width:${L.width}px;height:${L.height}px` });
   const NS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(NS, 'svg');
@@ -286,7 +298,7 @@ function flowSec(d) {
       ...rows));
   }
   sec.append(el('div', { class: 'bw-scroll' }, box));
-  return sec;
+  return foldable(sec, 'flow');
 }
 
 function axisEl(win) {
@@ -300,7 +312,8 @@ function axisEl(win) {
 }
 
 // 오늘 업무 상태 이력: 줄 = 업무, 칸 = 5분, 색 = 그때의 업무 등급. 칸을 누르면 그 구간의 업무 탭.
-function historySec(d) {
+function historySec(d, hide) {
+  if (hide.has('batches') && hide.has('history')) return '';
   const h = d.history;
   const sec = el('section', { class: 'bw-card bw-hist' });
   const lg = el('span', { class: 'bw-hlg' });
@@ -310,15 +323,15 @@ function historySec(d) {
   const win = { from: h.from, to: h.to };
   const grid = el('div', { class: 'bw-tt-grid bw-hist-grid' });
   const nowPct = pos(d.scene_min, win);
-  const batches = d.batches || [];
+  const batches = hide.has('batches') ? [] : d.batches || [];
   if (batches.length) {
     const blg = el('span', { class: 'bw-hlg' }, el('span', {}, el('i', { class: 'plan' }), '첫 실행 ~ 마감'));
     for (const [k, [m, t]] of Object.entries(RUN)) blg.append(el('span', {}, el('i', { class: k }), `${m} ${t}`));
     grid.append(el('span', { class: 'bw-lane bw-sub', text: '업무 배치' }), el('div', { class: 'bw-subr' }, blg));
     for (const b of batches) grid.append(...bandRow(b, win, nowPct));
-    grid.append(el('span', { class: 'bw-lane bw-sub', text: '업무 상태' }), el('span'));
+    if (!hide.has('history')) grid.append(el('span', { class: 'bw-lane bw-sub', text: '업무 상태' }), el('span'));
   }
-  for (const r of h.rows) {
+  for (const r of hide.has('history') ? [] : h.rows) {
     const name = el('a', { class: 'bw-lane bw-hn', href: `#biz/${encodeURIComponent(r.panel)}` }, el('b', { class: r.level, text: LV[r.level][0] }), r.title);
     const cells = el('div', { class: 'bw-cells', style: `grid-template-columns:repeat(${r.cells.length},minmax(0,1fr))` });
     r.cells.forEach((lv, i) => {
@@ -334,10 +347,10 @@ function historySec(d) {
     });
     grid.append(name, cells);
   }
-  if (!h.rows.length) grid.append(el('span'), el('p', { class: 'empty', text: '이 범위에 업무(패널) 없음' }));
+  if (!h.rows.length && !hide.has('history')) grid.append(el('span'), el('p', { class: 'empty', text: '이 범위에 업무(패널) 없음' }));
   grid.append(el('span'), axisEl(win));
   sec.append(el('div', { class: 'bw-scroll' }, grid));
-  return sec;
+  return foldable(sec, 'history');
 }
 
 // ---- 화면 ----
@@ -345,28 +358,86 @@ function historySec(d) {
 export function render(root, params, query) {
   query = query || {};
   root.replaceChildren();
+  const who = me();
   const cmpLabel = CMP[query.cmp] || CMP.day;
+  // 보기: 주소의 view, 없으면 이 브라우저에 기억한 보기(사용자별). 기억한 보기로 열면 주소에도 싣는다.
+  let viewId = query.view || '';
+  if (!query.view) {
+    const kept = recallView(who);
+    if (kept) {
+      viewId = kept;
+      try { history.replaceState(null, '', hashWith('bizwatch', { ...query, view: kept })); } catch (e) { /* 주소만 못 바꿈 */ }
+    }
+  }
   const q = new URLSearchParams();
+  if (viewId) q.set('view', viewId);
   for (const k of ['g', 'cmp']) if (query[k]) q.set(k, query[k]);
   if (isMock() && query.at) q.set('at', query.at);
   const path = '/bizwatch' + (q.toString() ? '?' + q : '');
 
   const wrap = el('div', { class: 'bw' });
   root.append(wrap);
+  let lastSig = '';
+  // 보기 목록 · 고르기 · 편집
+  const vc = {
+    views: [], canShare: false,
+    pick(id) {
+      rememberView(who, id);
+      const to = hashWith('bizwatch', { ...query, view: id || '' });
+      if (location.hash === to || (id || '') === viewId) { lastSig = ''; tick(); } // 같은 보기면 주소가 그대로라 바로 다시 그린다
+      else location.hash = to;
+    },
+    full(id) { return vc.views.find((v) => v.id === id); },
+    edit(id) {
+      openViewEditor({ view: vc.full(id), me: who, canShare: vc.canShare,
+        onSaved: async (v) => { await loadViews(); vc.pick(v.id); lastSig = ''; },
+        onDeleted: async () => { await loadViews(); vc.pick(''); } });
+    },
+    create(fromId) {
+      openViewEditor({ base: fromId ? vc.full(fromId) : null, me: who, canShare: vc.canShare,
+        onSaved: async (v) => { await loadViews(); vc.pick(v.id); } });
+    },
+  };
+  async function loadViews() {
+    try {
+      const r = await api('/bizwatch/views');
+      vc.views = r.views || [];
+      vc.canShare = !!r.can_share;
+    } catch (e) {
+      vc.views = [];
+    }
+    lastSig = '';
+  }
+  const ready = loadViews();
   // 이력 칸 · 배치 띠 위에 마우스가 있으면 다시 그리지 않는다(말풍선과 누르기가 2초 갱신에 끊기지 않게).
   let hold = false;
   wrap.addEventListener('mouseover', (e) => { hold = !!(e.target.closest && e.target.closest('.bw-cells, .bw-band')); });
   wrap.addEventListener('mouseleave', () => { hold = false; });
-  let lastSig = '';
-  poll(async () => {
-    const d = await api(path);
-    const sig = JSON.stringify({ ...d, now: 0, history: { ...d.history, t0: 0 } });
-    // 바뀐 것이 없거나 시각 고르기 · 이력 칸을 쓰는 중이면 다시 그리지 않는다.
-    if (sig === lastSig || hold || (document.activeElement && document.activeElement.id === 'bw-at')) return;
+  async function tick() {
+    await ready;
+    let d;
+    try {
+      d = await api(path);
+    } catch (e) {
+      if (viewId && e instanceof ApiError && e.status === 404) {
+        // 기억한 · 주소의 보기가 없어졌거나 볼 수 없는 보기: 전체 업무로 연다.
+        forgetView(who);
+        toast(`보기 '${viewId}'가 없어 전체 업무로 엽니다`, 4000);
+        location.hash = hashWith('bizwatch', { ...query, view: '' });
+        return;
+      }
+      throw e;
+    }
+    const sig = JSON.stringify({ ...d, now: 0, history: { ...d.history, t0: 0 }, views: vc.views.map((v) => v.sha) });
+    // 바뀐 것이 없거나 시각 · 보기 고르기 · 이력 칸을 쓰는 중이면 다시 그리지 않는다.
+    const act = document.activeElement && document.activeElement.id;
+    if (sig === lastSig || hold || act === 'bw-at' || act === 'bw-view') return;
     lastSig = sig;
-    const mid = el('div', { class: 'bw-mid' }, cards(d, cmpLabel), eventSec(d));
-    wrap.replaceChildren(head(d, query), mid, flowSec(d), historySec(d));
-  }, 2000);
+    const hide = new Set((d.view && d.view.hide) || []);
+    const mid = el('div', { class: 'bw-mid' }, cards(d, cmpLabel), eventSec(d, hide));
+    wrap.replaceChildren(head(d, query, vc), notesEl(d), mid, flowSec(d, hide), historySec(d, hide));
+  }
+  poll(tick, 2000);
 }
 
 export function dispose() {}

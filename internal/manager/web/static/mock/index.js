@@ -32,6 +32,7 @@ function pageFlags(opts, q) {
 export function reset() {
   resetWorld();
   collect.reset();
+  bizwatch.resetViews();
 }
 
 export async function handle(path, opts = {}) {

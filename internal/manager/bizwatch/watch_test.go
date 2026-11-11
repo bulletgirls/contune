@@ -104,6 +104,7 @@ type resp struct {
 	Events  []EventGroup `json:"events"`
 	Batches []Batch      `json:"batches"`
 	Flow    BizFlow      `json:"bizflow"`
+	View    *viewInfo    `json:"view"`
 	History struct {
 		From, To string
 		Rows     []struct {
@@ -344,29 +345,36 @@ func TestAPIBatches(t *testing.T) {
 	}
 }
 
-// 업무 흐름(05 §19.13): 패널 in · out · next와 실제 타일 판정(live 값)으로 노드 · 화살표, 그룹 범위.
+// 업무 흐름(05 §19.13): 패널 in · out과 보기의 앞뒤 잇기, 실제 타일 판정(live 값)으로 노드 · 화살표, 그룹 범위.
 func TestAPIFlow(t *testing.T) {
 	e := newEnv(t)
 	nowMS := e.now.UnixMilli()
 	e.lv.Put("match-01", "매매/체결", []model.Sample{{TS: nowMS, Name: "biz.order.in_tps", Value: 6000, ExecID: "E9"}}, nowMS)
 	m := matching()
 	m.Tiles = append(m.Tiles, model.Tile{Title: "주문 유입량", Metric: "biz.order.in_tps", Agg: "sum", Unit: "TPS"})
-	m.In, m.Out, m.Next = "주문 유입량", "체결 처리량", []string{"quote"}
+	m.In, m.Out = "주문 유입량", "체결 처리량"
 	quote := model.Panel{ID: "quote", Title: "시세", Group: "매매/시세", Active: "mon-fri 08:00-15:30", Tiles: []model.Tile{{Title: "1분 시세량", Metric: "biz.quote.count_1m", Agg: "min", KPI: true}}}
 	e.w.d.Panels = query.PanelsOf(kst, m, quote)
+	// 기본 보기(전체 업무): 화살표 없이 in · out을 적은 체결만
 	r := e.get(t, "")
-	if len(r.Flow.Nodes) != 2 || len(r.Flow.Edges) != 1 {
-		t.Fatalf("흐름 %+v", r.Flow)
+	if len(r.Flow.Nodes) != 1 || len(r.Flow.Edges) != 0 || r.View != nil {
+		t.Fatalf("기본 보기 흐름 %+v %+v", r.Flow, r.View)
 	}
 	n := r.Flow.Nodes[0]
 	if n.ID != "matching" || n.Level != "crit" || n.In.Text != "6,000 TPS" || n.Out.Text != "5,860 TPS" || n.Backlog.Text != "+140 TPS" {
 		t.Errorf("체결 %+v in %+v out %+v 쌓임 %+v", n, n.In, n.Out, n.Backlog)
 	}
+	// 보기에서 체결 → 시세를 이으면 화살표 = 체결의 out
+	e.w.d.Views = viewBookWith(t, View{ID: "trading", Title: "매매 운영", Flow: []ViewEdge{{From: "matching", To: "quote"}}})
+	r = e.get(t, "?view=trading")
+	if len(r.Flow.Nodes) != 2 || len(r.Flow.Edges) != 1 {
+		t.Fatalf("보기 흐름 %+v", r.Flow)
+	}
 	if e := r.Flow.Edges[0]; e.From != "matching" || e.To != "quote" || e.Qty.Name != "체결 처리량" || e.Qty.Text != "5,860 TPS" || e.Qty.State != "ok" {
 		t.Errorf("화살표 %+v %+v", e, e.Qty)
 	}
 	// 시세만 보면 체결이 빠져 화살표도 시세 노드도 없다(시세는 흐름 칸이 없음).
-	if r := e.get(t, "?g=매매/시세"); len(r.Flow.Nodes) != 0 || len(r.Flow.Edges) != 0 {
+	if r := e.get(t, "?view=trading&g=매매/시세"); len(r.Flow.Nodes) != 0 || len(r.Flow.Edges) != 0 {
 		t.Errorf("범위 %+v", r.Flow)
 	}
 }

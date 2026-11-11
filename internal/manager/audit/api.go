@@ -34,6 +34,7 @@ var kindPrefixes = map[string][]string{
 	"audit":   {"audit."},
 	"collect": {"collect."},
 	"panels":  {"panels."},
+	"view":    {"view."}, // 업무 관제 보기(05 §19.15)
 }
 
 // Deps는 조회 API의 의존성이다. TZ가 nil이면 CSV 시각은 time.Local이다.

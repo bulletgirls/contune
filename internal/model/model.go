@@ -209,7 +209,7 @@ type Command struct {
 // Panel은 업무 패널 정의(panels/*.yaml)다(02 §12.1, 05 §14.5). 패널 하나가 업무 관제의 업무 하나다(05 §19).
 // Active는 업무 감시 시간이자 active가 없는 타일의 기본값, Flows는 이 업무가 기대는 배치(플로우 ID),
 // Main은 대표 지표(타일 제목. 비면 첫 kpi 타일, 그것도 없으면 첫 타일)다(05 §19.3).
-// In · Out은 이 업무로 들어오는 양 · 내보내는 양(타일 제목, 둘 다 쓰면 단위가 같다), Next는 Out이 가는 다음 업무(패널 ID)다(05 §19.13).
+// In · Out은 이 업무로 들어오는 양 · 내보내는 양(타일 제목, 둘 다 쓰면 단위가 같다)이다(05 §19.13). 앞뒤 잇기는 보기(05 §19.15)가 맡는다.
 type Panel struct {
 	ID        string   `json:"id" yaml:"id"`
 	Title     string   `json:"title" yaml:"title"`
@@ -219,7 +219,6 @@ type Panel struct {
 	Main      string   `json:"main,omitempty" yaml:"main,omitempty"`
 	In        string   `json:"in,omitempty" yaml:"in,omitempty"`
 	Out       string   `json:"out,omitempty" yaml:"out,omitempty"`
-	Next      []string `json:"next,omitempty" yaml:"next,omitempty"`
 	Tiles     []Tile   `json:"tiles" yaml:"tiles"`
 	Charts    []Chart  `json:"charts" yaml:"charts,omitempty"`
 	LogLevels []string `json:"log_levels" yaml:"log_levels,omitempty"`

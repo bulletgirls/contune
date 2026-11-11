@@ -1,7 +1,7 @@
 package bizwatch
 
-// 업무 흐름(05 §19.13): 패널에 적힌 in · out · next로만 그린다(이어짐을 짐작하지 않음).
-// 화살표 = 앞 업무의 out(그 타일의 지금 값과 판정), 쌓임 = 업무의 in − out(두 타일의 지금 값, 판정 없음).
+// 업무 흐름(05 §19.13): 패널에 적힌 in · out(업무가 주고받는 양)과 보기의 앞뒤 잇기(05 §19.15)로만 그린다.
+// 화살표 = 앞 업무의 out(보기에서 qty로 고르면 그 타일)의 지금 값과 판정, 쌓임 = 업무의 in − out(판정 없음).
 // 업무 흐름은 업무 등급에 넣지 않는다. 이 파일은 순수 판정이다(I/O 없음).
 
 import (
@@ -35,7 +35,7 @@ type FlowNode struct {
 	Backlog *Qty   `json:"backlog"` // 쌓임 = in − out(in · out이 둘 다 있을 때만)
 }
 
-// FlowEdge는 앞 업무에서 다음 업무(패널 next)로 가는 화살표다. Qty는 앞 업무의 out(없으면 null).
+// FlowEdge는 보기에서 이은 앞 업무 → 다음 업무 화살표다. Qty는 앞 업무의 out(보기 qty면 그 타일, 둘 다 없으면 null).
 type FlowEdge struct {
 	From string `json:"from"`
 	To   string `json:"to"`
@@ -48,51 +48,69 @@ type BizFlow struct {
 	Edges []FlowEdge `json:"edges"`
 }
 
-// BuildFlow는 업무 흐름을 만든다. svcs · panels · tiles는 같은 순서(보이는 업무)다.
-// 업무 = in · out · next 중 하나라도 적었거나 다른 업무의 next인 패널. 화살표는 양 끝이 다 보이는 것만.
-func BuildFlow(svcs []Service, panels []model.Panel, tiles [][]query.TileState, now time.Time) BizFlow {
+// BuildFlow는 업무 흐름을 만든다. svcs · panels · tiles는 같은 순서(보이는 업무), edges는 보기의 앞뒤 잇기다.
+// 노드 = in · out을 적었거나 화살표로 이은 업무(패널 순서). 화살표는 양 끝이 다 보이는 것만.
+// notes는 보기를 그대로 그리지 못한 까닭이다(qty 타일이 없어 out으로 그림).
+func BuildFlow(svcs []Service, panels []model.Panel, tiles [][]query.TileState, edges []ViewEdge, now time.Time) (BizFlow, []string) {
 	f := BizFlow{Nodes: []FlowNode{}, Edges: []FlowEdge{}}
-	shown := map[string]bool{}
-	target := map[string]bool{}
-	for _, p := range panels {
-		shown[p.ID] = true
-		for _, n := range p.Next {
-			target[n] = true
+	var notes []string
+	idx := map[string]int{}
+	for i, p := range panels {
+		idx[p.ID] = i
+	}
+	linked := map[string]bool{}
+	for _, e := range edges {
+		_, a := idx[e.From]
+		_, b := idx[e.To]
+		if a && b {
+			linked[e.From], linked[e.To] = true, true
 		}
 	}
-	outs := map[string]*Qty{}
+	ts := func(i, j int) query.TileState {
+		if i < len(tiles) && j < len(tiles[i]) {
+			return tiles[i][j]
+		}
+		return query.TileState{State: "none"}
+	}
 	for i, p := range panels {
-		if p.In == "" && p.Out == "" && len(p.Next) == 0 && !target[p.ID] {
+		if p.In == "" && p.Out == "" && !linked[p.ID] {
 			continue
 		}
 		s := svcs[i]
-		ts := func(j int) query.TileState {
-			if i < len(tiles) && j < len(tiles[i]) {
-				return tiles[i][j]
-			}
-			return query.TileState{State: "none"}
-		}
 		n := FlowNode{ID: p.ID, Title: p.Title, Group: p.Group, Level: s.Level, Href: "#biz/" + url.PathEscape(p.ID)}
 		if j := p.TileIndex(p.In); j >= 0 {
-			n.In = qtyOf(p.Tiles[j], ts(j), s.Off, now)
+			n.In = qtyOf(p.Tiles[j], ts(i, j), s.Off, now)
 		}
 		if j := p.TileIndex(p.Out); j >= 0 {
-			n.Out = qtyOf(p.Tiles[j], ts(j), s.Off, now)
+			n.Out = qtyOf(p.Tiles[j], ts(i, j), s.Off, now)
 		}
 		if n.In != nil && n.Out != nil {
 			n.Backlog = backlog(n.In, n.Out, s.Off)
 		}
-		outs[p.ID] = n.Out
 		f.Nodes = append(f.Nodes, n)
 	}
-	for _, p := range panels {
-		for _, to := range p.Next {
-			if shown[to] {
-				f.Edges = append(f.Edges, FlowEdge{From: p.ID, To: to, Qty: outs[p.ID]})
+	for _, e := range edges {
+		i, a := idx[e.From]
+		_, b := idx[e.To]
+		if !a || !b {
+			continue
+		}
+		p := panels[i]
+		title := p.Out
+		if e.Qty != "" {
+			if p.TileIndex(e.Qty) >= 0 {
+				title = e.Qty
+			} else {
+				notes = append(notes, "화살표 "+e.From+" → "+e.To+": 타일 "+e.Qty+" 없음(out으로 그림)")
 			}
 		}
+		fe := FlowEdge{From: e.From, To: e.To}
+		if j := p.TileIndex(title); j >= 0 {
+			fe.Qty = qtyOf(p.Tiles[j], ts(i, j), svcs[i].Off, now)
+		}
+		f.Edges = append(f.Edges, fe)
 	}
-	return f
+	return f, notes
 }
 
 // qtyOf는 타일 하나의 지금 값과 판정이다(업무 감시 시간 밖이거나 타일 감시 시간 밖이면 off).

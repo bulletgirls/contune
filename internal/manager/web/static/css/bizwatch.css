@@ -153,3 +153,57 @@ a.bw-hn:hover { color:var(--accent); }
   .bw-sig { justify-content:flex-start; grid-column:1 / -1; }
   .bw-ev { margin-top:0; }
 }
+
+/* 보기(05 §19.15): 머리의 고르기 · 편집 단추, 보기 알림, 칸 접기 */
+.bw-vt { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+.bw-vp { display:inline-flex; align-items:center; gap:4px; font-size:12px; color:var(--t2); }
+.bw-vp select { font-size:13px; padding:2px 4px; max-width:220px; }
+.bw-vt button { font-size:12px; padding:2px 10px; }
+button.ghost { background:none; }
+.bw-notes { display:flex; flex-wrap:wrap; gap:4px 12px; align-items:baseline; font-size:12px; color:var(--warn); padding:6px 10px; border:1px solid var(--warn); border-radius:6px; background:color-mix(in srgb, var(--warn) 8%, var(--surface)); }
+.bw-notes b { font-weight:600; }
+.bw-fold { border:0; background:none; padding:0 2px; margin-right:-2px; font-size:12px; color:var(--t3); align-self:center; }
+.bw-fold:hover { color:var(--accent); }
+.bw-folded > :not(.bw-h) { display:none !important; }
+.bw-ev.bw-folded { max-height:none; }
+.bw-ev-due .bw-due { margin-top:0; padding-top:0; border-top:0; }
+
+/* 보기 편집 대화 상자 */
+.bw-ve-bg { align-items:flex-start; overflow:auto; padding:32px 16px; }
+.bw-ve { width:min(760px, 100%); max-width:100%; box-sizing:border-box; display:flex; flex-direction:column; gap:10px; }
+.bw-ve .bw-h { margin-bottom:0; }
+.bw-ve-body { display:flex; flex-direction:column; gap:12px; }
+.bw-ve-f { display:grid; grid-template-columns:112px minmax(0,1fr); column-gap:12px; align-items:start; }
+.bw-ve-l { font-size:12px; color:var(--t2); padding-top:4px; }
+.bw-ve input[type=text] { width:100%; max-width:360px; box-sizing:border-box; padding:4px 6px; margin-top:0; }
+.bw-ve input[type=checkbox], .bw-ve input[type=radio] { width:auto; margin:0; flex:none; }
+.bw-ve label { white-space:nowrap; }
+.bw-ve-kind, .bw-ve-secs { display:flex; flex-wrap:wrap; gap:4px 16px; font-size:13px; padding-top:3px; }
+.bw-ve-kind label, .bw-ve-secs label { display:inline-flex; align-items:center; gap:4px; }
+.bw-ve-kind label.off { color:var(--t3); }
+.bw-ve-list { display:flex; flex-direction:column; border:1px solid var(--line); border-radius:6px; max-height:220px; overflow:auto; }
+.bw-ve-row { display:flex; align-items:center; gap:6px; padding:3px 8px; font-size:13px; }
+.bw-ve-list .bw-ve-row { border-bottom:1px solid var(--line); }
+.bw-ve-list .bw-ve-row:last-child { border-bottom:0; }
+.bw-ve-row label { display:inline-flex; align-items:baseline; gap:6px; min-width:0; }
+.bw-ve-row.dim b { font-weight:400; color:var(--t2); }
+.bw-ve-mv { padding:0 7px; font-size:12px; }
+.bw-ve-hint { margin:4px 0 0; font-size:11px; color:var(--t3); }
+.bw-ve-flow { display:flex; flex-direction:column; gap:4px; margin-bottom:6px; }
+.bw-ve-edge { display:flex; align-items:center; flex-wrap:wrap; gap:6px; font-size:13px; }
+.bw-ve-edge select { max-width:180px; }
+.bw-ve-canvas { position:relative; background:var(--bg); border:1px solid var(--line); border-radius:6px; }
+.bw-ve-cell { position:absolute; box-sizing:border-box; border:1px dashed var(--line); border-radius:4px; }
+.bw-ve-line { stroke:var(--t2); stroke-width:1.5; }
+.bw-ve-node { position:absolute; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; padding:2px 8px; border:1px solid var(--accent); border-radius:5px; background:var(--surface); cursor:grab; touch-action:none; user-select:none; z-index:1; }
+.bw-ve-node b { font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bw-ve-node span { font-size:10px; color:var(--t3); font-variant-numeric:tabular-nums; }
+.bw-ve-node.drag { cursor:grabbing; box-shadow:0 2px 8px rgba(0,0,0,.25); z-index:2; }
+.bw-ve-node:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.bw-ve-err { color:var(--crit); font-size:13px; padding:6px 8px; border:1px solid var(--crit); border-radius:4px; }
+.bw-ve-foot { display:flex; align-items:center; gap:8px; padding-top:8px; border-top:1px solid var(--line); }
+.bw-ve .primary { background:var(--accent); color:var(--on-accent); border-color:var(--accent); font-weight:600; padding:4px 16px; }
+.bw-ve .danger { background:var(--crit); color:var(--on-accent); border-color:var(--crit); }
+@media (max-width:700px) {
+  .bw-ve-f { grid-template-columns:1fr; row-gap:4px; }
+}

@@ -26,6 +26,7 @@ type Config struct {
 	Data   string `yaml:"data"`   // metrics.db, state.db, risk/
 	Flows  string `yaml:"flows"`  // 배치판 폴더들
 	Panels string `yaml:"panels"` // 업무 패널 YAML
+	Views  string `yaml:"views"`  // 업무 관제 보기 폴더(05 §19.15). 비면 <data>/views
 	Token  string `yaml:"token"`  // 공유 에이전트 토큰(호스트 묶음 없음). ${VAR}는 환경변수로 바꿈
 	// AgentTokens는 호스트별 에이전트 토큰(host → token, 보안 S3). 이 토큰으로 온 요청은 그 호스트 이름으로만 말할 수 있다.
 	AgentTokens map[string]string `yaml:"agent_tokens"`

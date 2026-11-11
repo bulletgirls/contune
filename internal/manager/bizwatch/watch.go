@@ -32,6 +32,7 @@ const (
 // Deps는 업무 관제가 읽는 부품이다. 모두 매니저가 이미 가진 것이다.
 type Deps struct {
 	Panels     *query.PanelBook // /panels · 알림과 같은 패널과 타일 판정
+	Views      *ViewBook        // 업무 관제 보기(05 §19.15). nil이면 보기 없음
 	Metrics    store.MetricStore
 	State      store.StateStore
 	Live       *live.Cache
@@ -59,12 +60,16 @@ func New(d Deps) *Watch {
 	if d.Flows == nil {
 		d.Flows = func() []model.Flow { return nil }
 	}
+	if d.Views == nil {
+		d.Views = &ViewBook{views: map[string]View{}}
+	}
 	return &Watch{d: d, acc: map[string]model.BizState{}}
 }
 
 // Mount는 GET /api/v1/bizwatch(조회)를 붙인다.
 func (w *Watch) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/bizwatch", w.handle)
+	w.mountViews(mux)
 }
 
 // snap은 지금 업무마다의 판정과 그 재료 중 화면이 더 쓰는 것이다.
@@ -421,6 +426,19 @@ func (w *Watch) handle(rw http.ResponseWriter, r *http.Request) {
 		cmp = 7 * 24 * time.Hour
 	}
 	g := q.Get("g")
+	var view *View
+	var vinfo *viewInfo
+	if id := q.Get("view"); id != "" {
+		me, admin := who(r)
+		v, ok := w.d.Views.Get(id)
+		if !ok || !canSee(v, me) {
+			writeJSON(rw, http.StatusNotFound, map[string]string{"error": "보기 " + id + "가 없습니다"})
+			return
+		}
+		view = &v
+		vi := viewInfo{ID: v.ID, Title: v.Title, Shared: v.Shared(), Editable: canEdit(v, me, admin), Layout: v.norm().Layout, Hide: v.norm().Hide, Notes: []string{}}
+		vinfo = &vi
+	}
 	now := w.d.Now()
 	local := now.In(w.d.Loc)
 	sn, err := w.snapshot(r.Context(), now, cmp, true)
@@ -443,7 +461,9 @@ func (w *Watch) handle(rw http.ResponseWriter, r *http.Request) {
 	var shownTiles [][]query.TileState
 	levels := map[string]string{}
 	counts := map[string]int{"crit": 0, "warn": 0, "ok": 0, "off": 0}
-	for i, s := range sn.svcs {
+	order, notes := pickPanels(view, sn.panels)
+	for _, i := range order {
+		s := sn.svcs[i]
 		if g != "" && !query.InGroup(s.Group, g) {
 			continue
 		}
@@ -456,7 +476,25 @@ func (w *Watch) handle(rw http.ResponseWriter, r *http.Request) {
 	if shown == nil {
 		shown = []Service{}
 	}
-	shownBatches := scopeBatches(bs, g, shownPanels, sn.hosts)
+	var groups []string // 업무 배치를 고를 그룹: g, 보기에서 고른 업무의 그룹, 둘 다 없으면 전부
+	switch {
+	case g != "":
+		groups = []string{g}
+	case view != nil && len(view.Panels) > 0:
+		groups = []string{}
+		for _, p := range shownPanels {
+			groups = append(groups, p.Group)
+		}
+	}
+	shownBatches := scopeBatches(bs, groups, shownPanels, sn.hosts)
+	var edges []ViewEdge
+	if view != nil {
+		edges = view.Flow
+	}
+	flow, fnotes := BuildFlow(shown, shownPanels, shownTiles, edges, local)
+	if vinfo != nil {
+		vinfo.Notes = append(append(vinfo.Notes, notes...), fnotes...)
+	}
 	writeJSON(rw, http.StatusOK, map[string]any{
 		"now":       now.UnixMilli(),
 		"scene_min": local.Hour()*60 + local.Minute(),
@@ -467,15 +505,16 @@ func (w *Watch) handle(rw http.ResponseWriter, r *http.Request) {
 		"services":  shown,
 		"events":    Events(shown, sn.firing, now.UnixMilli()),
 		"batches":   shownBatches,
-		"bizflow":   BuildFlow(shown, shownPanels, shownTiles, local),
+		"bizflow":   flow,
+		"view":      vinfo,
 		"history":   BuildHistory(shownPanels, shownBatches, levels, states, local),
 	})
 }
 
-// scopeBatches는 그룹 범위(g)에 드는 업무 배치다: 범위 안 업무(패널)의 flows에 있거나,
-// 스텝 · 게이트 서버가 그 그룹에 있는 것(플로우 YAML에 적힌 서버). g가 비면 전부.
-func scopeBatches(bs []Batch, g string, panels []model.Panel, hosts []model.Host) []Batch {
-	if g == "" {
+// scopeBatches는 보이는 업무에 드는 업무 배치다: 보이는 업무(패널)의 flows에 있거나, 스텝 · 게이트 서버가
+// groups(그룹 범위 g, 또는 보기에서 고른 업무의 그룹) 안에 있는 것(플로우 YAML에 적힌 서버). groups가 nil이면 전부.
+func scopeBatches(bs []Batch, groups []string, panels []model.Panel, hosts []model.Host) []Batch {
+	if groups == nil {
 		return bs
 	}
 	listed := map[string]bool{}
@@ -492,7 +531,9 @@ func scopeBatches(bs []Batch, g string, panels []model.Panel, hosts []model.Host
 	for _, b := range bs {
 		in := listed[b.Flow]
 		for _, h := range b.hosts {
-			in = in || query.InGroup(group[h], g)
+			for _, g := range groups {
+				in = in || query.InGroup(group[h], g)
+			}
 		}
 		if in {
 			out = append(out, b)

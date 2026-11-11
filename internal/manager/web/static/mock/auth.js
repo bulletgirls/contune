@@ -12,8 +12,15 @@ function isIn(c) {
 }
 
 // 필요한 역할. 서버 requiredRole의 요약: 읽기는 조회, 내보내기와 실행 조작은 운영, 나머지 변경은 관리.
+// whoami는 mock의 지금 사용자다(업무 관제 보기의 주인 · 관리 확인).
+export function whoami(c) {
+  return { id: state.id, role: roleOf(c) };
+}
+
 export function needOf(method, pathname) {
   if (/^\/export\//.test(pathname)) return 'operator';
+  // 업무 관제 보기: 개인 보기는 누구나 자기 것을 만든다(주인 · 공유는 핸들러가 본다)
+  if ((method === 'PUT' || method === 'DELETE') && /^\/bizwatch\/views\/[^/]+$/.test(pathname)) return 'viewer';
   if (method === 'GET' && pathname === '/audit') return 'admin';
   if (method === 'GET' || method === 'HEAD') return 'viewer';
   const op = /^\/flows\/[^/]+\/run$/.test(pathname)

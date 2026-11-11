@@ -417,10 +417,9 @@ export const PANELS = [
     active: 'mon-fri 08:30-15:30',
     flows: ['market-open'],
     main: '체결 처리량',
-    // 업무 흐름(05 §19.13): 들어오는 양 · 내보내는 양 · 다음 업무. mock 예: 체결 결과가 시세로 간다(실제 연결은 운영자가 패널에 적는다).
+    // 업무 흐름(05 §19.13): 들어오는 양 · 내보내는 양. 앞뒤 잇기는 보기(mock/bizwatch.js VIEWS)가 맡는다.
     in: '주문 유입량',
     out: '체결 처리량',
-    next: ['quote'],
     tiles: [
       { title: '주문 유입량', signal: 'traffic', metric: 'biz.order.in_tps', agg: 'sum', unit: 'TPS', kpi: true },
       { title: '체결 처리량', signal: 'traffic', metric: 'biz.order.tps', agg: 'sum', unit: 'TPS' },

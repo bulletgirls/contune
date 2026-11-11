@@ -158,8 +158,17 @@ func New(cfg Config) (*Manager, error) {
 	})
 
 	// 업무 관제(05 §19): 이미 있는 판정(패널 타일 · 서버 · 플로우 실행 · 알림)을 패널의 연결로 묶는다.
+	// 보기(05 §19.15)는 보기 폴더의 파일(비면 <data>/views).
+	viewDir := cfg.Views
+	if viewDir == "" {
+		viewDir = filepath.Join(cfg.Data, "views")
+	}
+	views := bizwatch.NewViewBook(viewDir)
+	if n, errs := views.All(); len(n) > 0 || len(errs) > 0 {
+		slog.Info("업무 관제 보기를 읽음", "dir", viewDir, "views", len(n), "errors", len(errs))
+	}
 	m.biz = bizwatch.New(bizwatch.Deps{
-		Panels: panels, Metrics: m.metrics, State: m.state, Live: lv, Flows: reg.List,
+		Panels: panels, Views: views, Metrics: m.metrics, State: m.state, Live: lv, Flows: reg.List,
 		Thresholds: cfg.HostState, Loc: loc, Now: now,
 	})
 

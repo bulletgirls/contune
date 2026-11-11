@@ -2,14 +2,15 @@
 // 원칙: 새 데이터를 만들지 않는다. 업무 = 패널 하나. 서버 · 배치 · 업무 지표를 패널에 적힌 연결로만 묶는다.
 //   group(있음) = 그 그룹 서버, tiles(있음) = 업무 지표, active = 업무 감시 시간,
 //   flows = 이 업무가 기대는 배치, main = 대표 지표, 플로우 deadline(2단계) = 업무 마감,
-//   in · out · next(3단계) = 업무 흐름. 적지 않은 연결은 추정하지 않는다.
+//   in · out(3단계) = 업무 흐름의 양. 앞뒤 잇기 · 고를 업무 · 순서 · 칸 숨기기는 보기(05 §19.15, 아래 VIEWS). 적지 않은 연결은 추정하지 않는다.
 // 등급: 증상(타일 판정 · 그룹 로그 알림)은 그대로, 원인(그룹 서버 · flows 실패)은 경고까지, 감시 시간 밖이면 시간 외.
 // ?at=HH:MM(mock 전용)이면 그 시각(KST)으로 감시 시간 · 업무 마감을 판단한다(값은 지금 값, 이력은 그 시각까지).
-import { MIN, SEC, DAY, KST, fmtN, round, clamp, cronDay } from './util.js';
+import { MIN, SEC, DAY, KST, fmtN, round, clamp, cronDay, sha } from './util.js';
 import { hostsView, groupMatch, flowOf, isDead } from './world.js';
 import { bizAt, logLevelsAt, BIZ_NAMES } from './signal.js';
 import { panelsView, profileShape, QUOTE_SERIES } from './core.js';
 import { buildAlerts } from './alert.js';
+import { whoami } from './auth.js';
 
 const ok = (body, status = 200) => ({ status, body });
 const RANK = { none: -1, off: -1, info: -1, ok: 0, warn: 1, crit: 2 };
@@ -162,6 +163,11 @@ export function judgeBatch(f, runs, fires, nowMin) {
 
 function bizwatch(c) {
   const g = c.q.get('g') || '';
+  const viewId = c.q.get('view') || '';
+  const me = whoami(c);
+  const vw = viewId ? VIEWS.get(viewId) : null;
+  if (viewId && (!vw || !canSee(vw, me.id))) return { status: 404, body: { error: `보기 ${viewId}가 없습니다` } };
+  const notes = [];
   const cmpMs = c.q.get('cmp') === 'week' ? 7 * DAY : DAY;
   const now = c.now;
   const m = /^(\d{1,2}):(\d{2})$/.exec(c.q.get('at') || '');
@@ -298,13 +304,20 @@ function bizwatch(c) {
     return b;
   }).sort((a, z) => a.deadline_min - z.deadline_min || (a.flow < z.flow ? -1 : 1));
 
-  // ---- 그룹 범위: 업무는 패널 group, 업무 배치는 범위 안 업무의 flows이거나 스텝 · 게이트 서버가 그 그룹 ----
+  // ---- 보기 · 그룹 범위: 업무는 보기에서 고른 업무(순서대로, 없으면 전체) 중 g 안. 업무 배치는 보이는 업무의 flows이거나
+  //      스텝 · 게이트 서버가 g(또는 보기에서 고른 업무의 그룹) 안 ----
   const inScope = (grp) => groupMatch(grp, g);
-  const scoped = services.filter((s) => inScope(s.group));
+  let picked = services;
+  if (vw && vw.panels.length) {
+    picked = vw.panels.map((id) => services.find((s) => s.id === id) || (notes.push(`업무 ${id} 없음(패널 확인)`), null)).filter(Boolean);
+  }
+  const scoped = picked.filter((s) => inScope(s.group));
   const listed = new Set(scoped.flatMap((s) => s.flows));
-  const shownBatches = batches.filter((b) => !g || listed.has(b.flow) || b._hosts.some((h) => inScope(hostGroup.get(h) || ''))).map(({ _hosts, ...b }) => b);
+  const groups = g ? [g] : vw && vw.panels.length ? scoped.map((s) => s.group) : null;
+  const shownBatches = batches.filter((b) => !groups || listed.has(b.flow) || b._hosts.some((h) => groups.some((gg) => groupMatch(hostGroup.get(h) || '', gg))))
+    .map(({ _hosts, ...b }) => b);
 
-  // ---- 업무 흐름(05 §19.13): 패널 in · out · next로만. 화살표 = 앞 업무의 out, 쌓임 = in − out(판정 없음) ----
+  // ---- 업무 흐름(05 §19.13): 패널 in · out과 보기의 앞뒤 잇기로만. 화살표 = 앞 업무의 out(보기 qty면 그 타일), 쌓임 = in − out ----
   const unitTxt = (u) => (!u ? '' : u === '%' ? '%' : ' ' + u);
   const qtyOf = (sv, title) => {
     const t = title && sv._p.tiles.find((x) => x.title === title);
@@ -321,14 +334,22 @@ function bizwatch(c) {
     return { ...q, value: v, text: `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmtN(Math.abs(v))}${unitTxt(a.unit)}` };
   };
   const clean = (q) => (q ? (({ _stale, ...x }) => x)(q) : null);
-  const targets = new Set(scoped.flatMap((sv) => sv._p.next || []));
-  const flowNodes = scoped.filter((sv) => sv._p.in || sv._p.out || (sv._p.next || []).length || targets.has(sv.id)).map((sv) => {
+  const shownIds = new Set(scoped.map((sv) => sv.id));
+  const edges = (vw ? vw.flow : []).filter((e) => shownIds.has(e.from) && shownIds.has(e.to));
+  const linked = new Set(edges.flatMap((e) => [e.from, e.to]));
+  const flowNodes = scoped.filter((sv) => sv._p.in || sv._p.out || linked.has(sv.id)).map((sv) => {
     const i = qtyOf(sv, sv._p.in), o = qtyOf(sv, sv._p.out);
     return { id: sv.id, title: sv.title, group: sv.group, level: sv.level, href: `#biz/${sv.id}`, in: clean(i), out: clean(o), backlog: i && o ? backlogOf(sv, i, o) : null };
   });
-  const shownIds = new Set(scoped.map((sv) => sv.id));
-  const flowEdges = scoped.flatMap((sv) => (sv._p.next || []).filter((to) => shownIds.has(to))
-    .map((to) => ({ from: sv.id, to, qty: (flowNodes.find((n) => n.id === sv.id) || {}).out || null })));
+  const flowEdges = edges.map((e) => {
+    const sv = scoped.find((x) => x.id === e.from);
+    let title = sv._p.out;
+    if (e.qty) {
+      if (sv._p.tiles.some((t) => t.title === e.qty)) title = e.qty;
+      else notes.push(`화살표 ${e.from} → ${e.to}: 타일 ${e.qty} 없음(out으로 그림)`);
+    }
+    return { from: e.from, to: e.to, qty: clean(qtyOf(sv, title)) };
+  });
 
   // ---- 오늘 업무 상태 이력: 5분 칸마다 같은 규칙으로 다시 판정 ----
   // 창 = 감시 시간 · 업무 배치(첫 실행 ~ 마감, 실행 기록) 중 가장 이른 때 1시간 전 ~ 가장 늦은 때 1시간 뒤(정시).
@@ -383,11 +404,118 @@ function bizwatch(c) {
     day: `${day.getUTCMonth() + 1}/${day.getUTCDate()}(${DOW[day.getUTCDay()]})`,
     counts,
     services: shown,
-    events: events.filter((e) => inScope(services.find((s) => s.id === e.service).group)),
+    events: events.filter((e) => shownIds.has(e.service)),
     batches: shownBatches,
     bizflow: { nodes: flowNodes, edges: flowEdges },
+    view: vw ? { id: vw.id, title: vw.title, shared: !vw.owner, editable: canEdit(vw, me), layout: vw.layout, hide: vw.hide, notes } : null,
     history: { slot: SLOT, from: clock(a0), to: a1 >= 24 * 60 ? '24:00' : clock(a1), t0: Math.round(real(a0)), rows },
   });
 }
 
-export const routes = [['GET', /^\/bizwatch$/, bizwatch]];
+// ---- 보기(05 §19.15): mock은 메모리에 둔다(매니저는 보기 폴더의 파일). 규칙 · 권한은 매니저와 같다 ----
+const SECTIONS = ['events', 'due', 'flow', 'batches', 'history'];
+const seedViews = () => new Map([
+  ['trading', { id: 'trading', title: '매매 운영', owner: '', panels: ['matching', 'quote'], flow: [{ from: 'matching', to: 'quote' }], layout: {}, hide: [] }],
+  ['demo-batch', { id: 'demo-batch', title: '내 배치 마감', owner: 'demo', panels: ['matching'], flow: [], layout: {}, hide: ['events', 'flow'] }],
+]);
+let VIEWS = seedViews();
+const shaOf = (v) => sha(JSON.stringify(v));
+for (const v of VIEWS.values()) v.sha = shaOf(v);
+export function resetViews() { VIEWS = seedViews(); for (const v of VIEWS.values()) v.sha = shaOf(v); }
+
+const canSee = (v, me) => !v.owner || (!!me && v.owner === me);
+const canEdit = (v, who) => (!v.owner ? who.role === 'admin' : !!who.id && v.owner === who.id);
+const outView = (v, who) => ({ ...v, file: `${v.id}.yaml`, shared: !v.owner, editable: canEdit(v, who) });
+
+// 매니저 bizwatch.ValidateView와 같은 규칙(글자도 같게)
+export function validateView(v) {
+  if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(v.id || '')) return `id "${v.id}"는 소문자 · 숫자 · -로 63자까지입니다`;
+  if (!String(v.title || '').trim()) return 'title이 비었습니다';
+  if ([...String(v.title)].length > 60) return 'title은 60자까지입니다';
+  if (v.owner && !/^\S{1,64}$/.test(v.owner)) return `owner "${v.owner}"는 공백 없는 사용자 id(64자까지)입니다`;
+  const picked = new Set();
+  for (const id of v.panels || []) {
+    if (!id || picked.has(id)) return `panels: 빈 패널 id이거나 "${id}"가 두 번 있습니다`;
+    picked.add(id);
+  }
+  const inView = (id) => !(v.panels || []).length || picked.has(id);
+  const seen = new Set(), next = new Map();
+  for (const [i, e] of (v.flow || []).entries()) {
+    if (!e.from || !e.to) return `flow ${i + 1}번째: from과 to가 필요합니다`;
+    if (e.from === e.to) return `flow ${i + 1}번째: ${e.from}를 자기 자신에게 이을 수 없습니다`;
+    if (seen.has(`${e.from}>${e.to}`)) return `flow: ${e.from} → ${e.to}가 두 번 있습니다`;
+    if (!inView(e.from) || !inView(e.to)) return `flow: ${e.from} → ${e.to}는 panels에 고른 업무끼리만 이을 수 있습니다`;
+    seen.add(`${e.from}>${e.to}`);
+    next.set(e.from, [...(next.get(e.from) || []), e.to]);
+  }
+  const state = new Map(), path = [];
+  const visit = (id) => {
+    state.set(id, 1); path.push(id);
+    for (const n of next.get(id) || []) {
+      if (state.get(n) === 1) return [...path.slice(path.indexOf(n)), n].join(' → ');
+      if (!state.get(n)) { const c = visit(n); if (c) return c; }
+    }
+    path.pop(); state.set(id, 2);
+    return '';
+  };
+  for (const e of v.flow || []) if (!state.get(e.from)) { const c = visit(e.from); if (c) return `flow가 돌아옵니다: ${c}`; }
+  const cells = new Map();
+  for (const id of Object.keys(v.layout || {}).sort()) {
+    const p = v.layout[id];
+    if (!inView(id)) return `layout: "${id}"는 panels에 고른 업무가 아닙니다`;
+    if (!Array.isArray(p) || p.length !== 2 || p.some((x) => !Number.isInteger(x) || x < 0 || x > 49)) return `layout: ${id}의 자리 [${p}]는 0~49입니다`;
+    const k = p.join(',');
+    if (cells.has(k)) return `layout: ${cells.get(k)}와 ${id}가 같은 자리 [${p[0]}, ${p[1]}]입니다`;
+    cells.set(k, id);
+  }
+  const hid = new Set();
+  for (const h of v.hide || []) {
+    if (!SECTIONS.includes(h) || hid.has(h)) return `hide: "${h}"는 ${SECTIONS.join(' · ')} 중 하나(한 번씩)여야 합니다`;
+    hid.add(h);
+  }
+  return '';
+}
+
+function listViews(c) {
+  const who = whoami(c);
+  return ok({ views: [...VIEWS.values()].filter((v) => canSee(v, who.id)).sort((a, z) => (!a.owner === !z.owner ? (a.title < z.title ? -1 : 1) : a.owner ? 1 : -1)).map((v) => outView(v, who)),
+    errors: [], me: who.id, can_share: who.role === 'admin' });
+}
+function putView(c, m) {
+  const who = whoami(c);
+  const b = c.json() || {};
+  const v = { id: '', title: '', owner: '', panels: [], flow: [], layout: {}, hide: [], ...(b.view || {}) };
+  delete v.file; delete v.sha; delete v.shared; delete v.editable;
+  const bad = (status, error, extra) => ({ status, body: { error, ...extra } });
+  if (v.id !== decodeURIComponent(m[1])) return bad(400, '주소의 id와 보기의 id가 다릅니다');
+  const err = validateView(v);
+  if (err) return bad(400, err);
+  if (v.owner && v.owner !== who.id) return bad(403, '다른 사용자의 개인 보기로 저장할 수 없습니다');
+  if (!v.owner && who.role !== 'admin') return bad(403, '공유 보기는 관리 역할만 저장합니다(내 보기로 저장)');
+  const old = VIEWS.get(v.id);
+  if (old && !canSee(old, who.id)) return bad(409, `id ${v.id}는 이미 쓰입니다(다른 id로 저장)`, { sha: '' });
+  if (old && !canEdit(old, who)) return bad(403, '공유 보기는 관리 역할만 고칩니다');
+  if ((b.if_match || '') !== (old ? old.sha : '')) return bad(409, '다른 곳에서 바뀌었습니다', { sha: old ? old.sha : '' });
+  const saved = { id: v.id, title: v.title.trim(), owner: v.owner || '', panels: v.panels, flow: v.flow, layout: v.layout, hide: v.hide };
+  saved.sha = shaOf(saved);
+  VIEWS.set(v.id, saved);
+  return ok(outView(saved, who));
+}
+function deleteView(c, m) {
+  const who = whoami(c);
+  const id = decodeURIComponent(m[1]);
+  const old = VIEWS.get(id);
+  if (!old || !canSee(old, who.id)) return { status: 404, body: { error: '그 보기가 없습니다' } };
+  if (!canEdit(old, who)) return { status: 403, body: { error: '공유 보기는 관리 역할만 지웁니다' } };
+  if ((c.q.get('if_match') || '') !== old.sha) return { status: 409, body: { error: '다른 곳에서 바뀌었습니다', sha: old.sha } };
+  VIEWS.delete(id);
+  return { status: 204, body: null };
+}
+
+export const routes = [
+  ['GET', /^\/bizwatch$/, bizwatch],
+  ['GET', /^\/bizwatch\/views$/, listViews],
+  ['PUT', /^\/bizwatch\/views\/([^/]+)$/, putView],
+  ['DELETE', /^\/bizwatch\/views\/([^/]+)$/, deleteView],
+  ['POST', /^\/bizwatch\/views\/reload$/, () => ok({ views: VIEWS.size, errors: [] })],
+];

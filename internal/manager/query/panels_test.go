@@ -553,21 +553,19 @@ func TestPanelActiveIsTileDefault(t *testing.T) {
 	}
 }
 
-// 업무 흐름 칸(05 §19.13): in · out은 타일 제목(같은 단위), next는 다른 패널 id. 없는 패널 · 돌아오는 연결은 읽지 못한 파일.
+// 업무 흐름 칸(05 §19.13): in · out은 타일 제목(같은 단위). 앞뒤 잇기(next)는 보기(05 §19.15)로 옮겨 패널의 모르는 칸이다.
 func TestPanelFlowFields(t *testing.T) {
 	panel := func(id, extra string) string {
 		return "id: " + id + "\ntitle: " + id + "\ngroup: g/" + id + "\n" + extra +
 			"tiles:\n  - {title: 유입량, metric: a, agg: sum, unit: TPS}\n  - {title: 처리량, metric: b, agg: sum, unit: TPS}\n  - {title: 큐, metric: c, agg: sum, unit: 건}\n"
 	}
 	dir := t.TempDir()
-	writePanel(t, dir, "a.yaml", panel("a", "in: 유입량\nout: 처리량\nnext: [b, c]\n"))
-	writePanel(t, dir, "b.yaml", panel("b", "in: 유입량\nnext: [c]\n"))
-	writePanel(t, dir, "c.yaml", panel("c", ""))
+	writePanel(t, dir, "a.yaml", panel("a", "in: 유입량\nout: 처리량\n"))
 	ps, errs, err := LoadPanels(dir)
-	if err != nil || len(errs) != 0 || len(ps) != 3 {
+	if err != nil || len(errs) != 0 || len(ps) != 1 {
 		t.Fatalf("%v %v %v", ps, errs, err)
 	}
-	if p := ps[0]; p.In != "유입량" || p.Out != "처리량" || strings.Join(p.Next, ",") != "b,c" || p.TileIndex(p.Out) != 1 || p.TileIndex("") != -1 {
+	if p := ps[0]; p.In != "유입량" || p.Out != "처리량" || p.TileIndex(p.Out) != 1 || p.TileIndex("") != -1 {
 		t.Fatalf("칸 %+v", p)
 	}
 	for name, c := range map[string]struct{ body, msg string }{
@@ -575,8 +573,7 @@ func TestPanelFlowFields(t *testing.T) {
 		"out 없는 타일": {panel("x", "out: 없음\n"), `out "없음": 이 패널에 그 제목의 타일이 없습니다`},
 		"같은 타일":     {panel("x", "in: 처리량\nout: 처리량\n"), `in과 out이 같은 타일 "처리량"입니다`},
 		"단위 다름":     {panel("x", "in: 유입량\nout: 큐\n"), `in "유입량"(TPS)과 out "큐"(건)의 단위가 달라 쌓임(in − out)을 셀 수 없습니다`},
-		"자기 자신":     {panel("x", "next: [x]\n"), `next: 빈 패널 ID, 두 번 쓴 "x", 또는 자기 자신입니다`},
-		"없는 패널":     {panel("x", "next: [nope]\n"), `next: 패널 "nope"가 없습니다(panels 폴더의 패널 id 확인, 읽지 못한 패널이면 그 파일부터)`},
+		"next는 보기로": {panel("x", "next: [a]\n"), `4번째 줄의 next는 모르는 칸입니다(오타인지 확인)`},
 	} {
 		d := t.TempDir()
 		writePanel(t, d, "bad.yaml", c.body)
@@ -584,20 +581,5 @@ func TestPanelFlowFields(t *testing.T) {
 		if err != nil || len(errs) != 1 || errs[0].Msg != c.msg {
 			t.Errorf("%s: %+v %v", name, errs, err)
 		}
-	}
-	// 돌아오는 연결은 고리에 든 패널을 모두 빼고, 빠진 패널을 가리키던 패널도 뒤이어 뺀다.
-	d := t.TempDir()
-	writePanel(t, d, "a.yaml", panel("a", "next: [b]\n"))
-	writePanel(t, d, "b.yaml", panel("b", "next: [a]\n"))
-	writePanel(t, d, "c.yaml", panel("c", "next: [a]\n"))
-	writePanel(t, d, "d.yaml", panel("d", ""))
-	ps, errs, _ = LoadPanels(d)
-	got := map[string]string{}
-	for _, e := range errs {
-		got[e.File] = e.Msg
-	}
-	if len(ps) != 1 || ps[0].ID != "d" || got["a.yaml"] != "next가 돌아옵니다: a → b → a" || got["b.yaml"] != got["a.yaml"] ||
-		!strings.HasPrefix(got["c.yaml"], `next: 패널 "a"가 없습니다`) {
-		t.Errorf("고리 %v %v", ps, got)
 	}
 }
