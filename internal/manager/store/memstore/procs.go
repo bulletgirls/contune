@@ -4,29 +4,20 @@ import (
 	"cmp"
 	"context"
 	"slices"
-	"sync"
 
 	"eum/internal/model"
 )
 
 // 프로세스 기록(06, 카드 P-C). sqlite(statesql/procs.go)와 같게 동작한다: 측정 값은 남기지 않고, 복사본만 주고받는다.
 //
-// 표는 저장소마다 아래 곁 표에 둔다(state.go의 구조체를 건드리지 않으려고). 저장소를 버려도 표는 남지만,
-// memstore는 개발·테스트용이라 프로세스마다 몇 개뿐이다. 표 안의 행은 s.mu로 지킨다(다른 메서드와 같은 잠금).
-var (
-	procTabsMu sync.Mutex
-	procTabs   = map[*stateStore]map[string]model.ProcInfo{}
-)
+// 표는 저장소 구조체의 procs 칸이고(처음 쓸 때 만든다), 행은 s.mu로 지킨다(다른 메서드와 같은 잠금).
 
+// procTab은 s.mu를 잡은 채로 부른다.
 func (s *stateStore) procTab() map[string]model.ProcInfo {
-	procTabsMu.Lock()
-	defer procTabsMu.Unlock()
-	t := procTabs[s]
-	if t == nil {
-		t = map[string]model.ProcInfo{}
-		procTabs[s] = t
+	if s.procs == nil {
+		s.procs = map[string]model.ProcInfo{}
 	}
-	return t
+	return s.procs
 }
 
 // procRow는 남기는 칸만 둔 사본이다.
@@ -37,9 +28,9 @@ func procRow(p model.ProcInfo) model.ProcInfo {
 
 // UpsertProcs는 store.StateStore 계약을 따른다.
 func (s *stateStore) UpsertProcs(ctx context.Context, ps []model.ProcInfo) error {
-	t := s.procTab()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	t := s.procTab()
 	for _, p := range ps {
 		k := p.ProcKey()
 		old, ok := t[k]
@@ -63,9 +54,9 @@ func (s *stateStore) UpsertProcs(ctx context.Context, ps []model.ProcInfo) error
 
 // ListProcs는 store.StateStore 계약을 따른다.
 func (s *stateStore) ListProcs(ctx context.Context, f model.ProcFilter) ([]model.ProcInfo, error) {
-	t := s.procTab()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	t := s.procTab()
 	var out []model.ProcInfo
 	for _, p := range t {
 		switch {
@@ -95,9 +86,9 @@ func (s *stateStore) ListProcs(ctx context.Context, f model.ProcFilter) ([]model
 
 // PruneProcs는 store.StateStore 계약을 따른다.
 func (s *stateStore) PruneProcs(ctx context.Context, before int64) (int, error) {
-	t := s.procTab()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	t := s.procTab()
 	n := 0
 	for k, p := range t {
 		if (p.EndedAt != 0 && p.EndedAt < before) || (p.EndedAt == 0 && p.LastSeen < before) {

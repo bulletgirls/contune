@@ -22,6 +22,7 @@ func NewState() store.StateStore {
 
 type stateStore struct {
 	mu        sync.Mutex
+	procs     map[string]model.ProcInfo // 프로세스 기록(procs.go, 카드 P-C)
 	runs      map[string]*model.Run
 	events    map[string][]model.RunEvent
 	hosts     map[string]model.Host
