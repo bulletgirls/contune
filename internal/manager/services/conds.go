@@ -119,7 +119,7 @@ func (b *Book) startsConds(ctx context.Context, w *world) ([]alert.ServiceCond, 
 			continue
 		}
 		for _, svc := range starts[stepKey{r.FlowID, r.StepID}] {
-			if startedSince(w.procs, svc, r.Host, r.StartedAt) {
+			if startedSince(w.procs, svc, r.Host, r.ExecID, r.StartedAt) {
 				continue
 			}
 			out = append(out, alert.ServiceCond{
@@ -139,10 +139,10 @@ func newerRun(a, b model.Run) bool {
 	return a.ExecID > b.ExecID
 }
 
-// startedSince는 host에서 svc 프로세스가 at(실행 시작) 뒤에 떴는지다.
-func startedSince(ps []model.ProcInfo, svc, host string, at int64) bool {
+// startedSince는 host에서 svc 프로세스를 그 실행(execID)이 기동했거나 at(실행 시작) 뒤에 떴는지다.
+func startedSince(ps []model.ProcInfo, svc, host, execID string, at int64) bool {
 	for _, p := range ps {
-		if p.Service == svc && p.Host == host && p.StartedAt >= at-startSkew {
+		if p.Service == svc && p.Host == host && ((execID != "" && p.ExecID == execID) || p.StartedAt >= at-startSkew) {
 			return true
 		}
 	}

@@ -365,7 +365,8 @@ func TestInstances(t *testing.T) {
 	// 감시 시간 밖(20:00): Expect.Active가 있는 서비스만 off.
 	e.now = time.Date(2026, 11, 10, 20, 0, 0, 0, kst)
 	items = e.b.List(context.Background())
-	if m := instOf(t, items, "matching", "match-02"); m.State != "off" || m.Since != 0 {
+	// 살아 있으면 가동 시작(Since)은 그대로 둔다(화면이 감시 시간 밖에도 가동 시간·CPU를 보인다).
+	if m := instOf(t, items, "matching", "match-02"); m.State != "off" || m.Since == 0 || m.Procs != 1 {
 		t.Fatalf("off %+v", m)
 	}
 	if q := instOf(t, items, "quote", "feed-01"); q.State != "up" {

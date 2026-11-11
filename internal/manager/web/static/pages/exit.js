@@ -84,7 +84,14 @@ export function stripText(items) {
   if (!items || !items.length) return '';
   const it = items[0];
   const more = items.length > 1 ? ` (외 ${items.length - 1}건)` : '';
-  return `프로세스 종료 ${items.length}건 — ${it.comm} ${endText(it)} · ${it.title || CATEGORY_TEXT[it.category] || ''}${more}`;
+  const why = it.title && it.title !== endText(it) ? it.title : CATEGORY_TEXT[it.category] || '';
+  return `프로세스 종료 ${items.length}건 — ${it.comm} ${endText(it)}${why ? ' · ' + why : ''}${more}`;
+}
+// 보고서 제목: 규칙 제목. 제목이 배지(끝난 모양)와 같은 말이면("종료 코드 2") "<프로세스> <원인 종류>"("svr_b 오류 종료").
+export function reportTitle(rule, rep) {
+  const t = rule.title || '';
+  if (t && t !== endText(rep)) return t;
+  return `${rep.comm || '프로세스'} ${CATEGORY_TEXT[rule.category] || '종료'}`;
 }
 // 실행 파일 모듈 이름: exe의 끝(없으면 comm). Frame.Module은 파일 이름만이다.
 export function exeModule(rep) {
@@ -291,7 +298,7 @@ export async function render(root, params) {
       el('div', { class: 'ex-crumb' }, crumbs),
       el('div', { class: 'ex-title' },
         el('span', { class: `badge ${level || 'silent'}`, text: `${mk} ${endText(rep)}` }),
-        el('h2', { class: 'ex-h2', text: rule.title || CATEGORY_TEXT[rule.category] || `${rep.comm || '프로세스'} 종료` }),
+        el('h2', { class: 'ex-h2', text: reportTitle(rule, rep) }),
         el('span', { class: 'grow' }),
         el('button', { type: 'button', text: '⤓ 근거 묶음', title: '근거 묶음 내려받기(JSON)', onclick: download })),
       el('div', { class: 'ex-meta' }, proc,

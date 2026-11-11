@@ -285,8 +285,11 @@ func (b *Book) instance(ctx context.Context, w *world, d model.ServiceDef, host 
 		}
 	}
 	switch {
-	case off:
-		in.State, in.Since = "off", 0
+	case off: // 감시 시간 밖: 판정만 하지 않는다. 살아 있으면 가동 시작은 그대로
+		in.State = "off"
+		if in.Procs == 0 {
+			in.Since = a.lastEnd
+		}
 	case in.Procs >= need(d):
 		in.State = "up"
 	default:

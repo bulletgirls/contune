@@ -271,15 +271,16 @@ async function renderTM(root, id, query) {
     const i = st.inst || {};
     const v = stateView(i.state, def);
     const up = i.state === 'up';
+    const alive = (i.procs || 0) > 0; // 감시 시간 밖(off)이어도 살아 있으면 값을 보인다
     const live = mine(st.detail.procs).filter((p) => !p.ended_at);
     const need = (def.expect && def.expect.count) || 0;
     const exitSub = i.last_exit ? el('a', { href: '#exit/' + q(i.last_exit), text: '마지막 종료 보고서 →' }) : '';
     kpis.replaceChildren(
-      kpi('상태', `<span class="sv-st ${v.cls}">${v.mark} ${esc(v.text)}</span>`, up ? (i.since ? `${fmtTime(i.since)}부터` : '') : i.since ? `${fmtTime(i.since)} 끝남` : v.cls === 'off' ? '감시 시간 밖' : ''),
-      kpi('프로세스', `<span class="num">${esc(fmtNum(i.procs ?? 0))}</span><span class="unit">개</span>`, live.length ? 'pid ' + live.slice(0, 3).map((p) => p.pid).join(', ') + (live.length > 3 ? ` 외 ${live.length - 3}` : '') : need ? `기대 ${need}개` : '', !up && need ? 'c-crit' : ''),
-      kpi('가동 시간', up && i.since ? `<span class="num">${esc(fmtDuration(Date.now() - i.since))}</span>` : DASH, `24시간 재기동 ${fmtNum(i.restarts ?? 0)}회`),
-      kpi('CPU 사용률', up ? numUnit(i.cpu, '%') : DASH, i.cpu > 100 ? '코어 여러 개 사용' : '프로세스 합'),
-      kpi('메모리(RSS)', up ? numUnit(i.rss_mb, 'MB') : DASH, '프로세스 합'),
+      kpi('상태', `<span class="sv-st ${v.cls}">${v.mark} ${esc(v.text)}</span>`, alive ? [i.since ? `${fmtTime(i.since)}부터` : '', i.state === 'off' ? '감시 시간 밖' : ''].filter(Boolean).join(' · ') : i.since ? `${fmtTime(i.since)} 끝남` : i.state === 'off' ? '감시 시간 밖' : ''),
+      kpi('프로세스', `<span class="num">${esc(fmtNum(i.procs ?? 0))}</span><span class="unit">개</span>`, live.length ? 'pid ' + live.slice(0, 3).map((p) => p.pid).join(', ') + (live.length > 3 ? ` 외 ${live.length - 3}` : '') : need ? `기대 ${need}개` : '', i.state === 'down' ? 'c-crit' : ''),
+      kpi('가동 시간', alive && i.since ? `<span class="num">${esc(fmtDuration(Date.now() - i.since))}</span>` : DASH, `24시간 재기동 ${fmtNum(i.restarts ?? 0)}회`),
+      kpi('CPU 사용률', alive ? numUnit(i.cpu, '%') : DASH, i.cpu > 100 ? '코어 여러 개 사용' : '프로세스 합'),
+      kpi('메모리(RSS)', alive ? numUnit(i.rss_mb, 'MB') : DASH, '프로세스 합'),
       kpi('24h 종료', `<span class="num">${esc(fmtNum(i.exits ?? 0))}</span><span class="unit">건</span>`, exitSub, i.exits ? 'c-crit' : ''));
   }
 

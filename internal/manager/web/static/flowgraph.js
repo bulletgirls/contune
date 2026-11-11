@@ -125,13 +125,21 @@ export function renderFlowGraph(host, flow, last, opts = {}) {
     if (opts.selected === s.id) cls.push('sel');
     const tags = [...info.tags];
     if (info.blocked) tags.push('선행 실패');
-    const svcs = svcMarks(s, opts.services).map((m) => {
+    // 노드 폭이 고정이라 칩은 2개까지(내려간 것 먼저), 나머지는 +n(말풍선에 전부)
+    const RANK = { down: 0, unk: 1, up: 2 };
+    const marks = svcMarks(s, opts.services).sort((a, b) => (RANK[a.state || 'unk'] ?? 1) - (RANK[b.state || 'unk'] ?? 1));
+    const shown = marks.length > 2 ? marks.slice(0, 2) : marks;
+    const rest = marks.slice(shown.length);
+    const svcs = shown.map((m) => {
       const [mk, txt] = SVC_MARK[m.state];
       const kids = [el('i', { text: mk }), m.id];
       const title = `서비스 ${m.id} · ${txt}`;
       return preview ? el('span', { class: 'fg-svc ' + (m.state || 'unk'), title }, ...kids)
         : el('a', { class: 'fg-svc ' + (m.state || 'unk'), title, href: `#svc/${encodeURIComponent(m.id)}?host=${encodeURIComponent(s.host)}`, onclick: (e) => e.stopPropagation() }, ...kids);
     });
+    if (rest.length) {
+      svcs.push(el('span', { class: 'fg-svc more', text: `+${rest.length}`, title: rest.map((m) => `서비스 ${m.id} · ${SVC_MARK[m.state][1]}`).join('\n') }));
+    }
     const node = el('div', {
       class: cls.join(' '), style: `left:${p.x}px;top:${p.y}px;width:${NODE_W}px;height:${NODE_H}px`,
       'data-step': s.id, tabindex: preview ? false : '0',

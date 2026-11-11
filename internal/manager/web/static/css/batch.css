@@ -217,3 +217,4 @@ a.fg-svc:hover { border-color:var(--accent); text-decoration:underline; }
 .bt-filters { display:flex; gap:12px; margin-bottom:8px; flex-wrap:wrap; }
 .bt-filter { display:flex; gap:6px; align-items:center; color:var(--t3); font-size:12px; }
 .bt-filter select { font:inherit; color:var(--t1); background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:3px 8px; }
+.fg-svc.more { color:var(--t3); font-family:system-ui,sans-serif; }
