@@ -33,8 +33,8 @@ export function parseOwnerKey(s) {
 
 // ---- 정의(services/*.yaml을 읽은 것) ----
 const DEFS = [
-  { id: 'matching', title: '체결', group: '매매/체결', match: [{ comm: 'matching_svc' }, { env: 'EUM_SERVICE=matching' }], profile: true, expect: { count: 1, active: 'mon-fri 05:30-16:00' }, file: '체결.yaml' },
-  { id: 'quote', title: '시세', group: '매매/시세', match: [{ exe: '/opt/eum/demo/bin/quote_svc' }], profile: true, expect: { count: 1 }, file: '시세.yaml' },
+  { id: 'matching', title: '체결', group: '매매체결', match: [{ comm: 'matching_svc' }, { env: 'EUM_SERVICE=matching' }], profile: true, expect: { count: 1, active: 'mon-fri 05:30-16:00' }, file: '체결.yaml' },
+  { id: 'quote', title: '시세', group: '정보분배', match: [{ exe: '/opt/eum/demo/bin/quote_svc' }], profile: true, expect: { count: 1 }, file: '시세.yaml' },
 ];
 const AUTO = ['svr_a', 'svr_b', 'svr_c'];
 const PANEL_OF = { matching: 'matching', quote: 'quote' };

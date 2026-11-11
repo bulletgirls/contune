@@ -6,7 +6,7 @@ import {
 } from './world.js';
 import {
   HOST_NAMES, ALL_NAMES, hostAt, serviceAt, batchJobAt, bizAt, logLevelsAt, riskAt, BIZ_NAMES, LOG_NAMES, JOB_NAMES,
-  QUOTE_NAMES, quoteAt, quoteServiceAt, quoteRate, quoteSurgeRange,
+  QUOTE_NAMES, STAGE_NAMES, stageAt, quoteAt, quoteServiceAt, quoteRate, quoteSurgeRange,
 } from './signal.js';
 import { CATALOG } from './catalog.js';
 import { procsList, procsByRun, procValues, asSvc } from './procs.js';
@@ -182,7 +182,7 @@ export function seriesQuery(c, p) {
   step = Math.ceil(step);
   const grid = pointsGrid(from, Math.min(to, now), step * 1000);
   const names = expandNames(p.name);
-  const hostNames = names.filter((n) => HOST_NAMES.includes(n) || n.startsWith('agent.'));
+  const hostNames = names.filter((n) => HOST_NAMES.includes(n) || n.startsWith('agent.') || STAGE_NAMES.includes(n));
   const jobNames = names.filter((n) => JOB_NAMES.includes(n) || BIZ_NAMES.includes(n) || QUOTE_NAMES.includes(n) || LOG_NAMES.includes(n));
   const entities = [];
 
@@ -193,12 +193,15 @@ export function seriesQuery(c, p) {
     else if (!p.exec_id) hs = c.w.hosts;
     for (const h of hs) {
       const lastSeen = h.silent ? now - 3 * MIN : now;
+      // 업무 시뮬레이터 지표(biz.<stage>.*)는 그 stage 서버만 낸다
+      const nm = hostNames.filter((n) => !STAGE_NAMES.includes(n) || (h.stage && n.startsWith(`biz.${h.stage}.`)));
+      if (!nm.length) continue;
       entities.push({
         host: h.id,
         exec_id: '',
-        names: hostNames,
+        names: nm,
         range: [-Infinity, lastSeen],
-        at: (ts) => hostAt(h, ts, c.sig),
+        at: (ts) => ({ ...hostAt(h, ts, c.sig), ...(h.stage ? stageAt(h.stage, ts, c.sig) : {}) }),
       });
     }
   }
@@ -316,6 +319,7 @@ export function tileValue(c, metric, panel = 'matching') {
   const ts = c.now;
   if (BIZ_NAMES.includes(metric)) return bizAt(ts, ex)[metric];
   if (QUOTE_NAMES.includes(metric)) return quoteAt(ts, ex)[metric];
+  if (STAGE_NAMES.includes(metric)) return stageAt(metric.split('.')[1], ts, ex)[metric];
   if (panel === 'quote' && metric.startsWith('log.')) return quoteLogVals(ts, ex)[metric];
   if (metric === 'log.error.count') return round(logLevelsAt(ts, ex).e / 5, 2);
   if (metric === 'log.warn.count') return round(logLevelsAt(ts, ex).w / 5, 2);
@@ -334,7 +338,7 @@ export function tileState(t, v) {
 }
 const lowReason = (t, v, state) => (state !== 'ok' && state !== 'none' && !(t.warn !== undefined && v >= t.warn) && !(t.crit !== undefined && v >= t.crit) ? 'low' : '');
 
-// 정보 벤더 시세 패널(매매/시세, feed-02~06): 운영자가 로그 숫자 뽑기로 붙인 패널(05 §18).
+// 정보 벤더 시세 패널(정보분배, feed-02~06): 운영자가 로그 숫자 뽑기로 붙인 패널(05 §18).
 // 하한 위험 · 값 끊김 · 시간 외 · 읽지 못한 파일을 한 화면에서 보인다. 시세 서비스(quote_svc, biz.quote.*)와 지표 이름이 겹치지 않게 biz.vendor.*.
 // 값 규칙: 매니저 판정(계약 1)이 낼 수 있는 모양만 쓴다. 로그 경로에 {exec_id}가 없어 실행 ID는 없다.
 const VENDOR_SERIES = {
@@ -344,7 +348,7 @@ const VENDOR_SERIES = {
 const VENDOR_PANEL = {
   id: 'vendor',
   title: '정보 벤더 시세',
-  group: '매매/시세',
+  group: '정보분배',
   tiles: [
     { title: '1분 시세량', signal: 'traffic', metric: 'biz.vendor.count_1m', agg: 'min', unit: '건/분', kpi: true, warn_below: 60000, crit_below: 10000, stale: '30s', active: 'mon-fri 09:00-15:30' },
     { title: '시세 수신량', signal: 'traffic', metric: 'biz.vendor.tps', agg: 'sum', unit: '건/초' },

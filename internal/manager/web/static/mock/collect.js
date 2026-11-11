@@ -23,22 +23,22 @@ function state(now) {
   const mk = (scope, file, logs) => ({ scope, file, logs, sha: hex(JSON.stringify(logs) + scope, 64) });
   const sets = [
     mk('all', 'all.yaml', [{ name: 'step', path: '{log_dir}/step.{exec_id}.log', match: [{ re: '^ERROR', level: 'error' }, { re: '^WARN', level: 'warn' }] }]),
-    mk('group:매매/체결', 'group-매매-체결.yaml', [{ name: 'matching', path: '{log_dir}/matching_svc.{exec_id}.log', match: LOGW }]),
+    mk('group:매매체결', 'group-매매체결.yaml', [{ name: 'matching', path: '{log_dir}/matching_svc.{exec_id}.log', match: LOGW }]),
     mk('host:match-01', 'host-match-01.yaml', [
       { name: 'matching', path: '{log_dir}/matching_svc.{exec_id}.log', match: [...LOGW, { re: '^\\(F\\)', level: 'error' }] },
       { name: 'order-gw', path: '/var/lib/eum/logs/gw/order_*.log', match: [{ re: 'REJECT', level: 'warn' }] },
     ]),
     // 에이전트 허용 폴더(read_roots) 밖이라 dw-03이 이 파일만 건너뛴다(일부 적용)
     // 시세 로그: 줄 규칙 없이 통계 줄(recv=N)에서 숫자만 뽑는다(05 §18)
-    mk('group:매매/시세', 'group-매매-시세.yaml', [{ name: 'quote', path: '{log_dir}/quote_feed.log', match: [], metrics: QUOTE_METRICS }]),
+    mk('group:정보분배', 'group-정보분배.yaml', [{ name: 'quote', path: '{log_dir}/quote_feed.log', match: [], metrics: QUOTE_METRICS }]),
     mk('host:dw-03', 'host-dw-03.yaml', [{ name: 'etl-load', path: '/data/etl/load_*.log', match: [{ re: 'ORA-\\d+', level: 'error' }] }]),
   ];
   S = {
     sets,
-    errors: [{ file: 'group-사후처리.yaml', msg: "로그 파일 'settle'(1번째) 규칙 2 정규식: 정규식(RE2)을 해석하지 못함: error parsing regexp: missing closing ): `^(E`" }],
+    errors: [{ file: 'group-청산결제.yaml', msg: "로그 파일 'settle'(1번째) 규칙 2 정규식: 정규식(RE2)을 해석하지 못함: error parsing regexp: missing closing ): `^(E`" }],
     pendingUntil: {}, seen: {},
     audit: [
-      { id: 3, ts: now - 95 * MIN, actor: 'user:admin', action: 'collect.save', target: 'group:매매/체결', detail: `group-매매-체결.yaml ${hex('g0')} → ${hex('g1')} 로그 파일 1개` },
+      { id: 3, ts: now - 95 * MIN, actor: 'user:admin', action: 'collect.save', target: 'group:매매체결', detail: `group-매매체결.yaml ${hex('g0')} → ${hex('g1')} 로그 파일 1개` },
       { id: 2, ts: now - 26 * 60 * MIN, actor: 'user:operator', action: 'collect.save', target: 'all', detail: `all.yaml ${hex('a0')} → ${hex('a1')} 로그 파일 1개` },
       { id: 1, ts: now - 30 * 60 * MIN, actor: 'user:admin', action: 'collect.save', target: 'all', detail: `all.yaml - → ${hex('a0')} 로그 파일 1개` },
     ],
