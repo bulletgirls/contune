@@ -186,7 +186,7 @@ export function worstOf(panel, now = Date.now()) {
 }
 
 // 시간 외(결정 7): 이 패널을 가리키는 서비스(/services의 panel)의 인스턴스가 모두 off이거나, 보이는 in·out 타일이 모두 off.
-// → {off, active(감시 시간 글자, 모르면 '')}
+// → {off, active(감시 시간 글자, 모르면 ''), by('svc' | 'tile')}. 상자가 경고·위험이면 꼬리표 대신 판정을 보인다(boxEl).
 export function offOf(node, panel, services) {
   const n = node || {};
   const id = str(n.panel);
@@ -197,12 +197,15 @@ export function offOf(node, panel, services) {
     insts.push(...arr(it.instances));
     active = active || (it.def && it.def.expect && it.def.expect.active) || '';
   }
-  if (insts.length && insts.every((x) => x && x.state === 'off')) return { off: true, active };
+  if (insts.length && insts.every((x) => x && x.state === 'off')) return { off: true, active, by: 'svc' };
   const shown = [n.in, n.out].map(str).filter(Boolean).map((t) => tileOf(panel, t)).filter(Boolean);
-  if (shown.length && shown.every((t) => t.off)) return { off: true, active: shown.find((t) => t.active)?.active || '' };
-  return { off: false, active: '' };
+  if (shown.length && shown.every((t) => t.off)) return { off: true, active: shown.find((t) => t.active)?.active || '', by: 'tile' };
+  return { off: false, active: '', by: '' };
 }
-export const offText = (active) => `감시 시간${active ? ' ' + active : ''} 밖: 기준을 보지 않음`;
+// 서비스 감시 시간 밖은 "떠 있는지"만 보지 않는다(타일 판정은 그대로). 타일 감시 시간 밖은 기준을 보지 않는다.
+export const offText = (active, by = 'tile') => (by === 'svc'
+  ? `서비스 감시 시간${active ? ' ' + active : ''} 밖: 떠 있는지 보지 않음`
+  : `감시 시간${active ? ' ' + active : ''} 밖: 기준을 보지 않음`);
 
 // 상자 하나. panel: 그 패널(없으면 null, /panels를 못 읽었으면 tiles가 null인 자리 객체)
 // → {id, title, missing?, text?, rows, st, n, reasons, off, active, href}
@@ -210,7 +213,7 @@ export function boxOf(node, panel, services, now = Date.now()) {
   const n = node || {};
   const id = str(n.panel);
   const title = str(n.title) || (panel && panel.title) || id;
-  const base = { id, title: title || DASH, rows: [], st: 'none', n: 0, reasons: [], off: false, active: '', href: '' };
+  const base = { id, title: title || DASH, rows: [], st: 'none', n: 0, reasons: [], off: false, active: '', offBy: '', href: '' };
   if (!id) return { ...base, missing: true, text: '패널 없음' };
   if (!panel) return { ...base, missing: true, text: `패널 ${id} 없음` };
   const rows = [];
@@ -219,7 +222,7 @@ export function boxOf(node, panel, services, now = Date.now()) {
   const s = stockRow(n, panel, now);
   if (s) rows.push(s);
   const w = worstOf(panel, now), o = offOf(n, panel, services);
-  return { ...base, rows, st: w.st, n: w.n, reasons: w.reasons, off: o.off, active: o.active, href: '#biz/' + encodeURIComponent(id) };
+  return { ...base, rows, st: w.st, n: w.n, reasons: w.reasons, off: o.off, active: o.active, offBy: o.by, href: '#biz/' + encodeURIComponent(id) };
 }
 
 // 그릴 것 전부: panels가 배열이 아니면(/panels를 아직 못 읽음) 패널 없음 대신 값 없음으로.
@@ -274,16 +277,17 @@ function rowEl(r) {
 }
 function boxEl(b, go) {
   const lv = LEVELS.includes(b.st) ? b.st : '';
-  const band = b.missing ? 'miss' : lv || (b.off ? 'off' : b.st);
-  const tip = [b.title, ...b.reasons, b.off ? offText(b.active) : ''].filter(Boolean).join('\n');
+  const off = b.off && !lv; // 경고·위험이면 판정이 이긴다: "시간 외"는 "지금 안 본다"로 읽혀 판정과 어긋난다
+  const band = b.missing ? 'miss' : lv || (off ? 'off' : b.st);
+  const tip = [b.title, ...b.reasons, b.off ? offText(b.active, b.offBy) : ''].filter(Boolean).join('\n');
   return el('div', {
-    class: `bf-box st-${band}${b.off ? ' is-off' : ''}${go ? ' go' : ''}`, style: `left:${b.x}px;top:${b.y}px`,
+    class: `bf-box st-${band}${off ? ' is-off' : ''}${go ? ' go' : ''}`, style: `left:${b.x}px;top:${b.y}px`,
     'data-key': b.key, 'data-go': go ? b.href : null, title: tip, role: go ? 'link' : null, tabindex: go ? '0' : null,
   },
   el('div', { class: 'bf-h' },
     el('b', { class: 'bf-t', text: b.title }),
     lv ? el('span', { class: `bf-st ${lv}`, text: `${ALERT_MARK[lv]} ${LEVEL_TEXT[lv]}${b.n > 1 ? ' ' + fmtNum(b.n) : ''}` }) : null,
-    b.off ? el('span', { class: 'bf-off', text: '시간 외' }) : null),
+    off ? el('span', { class: 'bf-off', text: '시간 외' }) : null),
   b.missing ? el('div', { class: 'bf-miss', text: b.text }) : b.rows.map(rowEl));
 }
 function labelEl(l) {
