@@ -1,1 +1,103 @@
-/* 사용자 보드(07, 카드 W) */
+/* 사용자 보드(07, 카드 W-C): #dashes 목록 · #dash/<id> 보기 · 격자(mountBoard) · 벽면(?tv=1). 색은 style.css 변수만 쓴다. */
+
+/* ---- 격자: 12칸, 줄 높이 110px(--dw-row), 간격 12px. 틀은 grid-column/grid-row span(인라인 style) ---- */
+.dboard { --dw-row:110px; display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); grid-auto-rows:var(--dw-row); gap:12px; }
+/* 틀: 머리 + 몸통 세로 flex. 몸통(.dw-b)은 남은 높이를 다 가진다(위젯 뿌리가 height:100%로 채우고 안에서 스크롤).
+   몸통·틀은 넘침을 자르지 않는다(시계열 말풍선이 한 줄 칸 밖으로 나올 수 있게). 올린 틀은 이웃 위로 */
+section.dw { position:relative; display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--surface);
+  border:1px solid var(--line); border-radius:6px; padding:8px 12px 10px; }
+section.dw:hover, section.dw:focus-within { z-index:2; }
+/* batch.css의 전역 .dw-h(플로우 상세 머리)를 덮는다 */
+section.dw > .dw-h { display:flex; align-items:center; gap:8px; flex:none; min-width:0; height:18px; margin:0 0 6px; padding:0;
+  font-size:13px; line-height:18px; font-weight:600; color:var(--t2); text-transform:none; }
+section.dw > .dw-h .dw-t { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+section.dw > .dw-b { position:relative; flex:1 1 0; min-height:0; min-width:0; }
+.dw-lv { flex:none; font-size:12px; font-weight:600; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.dw-lv.warn { color:var(--warn); } .dw-lv.crit { color:var(--crit); }
+.dw-wait { display:flex; align-items:center; justify-content:center; height:100%; color:var(--t3); }
+.dw-err, .dw-msg { margin:0; height:100%; overflow:auto; font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+.dw-err { color:var(--warn); }
+.dw-msg { color:var(--t3); }
+
+/* 편집(미리보기): 선택 윤곽·놓을 곳·커서는 편집기(dashedit.css) 몫. 몸통 안 링크·그림은 끌리지 않게(틀 끌기가 먼저) */
+.dboard.editing .dw-b a, .dboard.editing .dw-b img, .dboard.editing .dw-b svg { -webkit-user-drag:none; }
+
+/* 좁은 화면: 한 칸(높이는 줄 수 × 줄 높이 그대로) */
+@media (max-width:900px) {
+  .dboard > section.dw { grid-column:1 / -1 !important; }
+}
+
+/* ---- #dashes 목록 ---- */
+.ds-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+.ds-head .sec { margin:0; }
+.ds-n { color:var(--t3); font-size:13px; }
+.ds-off { font-size:12px; color:var(--t3); border:1px solid var(--line); border-radius:10px; padding:0 8px; cursor:help; white-space:nowrap; }
+.ds-errs { margin:0 0 12px; border:1px solid var(--line); border-left:3px solid var(--warn); border-radius:4px; background:var(--surface); padding:6px 12px; font-size:13px; }
+.ds-errs summary { cursor:pointer; font-weight:600; color:var(--warn); }
+.ds-errs ul { margin:6px 0 0; padding-left:18px; color:var(--t2); }
+.ds-errs code { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; color:var(--t1); }
+.ds-card { background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:2px 12px; overflow-x:auto; }
+.ds-tbl tbody tr:last-child td { border-bottom:0; }
+.ds-tbl td { vertical-align:top; }
+.ds-tbl .ds-name { min-width:0; max-width:520px; }
+.ds-t { font-weight:600; color:var(--t1); text-decoration:none; }
+.ds-t:hover { color:var(--accent); text-decoration:underline; }
+.ds-id { margin-left:8px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; color:var(--t3); }
+.ds-desc { font-size:12px; color:var(--t3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ds-who { white-space:nowrap; color:var(--t2); font-size:13px; font-variant-numeric:tabular-nums; }
+.ds-act { text-align:right; white-space:nowrap; width:1%; }
+a.ds-edit { color:var(--accent); text-decoration:none; font-size:13px; }
+a.ds-edit:hover { text-decoration:underline; }
+.ds-empty { display:flex; flex-direction:column; align-items:center; gap:10px; padding:48px 0; }
+.ds-empty .empty { margin:0; font-size:15px; }
+@media (max-width:600px) {
+  .ds-tbl th:nth-child(3), .ds-tbl td:nth-child(3) { display:none; }
+  .ds-tbl .ds-name { max-width:220px; }
+}
+/* 새 보드: 템플릿 고르기(서랍) */
+.ds-tpls { display:flex; flex-direction:column; gap:8px; }
+.ds-tpl { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 8px; padding:8px 10px; border:1px solid var(--line); border-radius:6px;
+  background:var(--surface); color:var(--t1); text-decoration:none; }
+.ds-tpl:hover { border-color:var(--accent); }
+.ds-tpl:hover b { color:var(--accent); }
+.ds-tpl .ds-tn { font-size:12px; color:var(--t3); white-space:nowrap; }
+.ds-tpl .ds-td { grid-column:1 / -1; font-size:12px; color:var(--t2); }
+
+/* ---- #dash/<id> 머리: 제목 · 설명 ⓘ · 구간 · 편집 · 벽면 ---- */
+.dv-head { display:flex; align-items:center; gap:8px 12px; flex-wrap:wrap; margin-bottom:12px; }
+.dv-tt { display:flex; align-items:center; gap:6px; min-width:0; flex:0 1 auto; }
+.dv-tt .dv-t { margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dv-head .dv-range { margin:0 0 0 auto; flex-wrap:wrap; }
+.dv-range .trlabel { margin-left:0; }
+.dv-range .tip .tipbox { left:auto; right:0; }
+.dv-now { padding:1px 8px; font-size:12px; }
+.dv-act { display:flex; align-items:center; gap:6px; }
+.dv-none { display:flex; flex-direction:column; align-items:center; gap:8px; padding:48px 0; }
+.dv-none .empty { margin:0; font-size:15px; }
+.dv-none .dv-why { margin:0; max-width:640px; font-size:13px; color:var(--t2); text-align:center; overflow-wrap:anywhere; }
+.dv-none a { color:var(--accent); text-decoration:none; font-size:13px; }
+.dv-none a:hover { text-decoration:underline; }
+@media (max-width:600px) {
+  .dv-head .dv-range { margin-left:0; }
+  .dv-tt { flex-basis:100%; }
+}
+
+/* ---- 벽면(?tv=1): 위 막대·트리 숨김, 글자 키움, 오른쪽 위 ✕ ---- */
+body[data-tv] #top, body[data-tv] #tree { display:none; }
+body[data-tv] #page { padding:12px 16px; }
+body[data-tv] .dv-head { margin-bottom:10px; padding-right:36px; }
+body[data-tv] .dv-head .trseg, body[data-tv] .dv-act, body[data-tv] .dv-range .tip { display:none; }
+body[data-tv] .dv-t { font-size:20px; }
+body[data-tv] .trlabel { font-size:14px; }
+body[data-tv] .dboard { --dw-row:124px; gap:14px; }
+body[data-tv] section.dw > .dw-h { height:22px; font-size:16px; line-height:22px; }
+body[data-tv] .dw-lv { font-size:14px; }
+body[data-tv] .dw-b .mw { font-size:15px; }
+body[data-tv] .dw-b .mw-bars, body[data-tv] .dw-b .mw-tb, body[data-tv] .dw-b .mw-th, body[data-tv] .dw-b .dwg-lr, body[data-tv] .dw-b .dwg-sr { font-size:14px; }
+body[data-tv] .dw-b .mw-bars { line-height:20px; }
+body[data-tv] .dw-b .wrow, body[data-tv] .dw-b .kpi, body[data-tv] .dw-b .dc-side { font-size:15px; }
+body[data-tv] .dw-b .we, body[data-tv] .dw-b .wa, body[data-tv] .dw-b .dc-list, body[data-tv] .dw-b .fac, body[data-tv] .dw-b .facs .rk-item,
+body[data-tv] .dw-b .gl, body[data-tv] .dw-b .gn, body[data-tv] .dw-b .tl-sum, body[data-tv] .dw-b .wok { font-size:13px; }
+.dv-tvx { position:fixed; top:8px; right:10px; z-index:30; width:28px; height:28px; padding:0; border-radius:14px; font-size:14px; line-height:1;
+  color:var(--t3); background:var(--surface); opacity:.6; }
+.dv-tvx:hover, .dv-tvx:focus-visible { opacity:1; color:var(--t1); }
