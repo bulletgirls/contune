@@ -78,7 +78,7 @@ cmd_setup() {
 }
 
 cmd_up() {
-  say up "시연 환경을 띄우고 /hosts가 43대가 될 때까지 기다립니다 (장면 2)"
+  say up "시연 환경을 띄우고 /hosts가 ${EUM_HOSTS}대가 될 때까지 기다립니다 (장면 2)"
   if [ "$EUM_MODE" = compose ]; then
     compose up -d --build
   else
