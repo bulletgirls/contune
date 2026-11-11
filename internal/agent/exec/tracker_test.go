@@ -92,8 +92,10 @@ func newClock() *clock               { return &clock{t: time.Unix(1700000100, 0)
 func newFS() fstest.MapFS {
 	return fstest.MapFS{"stat": {Data: []byte("cpu 1 2 3\nbtime 1700000000\n")}}
 }
+
+// newT는 실행 주인만 보는 추적기다: 자동 서비스는 끈다(자동 서비스·서비스 주인은 services_test.go).
 func newT(m fs.FS, c *clock) ProcessTracker {
-	return NewTracker("h1", TrackerOptions{FS: m, ScanEvery: 5 * time.Second, Now: c.Now, PageSize: 4096})
+	return NewTracker("h1", TrackerOptions{FS: m, ScanEvery: 5 * time.Second, Now: c.Now, PageSize: 4096, AutoServiceAge: -1})
 }
 
 // collect는 Collect 한 번의 결과를 실행 → 이름 → 값으로 모은다.

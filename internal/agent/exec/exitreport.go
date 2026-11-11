@@ -66,7 +66,8 @@ type procInfo struct {
 
 // endedProc은 끝난 것을 본 소속 하나다(보고를 완성하기 전).
 type endedProc struct {
-	execID   string
+	execID   string // 기동한 실행("" 이음 밖)
+	service  string // 맞은 서비스(자동 서비스 포함)
 	key      procKey
 	info     procInfo
 	resident bool
@@ -78,6 +79,24 @@ type endedProc struct {
 // capture는 소속이 된 순간 한 번 살아 있는 모습을 적는다(잠금 안, /proc 읽기 몇 개).
 // 진짜 /proc일 때만 build-id를 읽고 core 한도를 올린다.
 func (t *tracker) capture(k procKey, st *ProcStat, leader bool, j *Job) *procInfo {
+	in, live := t.captureInfo(k, st, leader, j)
+	if live && t.procRoot != "" {
+		if lim := t.o.Exit.CoreLimit; lim > 0 { // core 한도는 exec 뒤에도 이어진다: 한 번만
+			note, err := crash.RaiseLimit(k.pid, lim)
+			switch {
+			case err != nil:
+				in.notes = append(in.notes, "core 한도를 올리지 못함: "+err.Error())
+			case note != "":
+				in.notes = append(in.notes, note)
+			}
+		}
+	}
+	return in
+}
+
+// captureInfo는 capture에서 core 한도를 올리지 않는 부분이다(이음이 띄우지 않은 프로세스는 이것만).
+// live는 /proc에서 읽었는지다(이미 끝난 리더는 Job이 아는 것만).
+func (t *tracker) captureInfo(k procKey, st *ProcStat, leader bool, j *Job) (*procInfo, bool) {
 	in := &procInfo{leader: leader}
 	if boot, ok := t.bootTime(); ok {
 		in.started = boot.Add(time.Duration(k.start) * time.Second / ClockTicks)
@@ -93,21 +112,10 @@ func (t *tracker) capture(k procKey, st *ProcStat, leader bool, j *Job) *procInf
 	if st != nil {
 		in.comm, in.ppid, in.pgrp, in.threads = st.Comm, st.PPID, st.PGRP, st.NumThreads
 	} else if j != nil {
-		return in // 이미 끝난 리더: /proc을 읽지 않는다(PID 재사용)
+		return in, false // 이미 끝난 리더: /proc을 읽지 않는다(PID 재사용)
 	}
 	t.readIdentity(k.pid, in)
-	if t.procRoot != "" {
-		if lim := t.o.Exit.CoreLimit; lim > 0 { // core 한도는 exec 뒤에도 이어진다: 한 번만
-			note, err := crash.RaiseLimit(k.pid, lim)
-			switch {
-			case err != nil:
-				in.notes = append(in.notes, "core 한도를 올리지 못함: "+err.Error())
-			case note != "":
-				in.notes = append(in.notes, note)
-			}
-		}
-	}
-	return in
+	return in, true
 }
 
 // readIdentity는 프로세스가 무엇인지(exe·build-id·cwd·fd 1·2·cmdline·uid)를 /proc에서 읽는다.
@@ -151,7 +159,7 @@ func (t *tracker) regularFD(name, def string) string {
 func (t *tracker) finish(e endedProc) {
 	in := e.info
 	rep := model.ExitReport{
-		Host: t.host, ExecID: e.execID, PID: e.key.pid, PPID: in.ppid, Comm: in.comm, Exe: in.exe,
+		Host: t.host, ExecID: e.execID, Service: e.service, PID: e.key.pid, PPID: in.ppid, Comm: in.comm, Exe: in.exe,
 		BuildID: in.buildID, Cmdline: in.cmdline, Cwd: in.cwd, EndedAt: e.seen.UnixMilli(),
 		Leader: in.leader, Resident: e.resident, KilledByAgent: e.killed,
 		MaxRSSMB: in.maxRSS, LastRSSMB: in.lastRSS, LastCPUPct: in.lastCPU, Threads: in.threads,

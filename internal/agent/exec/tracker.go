@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,6 +49,12 @@ type TrackerOptions struct {
 	OnExit func(model.ExitReport)
 	// Exit는 종료 보고서 설정이다. OnExit가 있을 때만 쓴다.
 	Exit ExitOptions
+
+	// AutoServiceAge는 스텝이 끝난 뒤에도 남은 프로세스(리더 아님)를 자동 서비스(model.AutoServiceID(comm))로 옮기는
+	// 프로세스 나이다(카드 P-A). 0이면 10초, 음수면 옮기지 않는다(실행 주인으로 계속 잰다).
+	AutoServiceAge time.Duration
+	// Passwd는 uid → 사용자 이름을 찾는 파일이다(Procs의 User, observe.users). 비면 /etc/passwd. 못 읽으면 숫자.
+	Passwd string
 }
 
 // NewTracker는 host의 추적기를 만든다. 실행에 속한 프로세스는 스텝의 프로세스 그룹과
@@ -68,13 +75,21 @@ func NewTracker(host string, o TrackerOptions) ProcessTracker {
 	if o.PageSize <= 0 {
 		o.PageSize = os.Getpagesize()
 	}
+	if o.AutoServiceAge == 0 {
+		o.AutoServiceAge = defaultAutoServiceAge
+	}
+	if o.Passwd == "" {
+		o.Passwd = defaultPasswd
+	}
 	return &tracker{
 		host:     host,
 		o:        o,
 		procRoot: procRoot,
 		runs:     map[string]*trackedRun{},
+		svcs:     map[string]map[procKey]*trackedProc{},
 		members:  map[procKey]string{},
 		seen:     map[procKey]struct{}{},
+		svcSig:   servicesSig(compileServices(nil), Observe{}),
 	}
 }
 
@@ -93,15 +108,25 @@ type trackedProc struct {
 
 	info      *procInfo // 살아 있을 때 적어 둔 것(종료 보고가 켜졌을 때만)
 	afterStep bool      // 스텝이 끝난 뒤에도 살아 있는 것을 봄(상주 서비스)
+
+	// 주인(카드 P-A). 프로세스는 owner의 묶음(실행이면 runs[execID].procs, 서비스면 svcs[owner]) 하나에만 있다.
+	run     *trackedRun // 기동한 실행(프로세스 그룹·표식). nil이면 이음 밖(observe)
+	execID  string      // 기동한 실행 ID("" 이음 밖)
+	owner   string      // 주인 키: execID 또는 model.ServiceOwner(service, host)
+	service string      // 서비스 ID(""이면 실행 주인)
+	auto    bool        // 자동 서비스
+	leader  bool        // 스텝 명령 자신
+	profile bool        // 서비스 주인의 함수 추적(정의 Profile, 자동 서비스는 실행의 profile)
+	meta    procMeta    // 프로세스 목록(Procs)용
 }
 
 type trackedRun struct {
 	pgid      int // 0이면 입양한 실행(그룹으로 찾지 않음)
 	profile   bool
 	stepEnded bool
-	killed    bool      // 에이전트가 종료 절차(강제 종료·시간 초과)를 시작함
-	endedAt   time.Time // 스텝이 끝난 시각(입양한 실행은 입양한 시각)
-	procs     map[procKey]*trackedProc
+	killed    bool                     // 에이전트가 종료 절차(강제 종료·시간 초과)를 시작함
+	endedAt   time.Time                // 스텝이 끝난 시각(입양한 실행은 입양한 시각)
+	procs     map[procKey]*trackedProc // 이 실행이 주인인 프로세스(서비스로 간 것은 빠진다)
 	peak      model.Usage
 }
 
@@ -112,11 +137,21 @@ type tracker struct {
 
 	mu       sync.Mutex
 	runs     map[string]*trackedRun
-	members  map[procKey]string   // 소속 프로세스 → exec_id
-	seen     map[procKey]struct{} // 살펴봤지만 소속이 아닌 프로세스
+	svcs     map[string]map[procKey]*trackedProc // 서비스 주인 키 → 프로세스
+	members  map[procKey]string                  // 소속 프로세스 → 주인 키
+	seen     map[procKey]struct{}                // 살펴봤지만 소속이 아닌 프로세스
 	lastScan time.Time
 	btime    int64       // 부팅 시각(유닉스 초), 0이면 아직 못 읽음
 	ended    []endedProc // 이번 주기에 끝난 소속(잠금 밖에서 보고를 완성)
+
+	defs    svcSet           // 서비스 정의(SetServices)
+	obs     Observe          // 관측 범위(SetServices)
+	svcSig  string           // 지금 정의·범위의 서명(같은 것을 다시 받으면 무시)
+	rematch bool             // 다음 탐색에서 이미 본 프로세스도 다시 맞춘다
+	recheck []procKey        // 이번 측정에서 exec한 것을 본 프로세스(측정 뒤 다시 맞춘다)
+	gone    []model.ProcInfo // 직전 Procs 뒤에 끝난 것
+	users   map[int]string   // uid → 이름(Passwd)
+	usersAt time.Time        // users를 읽은 시각
 
 	finishing sync.WaitGroup // 보고를 완성하는 고루틴(테스트가 기다린다)
 }
@@ -126,7 +161,7 @@ func (t *tracker) Track(execID string, pid int, profile bool) error {
 	defer t.mu.Unlock()
 	r := t.startRun(execID, pid, profile)
 	if st, err := t.readStat(pid); err == nil && !gone(st) {
-		t.addMember(execID, r, procKey{pid, st.StartTime}, &st, true, nil)
+		t.addMember(execID, r, procKey{pid, st.StartTime}, &st, true, nil, nil)
 	}
 	return nil
 }
@@ -159,7 +194,7 @@ func (t *tracker) trackJob(execID string, j *Job, profile bool) {
 	if st, err := t.readStat(j.pid); err == nil && st.StartTime == j.key.start && !gone(st) {
 		stp = &st
 	}
-	t.addMember(execID, r, j.key, stp, true, j)
+	t.addMember(execID, r, j.key, stp, true, j, nil)
 }
 
 // markKilled는 실행에 에이전트가 종료 신호를 보내기 시작했다고 적는다(KilledByAgent).
@@ -201,21 +236,25 @@ func (t *tracker) Targets(minAge time.Duration) map[string][]int {
 	}
 	now := t.o.Now()
 	out := map[string][]int{}
-	for id, r := range t.runs {
-		if !r.profile {
-			continue
-		}
+	add := func(owner string, procs map[procKey]*trackedProc, svc bool) {
 		var pids []int
-		for k := range r.procs {
-			started := boot.Add(time.Duration(k.start) * time.Second / ClockTicks)
-			if now.Sub(started) >= minAge {
+		for k, p := range procs {
+			if (!svc || p.profile) && now.Sub(startedAt(boot, k)) >= minAge {
 				pids = append(pids, k.pid)
 			}
 		}
 		if len(pids) > 0 {
 			sort.Ints(pids)
-			out[id] = pids
+			out[owner] = pids
 		}
+	}
+	for id, r := range t.runs {
+		if r.profile {
+			add(id, r.procs, false)
+		}
+	}
+	for owner, procs := range t.svcs {
+		add(owner, procs, true)
 	}
 	return out
 }
@@ -240,17 +279,45 @@ func (t *tracker) collect(emit func(model.Sample)) []endedProc {
 		t.scan()
 		t.lastScan = now
 	}
-	ids := make([]string, 0, len(t.runs))
-	for id := range t.runs {
-		ids = append(ids, id)
+	for _, id := range sortedKeys(t.runs) {
+		r := t.runs[id]
+		n, cpu, hasCPU, rss := t.measure(id, "job.", r.procs, now, emit)
+		if n == 0 {
+			if r.stepEnded {
+				delete(t.runs, id)
+			}
+			continue
+		}
+		if hasCPU && cpu > r.peak.PeakCPUPct {
+			r.peak.PeakCPUPct = cpu
+		}
+		if rss > r.peak.PeakRSSMB {
+			r.peak.PeakRSSMB = rss
+		}
 	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		t.measure(id, t.runs[id], now, emit)
+	for _, owner := range sortedKeys(t.svcs) {
+		if n, _, _, _ := t.measure(owner, "svc.", t.svcs[owner], now, emit); n == 0 {
+			delete(t.svcs, owner) // svc.procs 0을 한 번 냈다
+		}
 	}
+	// 주인 바꾸기는 모든 측정 뒤에: 이번 주기에 한 프로세스를 두 주인이 세지 않게
+	for _, k := range t.recheck {
+		t.rematchOne(k)
+	}
+	t.recheck = t.recheck[:0]
+	t.autoServices(now)
 	ended := t.ended
 	t.ended = nil
 	return ended
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // scan은 /proc에서 아직 살펴보지 않은 (pid, 시작 시각)만 골라 소속을 정한다.
@@ -258,6 +325,10 @@ func (t *tracker) scan() {
 	ents, err := fs.ReadDir(t.o.FS, ".")
 	if err != nil {
 		return // 다음 탐색에서 다시 시도
+	}
+	if t.rematch { // 정의·범위가 바뀜: 이미 본 프로세스도 다시 맞춘다
+		t.rematch = false
+		t.rematchAll()
 	}
 	byPgid := map[int]string{}
 	for id, r := range t.runs {
@@ -285,7 +356,7 @@ func (t *tracker) scan() {
 		}
 		// 1. 스텝의 프로세스 그룹
 		if id, ok := byPgid[st.PGRP]; ok {
-			t.addMember(id, t.runs[id], k, &st, false, nil)
+			t.addMember(id, t.runs[id], k, &st, false, nil, nil)
 			continue
 		}
 		// 2. 실행 ID 표식(자기 호스트만)
@@ -294,20 +365,34 @@ func (t *tracker) scan() {
 		// 값이 잘린 EUM_EXEC_ID로 없는 실행을 입양하지 않게.
 		whole := err == nil && len(env) > 0 && env[len(env)-1] == 0
 		m, ok := ParseMarker(env)
-		if !whole || !ok || m.Host != t.host {
-			// 다른 사용자의 프로세스, 커널 스레드(비어 있음), 표식 없음·다른 호스트. 막 뜬 프로세스는 exec 중일 수 있어
-			// 다음 탐색에서 다시 본다(setsid → 서비스가 표식이 있는데도 빠지지 않게).
-			if !t.young(k.start) || (whole && ok) {
+		if whole && ok {
+			if m.Host != t.host { // 다른 호스트의 표식(fleet)은 늘 건너뛴다
 				t.seen[k] = struct{}{}
+				continue
 			}
+			r := t.runs[m.ExecID]
+			if r == nil { // 모르는 실행은 입양(에이전트 재시작 뒤 복원). 스텝은 이미 끝난 것으로 본다
+				r = &trackedRun{profile: m.Profile, stepEnded: true, endedAt: t.o.Now(), procs: map[procKey]*trackedProc{}}
+				t.runs[m.ExecID] = r
+			}
+			t.addMember(m.ExecID, r, k, &st, false, nil, env)
 			continue
 		}
-		r := t.runs[m.ExecID]
-		if r == nil { // 모르는 실행은 입양(에이전트 재시작 뒤 복원). 스텝은 이미 끝난 것으로 본다
-			r = &trackedRun{profile: m.Profile, stepEnded: true, endedAt: t.o.Now(), procs: map[procKey]*trackedProc{}}
-			t.runs[m.ExecID] = r
+		// 3. 표식 없음: 관측 범위(observe) 안에서 서비스 규칙에 맞는 것만. 범위가 비면 더 읽지 않는다.
+		// environ을 읽지 못한 다른 사용자의 프로세스도 comm·cmdline 규칙으로는 맞을 수 있다.
+		if !ok && (whole || err != nil) {
+			if !whole {
+				env = nil
+			}
+			if t.addObserved(k, &st, env) {
+				continue
+			}
 		}
-		t.addMember(m.ExecID, r, k, &st, false, nil)
+		// 다른 사용자의 프로세스, 커널 스레드(비어 있음), 표식 없음. 막 뜬 프로세스는 exec 중일 수 있어
+		// 다음 탐색에서 다시 본다(setsid → 서비스가 표식이 있는데도 빠지지 않게).
+		if !t.young(k.start) {
+			t.seen[k] = struct{}{}
+		}
 	}
 	for k := range t.seen { // 사라진 프로세스는 잊는다
 		if _, ok := alive[k]; !ok {
@@ -316,16 +401,17 @@ func (t *tracker) scan() {
 	}
 }
 
-// measure는 실행 하나의 소속 프로세스를 다시 읽어 job.*를 낸다.
-func (t *tracker) measure(id string, r *trackedRun, now time.Time, emit func(model.Sample)) {
+// measure는 주인 하나의 프로세스를 다시 읽어 prefix(job.·svc.) 지표를 그 주인 키로 낸다.
+// 남은 프로세스 수와 CPU%·RSS(MB) 합을 돌려준다. 0이 되면 procs 0만 낸다(주인을 잊는 것은 부르는 쪽).
+func (t *tracker) measure(owner, prefix string, procs map[procKey]*trackedProc, now time.Time, emit func(model.Sample)) (n int, cpu float64, hasCPU bool, rssMB float64) {
 	var (
-		cpu, user, sys, charRate float64
-		hasCPU, hasIO            bool
-		size, rss, vsz           uint64 // 페이지
-		threads                  int
+		user, sys, charRate float64
+		hasIO               bool
+		size, rss, vsz      uint64 // 페이지
+		threads             int
 	)
 	mb := func(pages uint64) float64 { return float64(pages) * float64(t.o.PageSize) / (1 << 20) }
-	for k, p := range r.procs {
+	for k, p := range procs {
 		st, err := t.readStat(k.pid)
 		if err != nil || st.StartTime != k.start || gone(st) { // 끝났거나 PID 재사용
 			same := err == nil && st.StartTime == k.start
@@ -333,17 +419,17 @@ func (t *tracker) measure(id string, r *trackedRun, now time.Time, emit func(mod
 				in.comm, in.exe, in.buildID, in.cmdline = st.Comm, "", "", ""
 				in.notes = append(in.notes, "exec 뒤 곧 끝나 실행 파일 정보를 읽지 못함")
 			}
-			t.endMember(id, r, k, p, same && st.State == 'Z' && st.PPID == selfPID(), now)
+			t.endMember(procs, k, p, same && st.State == 'Z' && st.PPID == selfPID(), now)
 			continue
 		}
 		b, err := fs.ReadFile(t.o.FS, strconv.Itoa(k.pid)+"/statm")
 		if err != nil {
-			t.endMember(id, r, k, p, false, now)
+			t.endMember(procs, k, p, false, now)
 			continue
 		}
 		sm, err := ParseStatm(b)
 		if err != nil {
-			t.endMember(id, r, k, p, false, now)
+			t.endMember(procs, k, p, false, now)
 			continue
 		}
 		var pio ProcIO
@@ -356,6 +442,14 @@ func (t *tracker) measure(id string, r *trackedRun, now time.Time, emit func(mod
 
 		ticks := st.UTime + st.STime
 		chars := pio.RChar + pio.WChar
+		dt := 0.0 // 첫 측정(0)은 기준만 잡는다
+		if !p.at.IsZero() {
+			dt = now.Sub(p.at).Seconds()
+		}
+		var pct float64
+		if dt > 0 {
+			pct = tickPct(p.ticks, ticks, dt)
+		}
 		if in := p.info; in != nil {
 			if t.execed(k.pid, in, st) { // exec했다(또는 exec 중에 읽었다): 무엇인지 다시 읽는다
 				in.comm = st.Comm
@@ -364,26 +458,28 @@ func (t *tracker) measure(id string, r *trackedRun, now time.Time, emit func(mod
 			in.ppid, in.pgrp, in.threads = st.PPID, st.PGRP, st.NumThreads
 			in.lastRSS = mb(sm.Resident)
 			in.maxRSS = max(in.maxRSS, in.lastRSS)
-			if !p.at.IsZero() {
-				if dt := now.Sub(p.at).Seconds(); dt > 0 {
-					in.lastCPU = tickPct(p.ticks, ticks, dt)
-				}
+			if dt > 0 {
+				in.lastCPU = pct
 			}
 		}
-		if r.stepEnded {
+		if st.Comm != p.meta.comm { // exec했다: 측정이 모두 끝난 뒤 다시 읽고 다시 맞춘다
+			p.meta.comm = st.Comm
+			t.recheck = append(t.recheck, k)
+		}
+		p.meta.ppid, p.meta.threads, p.meta.rssMB = st.PPID, st.NumThreads, mb(sm.Resident)
+		if p.run != nil && p.run.stepEnded {
 			p.afterStep = true
 		}
-		if !p.at.IsZero() { // 첫 측정은 기준만 잡는다
-			if dt := now.Sub(p.at).Seconds(); dt > 0 {
-				hasCPU = true
-				cpu += tickPct(p.ticks, ticks, dt)
-				user += tickPct(p.utime, st.UTime, dt)
-				sys += tickPct(p.stime, st.STime, dt)
-				if ioOK && p.ioOK {
-					hasIO = true
-					if chars > p.chars {
-						charRate += float64(chars-p.chars) / 1024 / dt
-					}
+		if dt > 0 {
+			p.meta.cpu = pct
+			hasCPU = true
+			cpu += pct
+			user += tickPct(p.utime, st.UTime, dt)
+			sys += tickPct(p.stime, st.STime, dt)
+			if ioOK && p.ioOK {
+				hasIO = true
+				if chars > p.chars {
+					charRate += float64(chars-p.chars) / 1024 / dt
 				}
 			}
 		}
@@ -397,35 +493,27 @@ func (t *tracker) measure(id string, r *trackedRun, now time.Time, emit func(mod
 
 	ts := now.UnixMilli()
 	put := func(name string, v float64) {
-		emit(model.Sample{TS: ts, Host: t.host, Name: name, Value: v, ExecID: id})
+		emit(model.Sample{TS: ts, Host: t.host, Name: prefix + name, Value: v, ExecID: owner})
 	}
-	n := len(r.procs)
+	n = len(procs)
 	if n == 0 {
-		put("job.procs", 0)
-		if r.stepEnded {
-			delete(t.runs, id)
-		}
-		return
+		put("procs", 0)
+		return 0, 0, false, 0
 	}
 	if hasCPU {
-		put("job.cpu.pct", cpu)
-		put("job.cpu.user_pct", user)
-		put("job.cpu.sys_pct", sys)
-		if cpu > r.peak.PeakCPUPct {
-			r.peak.PeakCPUPct = cpu
-		}
+		put("cpu.pct", cpu)
+		put("cpu.user_pct", user)
+		put("cpu.sys_pct", sys)
 	}
-	put("job.mem.size_mb", mb(size))
-	put("job.rss.mb", mb(rss))
-	put("job.mem.vsz_mb", mb(vsz))
+	put("mem.size_mb", mb(size))
+	put("rss.mb", mb(rss))
+	put("mem.vsz_mb", mb(vsz))
 	if hasIO {
-		put("job.io.char_kbps", charRate)
+		put("io.char_kbps", charRate)
 	}
-	put("job.threads", float64(threads))
-	put("job.procs", float64(n))
-	if v := mb(rss); v > r.peak.PeakRSSMB {
-		r.peak.PeakRSSMB = v
-	}
+	put("threads", float64(threads))
+	put("procs", float64(n))
+	return n, cpu, hasCPU, mb(rss)
 }
 
 // tickPct는 틱 증가분을 CPU%(코어 1개 = 100)로 바꾼다.
@@ -475,25 +563,37 @@ func (t *tracker) readStat(pid int) (ProcStat, error) {
 	return ParseProcStat(b)
 }
 
-// addMember는 프로세스를 소속에 넣는다. 종료 보고가 켜졌으면 이때 한 번 살아 있는 모습을 적어 둔다
-// (st는 방금 읽은 stat, 없으면 nil. j는 리더를 띄운 Job, 없으면 nil).
-func (t *tracker) addMember(id string, r *trackedRun, k procKey, st *ProcStat, leader bool, j *Job) {
-	if _, ok := r.procs[k]; ok {
+// addMember는 실행 id에 속한 프로세스를 소속에 넣고 주인을 정한다(서비스 규칙에 맞으면 처음부터 서비스 주인).
+// 종료 보고가 켜졌으면 이때 한 번 살아 있는 모습을 적어 둔다
+// (st는 방금 읽은 stat, 없으면 nil. j는 리더를 띄운 Job, 없으면 nil. env는 읽어 둔 environ, 없으면 nil).
+func (t *tracker) addMember(id string, r *trackedRun, k procKey, st *ProcStat, leader bool, j *Job, env []byte) {
+	if old := t.lookup(k); old != nil {
+		old.leader = old.leader || leader
 		return
 	}
-	p := &trackedProc{}
+	p := &trackedProc{run: r, execID: id, owner: id, leader: leader}
 	if t.o.OnExit != nil {
 		p.info = t.capture(k, st, leader, j)
 	}
-	r.procs[k] = p
-	t.members[k] = id
+	switch {
+	case st != nil:
+		ident := t.readIdent(k.pid, st.Comm, env)
+		p.meta.setIdent(&ident)
+		p.meta.ppid, p.meta.threads = st.PPID, st.NumThreads
+		t.assign(p, &ident)
+	case j != nil: // 이미 끝난 리더: /proc을 읽지 않는다(PID 재사용)
+		p.meta.comm, p.meta.exe = commOf(j.cmd.Path), j.cmd.Path
+		p.meta.cmdline = maskCmdline(strings.Join(j.cmd.Args, " "))
+	}
+	t.place(k, p)
 	delete(t.seen, k)
 }
 
-// endMember는 끝난 소속을 빼고, 종료 보고가 켜졌으면 잠금 밖에서 보고를 완성하도록 남긴다.
+// endMember는 끝난 소속을 빼고 다음 Procs에 한 번 내도록 남긴다. 종료 보고가 켜졌으면 잠금 밖에서 보고를 완성하도록 남긴다.
 // ours는 끝난 것을 볼 때 에이전트의 좀비 자식이었는지다(거둔 상태를 기다릴 만함).
-func (t *tracker) endMember(id string, r *trackedRun, k procKey, p *trackedProc, ours bool, now time.Time) {
-	t.dropMember(r, k)
+func (t *tracker) endMember(procs map[procKey]*trackedProc, k procKey, p *trackedProc, ours bool, now time.Time) {
+	t.dropMember(procs, k)
+	t.noteGone(k, p, now)
 	if p.info == nil {
 		return
 	}
@@ -501,21 +601,27 @@ func (t *tracker) endMember(id string, r *trackedRun, k procKey, p *trackedProc,
 	in.notes = append([]string(nil), in.notes...)
 	// 상주 서비스: 스텝이 끝나기 전에 떠서 스텝이 끝난 뒤에도 살아 있던 것. 스텝이 끝난 뒤 상주 서비스가 띄운
 	// 짧은 도우미(감시 스크립트의 sleep 등)는 상주가 아니다(도우미처럼 신호·코드 ≠ 0·core일 때만 보낸다).
-	resident := p.afterStep && !in.leader && (in.started.IsZero() || !in.started.After(r.endedAt))
+	// 이음 밖에서 뜬 서비스(observe)는 스텝이 없으니 상주로 본다.
+	resident, killed := true, false
+	if r := p.run; r != nil {
+		resident = p.afterStep && !in.leader && (in.started.IsZero() || !in.started.After(r.endedAt))
+		// 종료 절차는 스텝의 프로세스 그룹에 신호를 보낸다. setsid로 나간 서비스는 받지 않았다.
+		killed = r.killed && r.pgid > 0 && in.pgrp == r.pgid
+	}
 	t.ended = append(t.ended, endedProc{
-		execID:   id,
+		execID:   p.execID,
+		service:  p.service,
 		key:      k,
 		info:     in,
 		resident: resident,
-		// 종료 절차는 스텝의 프로세스 그룹에 신호를 보낸다. setsid로 나간 서비스는 받지 않았다.
-		killed: r.killed && r.pgid > 0 && in.pgrp == r.pgid,
-		ours:   ours,
-		seen:   now,
+		killed:   killed,
+		ours:     ours,
+		seen:     now,
 	})
 }
 
-func (t *tracker) dropMember(r *trackedRun, k procKey) {
-	delete(r.procs, k)
+func (t *tracker) dropMember(procs map[procKey]*trackedProc, k procKey) {
+	delete(procs, k)
 	delete(t.members, k)
 }
 
