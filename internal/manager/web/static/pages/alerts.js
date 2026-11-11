@@ -1,12 +1,12 @@
 // 알림(#alerts): 표 · 거르기 · 확인.
 import { api, poll } from '../api.js';
 import { el, esc, relTime, fmtClock, table, badgeHTML, toast, DASH, LEVEL_TEXT as LV } from '../ui.js';
-import { alertTarget, panelsInScope } from './dashboard.js';
+import { alertTarget, panelsInScope, serviceTitles } from './dashboard.js';
 import { gate } from '../auth.js';
 import { exitHashOfAlert } from './exit.js';
 
 // ---- 순수 함수 (DOM 없이 호출) ----
-export const KIND_TEXT = { host: '서버', run: '실행', tile: '업무', log: '로그', risk: '장애 위험도', exit: '프로세스 종료' };
+export const KIND_TEXT = { host: '서버', run: '실행', tile: '업무', log: '로그', risk: '장애 위험도', exit: '프로세스 종료', service: '서비스' };
 export const LEVEL_TEXT = { crit: LV.crit, warn: LV.warn };
 export const STATE_TEXT = { firing: '진행 중', resolved: '해소' };
 const LEVEL_RANK = { crit: 0, warn: 1 };
@@ -23,7 +23,10 @@ export function filterAlerts(list, f) {
     (!f.kind || a.kind === f.kind) && (!f.level || a.level === f.level) &&
     (!f.state || f.state === 'all' || a.state === f.state));
 }
-export const alertTargetName = (a) => a.host || a.group || a.name || DASH;
+// 서비스 알림(kind service, name = 서비스 ID)은 "체결 · match-01"
+export const alertTargetName = (a, titles) => (a.kind === 'service' && a.name
+  ? [(titles && titles[a.name]) || a.name, a.host].filter(Boolean).join(' · ')
+  : a.host || a.group || a.name || DASH);
 export const isUnacked = (a) => a.state === 'firing' && !a.acked_at;
 
 // ---- 화면 ----
@@ -39,7 +42,7 @@ export function render(root, params, query) {
   const bar = el('div', { class: 'afilter' });
   const body = el('div');
   root.append(el('h2', { class: 'sec', text: '알림' }), bar, body);
-  let all = [], panels = [];
+  let all = [], panels = [], titles = {};
   const draw = () => {
     const rows = sortAlertRows(filterAlerts(all, f));
     const now = Date.now();
@@ -48,7 +51,7 @@ export function render(root, params, query) {
       columns: [
         { label: '등급', render: (a) => badgeHTML(a.level, LEVEL_TEXT[a.level]), html: true },
         { label: '종류', render: (a) => KIND_TEXT[a.kind] || a.kind },
-        { label: '대상', render: (a) => el('a', { href: a.kind === 'exit' ? exitHashOfAlert(a) : alertTarget(a, panels), text: alertTargetName(a) }) },
+        { label: '대상', render: (a) => el('a', { href: a.kind === 'exit' ? exitHashOfAlert(a) : alertTarget(a, panels), text: alertTargetName(a, titles) }) },
         { label: '메시지', key: 'message' },
         { label: '시각', render: (a) => `${fmtClock(a.ts)} (${relTime(a.ts, now)})` },
         { label: '상태', render: (a) => STATE_TEXT[a.state] || a.state },
@@ -71,7 +74,8 @@ export function render(root, params, query) {
       select('상태', 'state', [['firing', '진행 중'], ['resolved', '해소'], ['all', '전체']], f.state, (v) => { f.state = v; load(); }));
   };
   const load = async () => {
-    const [a, p] = await Promise.all([api('/alerts?state=all&limit=200'), api('/panels').catch(() => ({ panels: [] }))]);
+    const [a, p, t] = await Promise.all([api('/alerts?state=all&limit=200'), api('/panels').catch(() => ({ panels: [] })), serviceTitles()]);
+    titles = t;
     all = a.alerts || [];
     panels = panelsInScope(p.panels || [], '');
     draw();

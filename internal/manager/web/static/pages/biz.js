@@ -3,12 +3,13 @@
 // Grafana Stat 패널(값 + 추이선 + 임계 색) · Stephen Few 불릿 그래프 · Grafana Explore 로그(레벨별 로그량 막대,
 // 고정 높이 목록, 줄 펼침) · Datadog Log Explorer(패턴 묶기, Live Tail).
 import { api, poll, reloadPanels } from '../api.js';
-import { el, esc, numUnit, fmtNum, relTime, tabBar, shortExec, info, toast, EMPTY, DASH, fmtClock, LEVEL_TEXT } from '../ui.js';
+import { el, esc, numUnit, fmtNum, relTime, tabBar, shortExec, info, toast, EMPTY, DASH, fmtClock, LEVEL_TEXT, parseOwner } from '../ui.js';
 import { lineChart, fmtTime, fmtTick } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
 import { hashWith } from '../tree.js';
 import { gate, can } from '../auth.js';
-import { bulletSVG, limitText, hasLimit, tileView, offTip, ALERT_MARK, isAcked, countLevels as countAlertLevels, ackSuffix, ackText } from './dashboard.js';
+import { bulletSVG, limitText, hasLimit, tileView, offTip, ALERT_MARK, isAcked, countLevels as countAlertLevels, ackSuffix, ackText,
+  svcHash, ownerHash, ownerText, tileHash, serviceTitles } from './dashboard.js';
 
 export { limitText };
 
@@ -20,6 +21,7 @@ const LOG_LEVELS = { error: '오류', warn: '경고', info: '정보' };
 let stops = [];
 let charts = [];
 let tr = null;
+let svcTitles = {}; // 서비스 ID → 이름(주인 이름표 "체결 · match-01")
 
 // ---- 순수 함수 ----
 
@@ -170,6 +172,13 @@ function cleanup() {
 
 export function dispose() { cleanup(); }
 
+// 업무 머리 탭: 패널 | 서비스(06, 카드 P-F). 실행 메뉴의 실행 이력 | 종료 보고서와 같은 모양
+export function bizTabs(active, query = {}) {
+  const qs = query.g ? '?g=' + encodeURIComponent(query.g) : '';
+  const tab = (id, href, text) => el('a', { href: href + qs, class: active === id ? 'on' : '', text, ...(active === id ? { 'aria-current': 'page' } : {}) });
+  return el('nav', { class: 'rn-tabs bz-mode', 'aria-label': '업무 보기' }, tab('biz', '#biz', '패널'), tab('svcs', '#svcs', '서비스'));
+}
+
 // 읽지 못한 패널 파일: 한 줄 + 접힌 칸(파일 · 무엇이 틀렸는지 · 할 일)
 export function panelErrorsEl(errors, canFix) {
   const n = (errors || []).length;
@@ -183,6 +192,8 @@ export function panelErrorsEl(errors, canFix) {
 
 export async function render(root, params, query) {
   cleanup();
+  root.append(bizTabs('biz', query));
+  svcTitles = await serviceTitles();
   let panels = [], errors = [];
   try { const r = await api('/panels'); panels = r.panels || []; errors = r.errors || []; } catch (e) { root.append(el('p', { class: 'empty', text: EMPTY.none })); return; }
   panels = panels.filter((p) => panelInScope(p, query.g));
@@ -206,10 +217,15 @@ export async function render(root, params, query) {
   draw(body, cur);
 }
 
-function tileEl(t) {
+// 타일을 누르면: 서비스(패널 service: 또는 값의 주인)면 그 서버·그 시각의 서비스 타임머신, 값을 보낸 실행이면 실행 타임머신
+function tileTarget(t, panel) {
+  return tileHash(t, panel) || (t.exec_id ? ownerHash(t.exec_id) : null);
+}
+function tileEl(t, panel) {
   const v0 = tileView(t);
   const { st, none } = v0;
-  const card = el('div', { class: `bz-tile ${st}${t.exec_id ? ' click' : ''}`, 'data-m': t.metric, role: t.exec_id ? 'link' : null, tabindex: t.exec_id ? '0' : null });
+  const href = tileTarget(t, panel);
+  const card = el('div', { class: `bz-tile ${st}${href ? ' click' : ''}`, 'data-m': t.metric, role: href ? 'link' : null, tabindex: href ? '0' : null });
   const head = el('div', { class: 'bz-th' }, el('span', { class: 'bz-tn', text: t.title }));
   if (v0.mark) head.append(el('span', { class: `bz-ts ${st}`, text: `${v0.mark} ${v0.level}` }));
   if (v0.off) head.append(el('span', { class: 'bz-off', text: '시간 외' }, info(offTip(t))));
@@ -229,9 +245,11 @@ function tileEl(t) {
   } else {
     card.append(el('div', { class: 'bz-limit bz-stat' })); // 임계값이 없으면 구간 평균·최대(추이선과 함께 채움)
   }
-  if (t.exec_id) {
-    card.title = '값을 보낸 실행: ' + shortExec(t.exec_id);
-    const go = () => { location.hash = '#run/' + t.exec_id; };
+  if (href) {
+    const o = parseOwner(t.exec_id);
+    card.title = href.startsWith('#svc/') ? '서비스: ' + (o ? ownerText(t.exec_id, svcTitles) : (svcTitles[t.service || panel.service] || t.service || panel.service))
+      : '값을 보낸 실행: ' + shortExec(t.exec_id);
+    const go = () => { location.hash = href; };
     card.addEventListener('click', go);
     card.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
   }
@@ -259,7 +277,7 @@ function draw(body, panel) {
   // ---- 1. 핵심 지표(골든 시그널) ----
   const kpiSec = el('section', { class: 'bz-sec' });
   const kpiHead = el('div', { class: 'bz-h' }, el('h3', { class: 'sec', text: '핵심 지표' }),
-    info('큰 숫자는 지금 값(10초 안 수집 값의 합 또는 최대), 추이선은 고른 구간. 막대는 경고·위험 구간에서 지금 값의 위치. 누르면 그 값을 보낸 실행의 타임머신'));
+    info('큰 숫자는 지금 값(10초 안 수집 값의 합 또는 최대), 추이선은 고른 구간. 막대는 경고·위험 구간에서 지금 값의 위치. 누르면 그 값을 낸 서비스(또는 실행)의 타임머신'));
   const kpis = el('div', { class: 'bz-kpis' });
   kpiSec.append(kpiHead, kpis);
   body.append(kpiSec);
@@ -275,7 +293,7 @@ function draw(body, panel) {
       if (!onlyOther) box.append(el('div', { class: 'bz-sig-h' }, el('span', { text: g.label }), info(g.desc)));
       const row = el('div', { class: 'bz-sig-t', style: `grid-template-columns:repeat(${n},minmax(0,1fr))` });
       for (const t of g.tiles) {
-        const c = tileEl(t);
+        const c = tileEl(t, panel);
         paintSpark(c, sparkData.get(t.metric), range, tileView(t).st);
         row.append(c);
       }
@@ -417,19 +435,22 @@ function logExplorer(sec, panel) {
     td.append(body);
     return td;
   }
-  function execLink(id) {
-    return id ? el('a', { href: '#run/' + id, text: shortExec(id), title: id, onclick: (ev) => ev.stopPropagation() }) : DASH;
+  // 실행·서비스 칸: 주인이 서비스면 "체결 · match-01"(그 줄 시각의 서비스 타임머신), 실행이면 실행 번호
+  function execLink(id, ts) {
+    if (!id) return DASH;
+    const svc = !!parseOwner(id);
+    return el('a', { href: ownerHash(id, svc ? ts : 0), text: ownerText(id, svcTitles), title: svc ? '서비스 타임머신' : id, class: svc ? 'bz-own' : null, onclick: (ev) => ev.stopPropagation() });
   }
   function detailRow(e) {
     const kv = [['시각', fmtTime(e.ts)], ['레벨', LOG_LEVELS[e.level] || e.level], ['서버', e.host || DASH], ['소스', e.source || DASH]];
     const dl = el('dl', { class: 'bz-kv' }, kv.flatMap(([k, v]) => [el('dt', { text: k }), el('dd', { text: v })]),
-      el('dt', { text: '실행 ID' }), el('dd', {}, e.exec_id ? el('a', { href: '#run/' + e.exec_id, text: e.exec_id + ' · 타임머신 →' }) : DASH));
+      el('dt', { text: '실행·서비스' }), el('dd', {}, e.exec_id ? el('a', { href: ownerHash(e.exec_id, parseOwner(e.exec_id) ? e.ts : 0), text: (parseOwner(e.exec_id) ? ownerText(e.exec_id, svcTitles) : e.exec_id) + ' · 타임머신 →' }) : DASH));
     return el('tr', { class: 'det' }, el('td', { colspan: 6 }, el('pre', { class: 'bz-full', text: e.message }), dl));
   }
   function listTable(list) {
     const t = el('table', { class: 'bz-log' });
     t.append(el('colgroup', {}, ['c-ts', 'c-lv', 'c-host', 'c-src', 'c-msg', 'c-ex'].map((c) => el('col', { class: c }))));
-    t.append(el('thead', {}, el('tr', {}, ['시각', '레벨', '서버', '소스', '메시지', '실행 ID'].map((h) => el('th', { text: h })))));
+    t.append(el('thead', {}, el('tr', {}, ['시각', '레벨', '서버', '소스', '메시지', '실행·서비스'].map((h) => el('th', { text: h })))));
     const tb = el('tbody');
     if (!list.length) tb.append(el('tr', {}, el('td', { colspan: 6, class: 'empty', text: '이 구간에 로그 없음' })));
     for (const e of list) {
@@ -439,7 +460,7 @@ function logExplorer(sec, panel) {
         el('td', { class: 'cut', text: e.host || DASH, title: e.host || '' }),
         el('td', { class: 'cut', text: e.source || DASH }),
         msgCell(e),
-        el('td', {}, execLink(e.exec_id)));
+        el('td', { class: 'cut' }, execLink(e.exec_id, e.ts)));
       const toggle = () => { if (open.has(e.id)) open.delete(e.id); else open.add(e.id); drawList(); };
       row.addEventListener('click', toggle);
       row.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') toggle(); });
@@ -562,14 +583,16 @@ function alertPanel(sec, panel) {
     if (!all.length) { list.replaceChildren(el('div', { class: 'bz-allok', text: '✓ 활성 알림 없음' })); return; }
     list.replaceChildren(...all.map((a) => {
       const lv = bizLevel(a);
-      const target = a.exec_id ? '#run/' + a.exec_id : a.host ? '#host/' + encodeURIComponent(a.host) + '/overview' : null;
+      const own = parseOwner(a.exec_id);
+      const target = a.kind === 'service' && a.name ? svcHash(a.name, a.host) : a.exec_id ? ownerHash(a.exec_id) : a.host ? '#host/' + encodeURIComponent(a.host) + '/overview' : null;
+      const where = own ? ownerText(a.exec_id, svcTitles) : a.kind === 'service' && a.name ? ownerText(`svc:${a.name}@${a.host}`, svcTitles) : a.host;
       const ak = isAcked(a) ? ackText(a) : null;
       const ack = ak
         ? el('span', { class: 'acked', text: ak.text, title: ak.title })
         : gate(el('button', { type: 'button', class: 'ghost', text: '확인', title: '알림 확인(Ack)', onclick: async (ev) => { ev.preventDefault(); ev.stopPropagation(); await api(`/alerts/${a.id}/ack`, { method: 'POST', body: {} }); load().catch(() => {}); } }), 'operator');
       const row = el(target ? 'a' : 'div', { class: `bz-arow ${lv}${ak ? ' acked' : ''}`, href: target },
         el('span', { class: `am ${lv}`, text: ALERT_MARK[lv], title: LEVEL_TEXT[lv] }),
-        el('span', { class: 'at' }, el('span', { class: 'amsg', text: a.message }), el('span', { class: 'ameta', text: [a.host, relTime(a.ts)].filter(Boolean).join(' · ') })),
+        el('span', { class: 'at' }, el('span', { class: 'amsg', text: a.message }), el('span', { class: 'ameta', text: [where, relTime(a.ts)].filter(Boolean).join(' · ') })),
         ack);
       return row;
     }));

@@ -8,6 +8,7 @@
 import { api } from '../api.js';
 import { el, esc, fmtNum, relTime, fmtDuration, fmtClock, shortExec, toast, openDrawer, info, DASH } from '../ui.js';
 import { can } from '../auth.js';
+import { svcHash, ownerHash, serviceTitles } from './dashboard.js';
 
 const q = encodeURIComponent;
 
@@ -76,7 +77,7 @@ export function endText(x) {
 export function exitHashOfAlert(a) {
   const m = /^exit:(.+)$/.exec(String(a.dedup_key || ''));
   if (m) return '#exit/' + q(m[1]);
-  return a.exec_id ? '#run/' + q(a.exec_id) : '#alerts';
+  return ownerHash(a.exec_id) || '#alerts';
 }
 // 타임머신 띠 글: "프로세스 종료 1건 — matching_svc SIGSEGV · book_insert에서 NULL 역참조"
 export function stripText(items) {
@@ -259,6 +260,9 @@ export async function render(root, params) {
   const top = frames[0] && frames[0].func && frames[0].func !== '??' ? frames[0] : null;
   const crashFunc = top ? top.func : '';
   const st = { fold: true, opened: new Set(), llmMsg: '', prompt: null };
+  // 맞은 서비스(06): 머리 줄의 서비스 링크 · 프로파일 근거의 타임머신 링크는 그 서비스·그 시각으로
+  const svcTitle = rep.service ? ((await serviceTitles())[rep.service] || rep.service) : '';
+  const svcAt = rep.service ? svcHash(rep.service, rep.host, rep.ended_at) : '';
 
   async function download() {
     try {
@@ -291,6 +295,7 @@ export async function render(root, params) {
         el('span', { class: 'grow' }),
         el('button', { type: 'button', text: '⤓ 근거 묶음', title: '근거 묶음 내려받기(JSON)', onclick: download })),
       el('div', { class: 'ex-meta' }, proc,
+        rep.service ? el('span', {}, '서비스 ', el('a', { class: 'ex-svc', href: svcAt, title: '서비스 타임머신에서 끝난 시각 앞뒤 보기' }, svcTitle, ' →')) : null,
         el('span', {}, '서버 ', el('a', { href: `#host/${q(rep.host || '')}/proc`, text: rep.host || DASH, title: '이 서버의 프로세스 탭' })),
         el('span', {}, '기동 ', launchedBy(rep, pk)),
         rep.killed_by_agent ? el('span', { class: 'ex-warn', text: '이음이 종료 신호 보냄' }) : null));
@@ -426,7 +431,7 @@ export async function render(root, params) {
         el('div', { class: 'ex-evh' }, el('span', { class: 'ex-evt', text: evHeadText(e) }),
           e.ts ? el('span', { class: 'ex-evtime num', text: fmtClock(e.ts) }) : null,
           el('span', { class: 'grow' }),
-          e.id === 'profile' && rep.exec_id ? el('a', { class: 'ex-evl', href: runRef(rep.exec_id), text: '타임머신에서 보기 →' }) : null),
+          e.id === 'profile' && (rep.service || rep.exec_id) ? el('a', { class: 'ex-evl', href: rep.service ? svcAt : runRef(rep.exec_id), text: '타임머신에서 보기 →' }) : null),
         ...evBody(e),
         refs.length ? el('div', { class: 'ex-refs' }, el('span', { class: 'ex-cl', text: '관련' }), refs) : null));
   }

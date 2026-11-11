@@ -139,3 +139,8 @@ a.bz-arow:hover { background:var(--bg); }
 .bz-errs ul { margin:6px 0 0; padding-left:18px; }
 .bz-errs code { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; }
 .bz-errs .bz-todo { margin:6px 0 0; color:var(--t2); }
+
+/* 서비스(06, 카드 P-F): 머리 탭 패널 | 서비스, 로그 실행·서비스 칸의 서비스 이름표 */
+.bz-mode { margin-bottom:6px; }
+.bz-log col.c-ex { width:108px; }
+.bz-log td a.bz-own { font-family:inherit; font-size:12px; }
