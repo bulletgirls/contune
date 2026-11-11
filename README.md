@@ -23,11 +23,11 @@
 | 보안 (11-10) | **화면 로그인과 역할 3개**(조회·운영·관리), CSRF·보안 헤더, **감사 기록 조회 화면**(관리 계정, 실행 조작·로그인 실패까지 한 목록), **호스트별 에이전트 토큰**, **에이전트 쪽 명령 허용 목록**(매니저가 뚫려도 서버는 정해진 명령만), TLS. 인증 판단은 조립부 두 곳뿐(05 §16, 카드 [S](docs/cards/S-security.md)·[감사](docs/cards/S-audit.md)) |
 | 업무 지표 붙이기 (11-10) | 운영자가 새 업무 지표(예: 1분 시세량)를 붙이는 길: 로그 수집 화면의 **숫자 뽑기**(로그 줄의 숫자 → `biz.*` 지표, 이동 창), 타일의 **하한·값 끊김·감시 시간·min**, **패널 다시 읽기**(재시작 없이). 05 §18, 카드 [M](docs/cards/M-biz-metric.md) |
 | 운영 환경 | 업무는 온라인(체결) 중심, 배치는 개장 준비와 정산. 배치는 셸 스크립트, 스크립트가 띄우는 서비스는 C(자바 일부). 운영 서버는 perf 사용 가능 |
-| 시연 | Docker Compose: 매니저 1 + 에이전트 4 + 모의 서버 39대, 플로우 41개(시세 `quote-open`, 서버 프로세스 셋 `batch-job` 포함). 장애 장면은 주문량 폭주로 체결 처리가 밀리는 상황과, **따로 도는 시세 서비스**에 시세가 몰려 수신 버퍼가 넘치고 시세가 늦는 상황(11-11) |
-| 업무 프로세스 분리 (11-11) | 체결(match-01 `matching_svc`, `market-open`)과 시세(feed-01 `quote_svc`, `quote-open`)는 서버·push 포트(9101·9102)·로그·실행 ID·패널(`체결`·`시세`)이 따로다. 밀리는 원인도 함수도 달라 플레임 그래프가 서로 다르다(`book_insert`가 커짐 vs 평시에 없던 `recover_gap → rebuild_book`이 생김). 타임머신의 업무 트랙은 실행이 낸 지표(`biz.order.*`·`biz.quote.*`)를 따른다. [demo/README.md](demo/README.md) |
+| 시연 | Docker Compose: 매니저 1 + 에이전트 4 + 모의 서버 42대(서버 46대, 그룹 일곱: 채널·매매체결·매매통계·정보분배·지수산출·청산결제·rds), 플로우 41개(시세 `quote-open`, 서버 프로세스 셋 `batch-job` 포함). 장애 장면은 주문량 폭주로 체결 처리가 밀리는 상황과, **따로 도는 시세 서비스**에 시세가 몰려 수신 버퍼가 넘치고 시세가 늦는 상황(11-11) |
+| 업무 프로세스 분리 (11-11) | 체결(match-01 `matching_svc`, `market-open`)과 시세(feed-01 `quote_svc`, `quote-open`)는 서버·push 포트(9101·9102)·로그·실행 ID·패널(`매매체결`·`정보분배`)이 따로다. 밀리는 원인도 함수도 달라 플레임 그래프가 서로 다르다(`book_insert`가 커짐 vs 평시에 없던 `recover_gap → rebuild_book`이 생김). 타임머신의 업무 트랙은 실행이 낸 지표(`biz.order.*`·`biz.quote.*`)를 따른다. [demo/README.md](demo/README.md) |
 | 종료 보고서 (11-11) | 서비스가 **죽은 직접 원인**: 에이전트가 subreaper로 종료 상태(신호·core·종료 코드)를 받고, core를 서버에서 분석해(core는 밖으로 안 나감) 죽은 곳·호출 스택을, 매니저가 같은 시각의 근거(직전 프로파일·RSS·다른 실행·운영자 조작·커널 로그)를 묶어 규칙으로 원인을 가린다. 화면 `#exit/<id>`(호출 스택)과 목록 `#exits`(실행 메뉴, 서버 프로세스 탭·실행 이력에서도 들어감), 근거 묶음 내려받기·LLM 참고 초안. 05 §19, 카드 [T](docs/cards/T-exit-report.md) |
 | 실행 · 프로세스 · 서비스 (11-11) | 관측의 주어를 **서비스(와 그 프로세스)**로, 실행 ID는 "누가 언제 띄웠나"를 답하는 출처로 나눴다. 서비스는 `services/*.yaml` 규칙(env·exe·comm·cmdline)이나 스텝이 끝난 뒤 남은 프로세스의 **자동 서비스**(실행 파일 이름). 서비스 몫의 자원(`svc.*`)·업무 지표·로그·프로파일은 주인 키 `svc:<서비스>@<서버>`로 쌓여 재기동을 넘어 한 화면(서비스 타임머신 `#svc/<id>`)에서 본다. 프로세스는 하나씩(서버 프로세스 탭, 실행의 기동한 프로세스, 플로우 그래프의 `starts` 칩). 이음 밖 프로세스는 에이전트 YAML `observe` 범위 안의 서비스 규칙에 맞는 것만. 서비스 미기동·선언 확인 알림. [06](docs/06-run-process-service.md), 카드 [P](docs/cards/P-service.md) |
-| 사용자 보드 (11-11) | **관제는 그대로 두고, 사용자가 구성하는 보드를 그 옆에 둔다.** 보드 하나 = `dashboards/<id>.yaml`(파일이 기준, 화면 편집기가 그 파일을 씀, 운영 이상·감사 기록·rev 충돌 409). 위젯 14종 = 지표 5(값·시계열·막대·표·글: 매니저가 보드 단위로 한 번에 계산) + 운영 9(업무 지표·실시간 이벤트·서버·서버 맵·금일 배치·시간대별 배치·장애 위험도·로그·서비스: 관제 렌더러를 그대로). 범위는 위젯 > 보드 그룹 > 트리. **보드는 알림을 내지 않는다**(알림은 패널 타일, 위젯은 `ref`로 그 판정을 그대로). 템플릿 `ops`(관제와 같은 구성)·`panel:<id>`, 벽면 `?tv=1`. [07](docs/07-boards.md), 카드 [W](docs/cards/W-boards.md) |
+| 사용자 보드 (11-11) | **관제는 그대로 두고, 사용자가 구성하는 보드를 그 옆에 둔다.** 보드 하나 = `dashboards/<id>.yaml`(파일이 기준, 화면 편집기가 그 파일을 씀, 운영 이상·감사 기록·rev 충돌 409). 위젯 15종 = 지표 5(값·시계열·막대·표·글: 매니저가 보드 단위로 한 번에 계산) + 운영 10(업무 지표·**업무 흐름**·실시간 이벤트·서버·서버 맵·금일 배치·시간대별 배치·장애 위험도·로그·서비스: 관제 렌더러를 그대로. 업무 흐름은 업무 패널 상자와 화살표, 예시 보드 `bizflow`). 범위는 위젯 > 보드 그룹 > 트리. **보드는 알림을 내지 않는다**(알림은 패널 타일, 위젯은 `ref`로 그 판정을 그대로). 템플릿 `ops`(관제와 같은 구성)·`panel:<id>`, 벽면 `?tv=1`. [07](docs/07-boards.md), 카드 [W](docs/cards/W-boards.md) |
 
 ## 문서
 
@@ -38,9 +38,9 @@
 | [docs/03-roadmap.md](docs/03-roadmap.md) | 당일 계획: 시연 시나리오, 개념 완결 기준과 축소 순서, 일정, 저장소 구조, 테스트 전략, 리스크, 심사 예상 질문 |
 | [docs/04-implementation-plan.md](docs/04-implementation-plan.md) | **구현 지시서:** 설계·기획서 리뷰 결과(바뀐 것, 메운 빈틈), **§1.4 카드 정리(11-09)**, 마일스톤 M0~M4, 운영 규칙, 통합 점검표 |
 | [docs/05-supplement.md](docs/05-supplement.md) | **보충 계약(11-09, 02보다 우선):** 지표 카탈로그, 업무 로그, 알림, 장애 위험 지수, 운영자 조작, 편집기, 자연어 초안, API·설정·타입·DDL 추가, 화면 보충, **§16 보안 강화(11-10)** |
-| [docs/07-boards.md](docs/07-boards.md) | **사용자 보드(11-11):** 왜 관제를 대체하지 않고 옆에 두는가(다른 제품 사례), 결정 11개(11: 목록 대신 고르기 칸), 보드 YAML 모양, 결과(§4) |
+| [docs/07-boards.md](docs/07-boards.md) | **사용자 보드(11-11):** 왜 관제를 대체하지 않고 옆에 두는가(다른 제품 사례), 결정 12개(11: 목록 대신 고르기 칸, 12: 업무 흐름 위젯), 보드 YAML 모양, 결과(§4) |
 | [docs/06-run-process-service.md](docs/06-run-process-service.md) | **실행 · 프로세스 · 서비스(11-11):** 개념 정리와 결과(§12). 화면이 배치에 묶인 지점(근거와 파일 위치), `BATCH_JOB → svr_a·b·c` 예, 개체 셋과 관계, 화면별 변화, 단계 P0~P3, 정할 것 |
-| [docs/cards/](docs/cards/README.md) | **작업카드 원본.** 공통 지시문과 소유 경로(README), 카드 파일 8개(K·A·B·C·R·D·E·X) |
+| [docs/cards/](docs/cards/README.md) | **작업카드 원본.** 공통 지시문과 소유 경로(README), 카드 파일 8개(K·A·B·C·R·D·E·X)와 보충 카드(…·U 업무 흐름) |
 | [pipeline_plan.md](pipeline_plan.md) | **카드 47장의 등급·우선 세션·선행** (파이프라인의 기준) |
 | [pipeline/ORCHESTRATOR.md](pipeline/ORCHESTRATOR.md) | 자율 오케스트레이터 지시문. 도구: `pipeline/dag.py`(상태), `split_cards.py`(카드 → `specs/<ID>.md`), `setup_worktrees.sh` |
 | [docs/submission/eum-proposal.pdf](docs/submission/eum-proposal.pdf) | 서류 심사 기획서 "이음"(외부 심사위원용, A4 가로 15쪽). 원본은 같은 폴더의 `eum-proposal.html` |
@@ -52,7 +52,7 @@
 **바로 해 보기 (Docker 없이):**
 
     deploy/demo.sh setup     # 체결·시세 서비스와 eum 빌드, eum seed로 7일 이력과 장애 6건
-    deploy/demo.sh up        # eum dev --fleet: 매니저 + 에이전트 4 + 모의 서버 39 = 43대
+    deploy/demo.sh up        # eum dev --fleet: 매니저 + 에이전트 4 + 모의 서버 42 = 46대
     deploy/demo.sh warmup    # 보조 플로우 12개(ext-send-margin은 일부러 실패)
     deploy/demo.sh run       # market-open: load-equity attempt 2, start-matching이 체결 서비스 기동
     deploy/demo.sh surge     # 접수율 3000(20초) → 4500(20초) → 6000(60초) → 1500, 위험도가 오르려면 6000을 약 50초 유지
