@@ -65,11 +65,21 @@ function head(d, query) {
   return el('div', { class: 'bw-head' }, el('h1', { text: '업무 관제' }), counts, right);
 }
 
-function timetable(d) {
+// mock 전용: 업무 시간 판단 시각을 골라 본다(주소의 at). 값은 지금 값 그대로.
+export const AT_PICKS = [['', '지금'], ['07:10', '07:10 장 시작 전'], ['10:42', '10:42 정규장'], ['16:05', '16:05 정산'], ['17:30', '17:30 정보계 적재']];
+function atPicker(query) {
+  const sel = el('select', { id: 'bw-at', 'aria-label': 'mock 시각' });
+  for (const [v, t] of AT_PICKS) sel.append(el('option', { value: v, text: t }));
+  sel.value = AT_PICKS.some(([v]) => v === (query.at || '')) ? query.at || '' : '';
+  sel.addEventListener('change', () => { location.hash = hashWith('bizwatch', { ...query, at: sel.value }); });
+  return el('label', { class: 'bw-at', title: 'mock 전용: 업무 시간을 이 시각으로 판단한다(값은 지금 값)' }, 'mock 시각 ', sel);
+}
+
+function timetable(d, query) {
   const sec = el('section', { class: 'bw-card bw-tt' });
   const nowTxt = `지금 ${d.clock} · ${d.phase}`;
   sec.append(el('div', { class: 'bw-h' }, el('h2', { text: '업무 시간표' }), el('span', { class: 'bw-dim', text: d.day }),
-    d.at ? el('span', { class: 'bw-at', text: `시각 지정 ${d.at}`, title: 'mock: 주소의 at으로 업무 시간을 판단 중' }) : '',
+    isMock() ? atPicker(query) : '',
     el('span', { class: 'bw-now', text: nowTxt })));
   const grid = el('div', { class: 'bw-tt-grid' });
   const nowPct = pos(d.scene_min, d.window);
@@ -229,10 +239,11 @@ export function render(root, params, query) {
   poll(async () => {
     const d = await api(path);
     const sig = JSON.stringify({ ...d, now: 0 }) + Math.floor(Date.now() / 30000);
-    if (sig === lastSig) return;
+    // 바뀐 것이 없거나 시각 고르기를 쓰는 중이면 다시 그리지 않는다.
+    if (sig === lastSig || (document.activeElement && document.activeElement.id === 'bw-at')) return;
     lastSig = sig;
     const mid = el('div', { class: 'bw-mid' }, cards(d, cmpLabel), eventSec(d));
-    top.replaceChildren(head(d, query), timetable(d), mid, flowSec(d));
+    top.replaceChildren(head(d, query), timetable(d, query), mid, flowSec(d));
     if (!charts.length) buildTrends(d);
   }, 2000);
 
