@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 시연 진행 스크립트: deploy/demo.sh <setup|up|down|warmup|run|surge|settle|train|sql|export|status>
+# 시연 진행 스크립트: deploy/demo.sh <setup|up|down|warmup|run|surge|quote|quote-surge|quote-rate|settle|train|sql|export|status>
+# 업무 프로세스 둘: 체결(match-01 matching_svc, run·surge), 시세(feed-01 quote_svc, quote·quote-surge·quote-rate)
 # 환경변수: EUM_URL(기본 http://localhost:8080) EUM_MODE(dev|compose, 기본 dev) EUM_DATA(기본 ./data-dev)
 #          EUM_COMPOSE(compose 파일, 기본 deploy/docker-compose.yml) EUM_DEV_FLAGS(eum dev에 더 넘길 플래그)
 #          EUM_HOSTS(up이 기다리는 호스트 수, 기본 43) EUM_BIN(eum 실행 파일, 기본 deploy/bin/eum) EUM_TOKEN(기본 dev)
@@ -50,15 +51,17 @@ need_login() { login || die "화면 로그인을 하지 못했습니다($EUM_URL
 # jget <경로> <python 식>: JSON 응답 d에 식을 적용해 출력
 jget() { get "$1" | python3 -c 'import sys,json; d=json.load(sys.stdin); print('"$2"')'; }
 
-# 접수율을 match-01 작업 폴더의 rate 파일에 쓴다.
-set_rate() {
+# write_rate <호스트> <건/초>: 업무 프로세스가 1초마다 다시 읽는 작업 폴더의 rate 파일에 쓴다.
+write_rate() {
   if [ "$EUM_MODE" = compose ]; then
-    compose exec -T match-01 sh -c "echo $1 > /var/lib/eum/work/rate"
+    compose exec -T "$1" sh -c "echo $2 > /var/lib/eum/work/rate"
   else
-    mkdir -p "$EUM_DATA/work/match-01"
-    echo "$1" > "$EUM_DATA/work/match-01/rate"
+    mkdir -p "$EUM_DATA/work/$1"
+    echo "$2" > "$EUM_DATA/work/$1/rate"
   fi
 }
+set_rate() { write_rate match-01 "$1"; }    # 체결 서비스 접수율
+quote_rate() { write_rate feed-01 "$1"; }   # 시세 서비스 수신율
 
 host_count() { get hosts 2>/dev/null | python3 -c 'import sys,json; print(len(json.load(sys.stdin)["hosts"]))' 2>/dev/null || echo 0; }
 
@@ -67,7 +70,7 @@ cmd_setup() {
     say setup "compose 모드는 준비할 것이 없습니다(up이 이미지를 빌드)"
     return
   fi
-  say setup "matching_svc 빌드, eum 빌드, 7일치 이력 시드 (장면 0)"
+  say setup "matching_svc·quote_svc 빌드, eum 빌드, 7일치 이력 시드 (장면 0)"
   sh demo/build.sh
   mkdir -p "$(dirname "$EUM_BIN")"
   go build -o "$EUM_BIN" ./cmd/eum
@@ -110,6 +113,7 @@ cmd_down() {
     rm -f "$EUM_DATA/dev.pid"
   fi
   pkill -f "$ROOT/deploy/bin/matching_svc" 2>/dev/null || true
+  pkill -f "$ROOT/deploy/bin/quote_svc" 2>/dev/null || true
   return 0
 }
 
@@ -140,6 +144,31 @@ cmd_surge() {
     echo "  $(date +%H:%M:%S) 접수율 $r"
     [ "$r" = 1500 ] || sleep 20
   done
+}
+
+# 시세: 체결과 따로 도는 업무 프로세스(feed-01 quote_svc). 처리 한계는 약 6,000건/초(시작할 때 CPU 속도를 재 맞춘다).
+cmd_quote() {
+  say quote "quote-open을 실행해 feed-01에 시세 서비스를 띄웁니다(수신율 2000건/초)"
+  quote_rate 2000
+  code=$(post "flows/quote-open/run")
+  echo "  quote-open -> HTTP $code"
+  [ "$code" = 201 ] || die "quote-open 실행 실패(HTTP $code)"
+}
+
+cmd_quote_surge() {
+  say quote-surge "시세 수신율 4000 -> 6000 -> 8000 -> 2000, 20초 간격 (시세 지연 장면)"
+  for r in 4000 6000 8000 2000; do
+    quote_rate "$r"
+    echo "  $(date +%H:%M:%S) 시세 수신율 $r"
+    [ "$r" = 2000 ] || sleep 20
+  done
+}
+
+cmd_quote_rate() {
+  [ $# -ge 1 ] || die "사용법: demo.sh quote-rate <건/초>  (0이면 시세 끊김)"
+  case "$1" in *[!0-9]*|'') die "quote-rate는 0 이상의 정수: '$1'" ;; esac
+  quote_rate "$1"
+  say quote-rate "시세 수신율 $1건/초"
 }
 
 cmd_settle() {
@@ -200,10 +229,11 @@ for f in json.load(sys.stdin)["flows"]:
   echo "firing 알림: $(jget 'alerts?state=firing' 'len(d.get("alerts") or [])' 2>/dev/null || echo -)건"
 }
 
-[ $# -ge 1 ] || die "사용법: demo.sh <setup|up|down|warmup|run|surge|settle|train|sql|export|status>"
+[ $# -ge 1 ] || die "사용법: demo.sh <setup|up|down|warmup|run|surge|quote|quote-surge|quote-rate|settle|train|sql|export|status>"
 c="$1"; shift
 case "$c" in
-  warmup|run|settle|train|export|status) need_login; "cmd_$c" "$@" ;;
+  warmup|run|quote|settle|train|export|status) need_login; "cmd_$c" "$@" ;;
   setup|up|down|surge|sql) "cmd_$c" "$@" ;;
+  quote-surge|quote-rate) "cmd_$(echo "$c" | tr - _)" "$@" ;;
   *) die "모르는 명령 '$c'" ;;
 esac

@@ -1,8 +1,8 @@
 // /logs 와 /export/* (text/plain·csv)
 import { SEC, MIN, DAY, fmtKst, fmtN, hash32 } from './util.js';
 import { groupMatch, runPublic } from './world.js';
-import { bizAt } from './signal.js';
-import { seriesQuery, profileShape } from './core.js';
+import { bizAt, quoteAt, quoteRate } from './signal.js';
+import { seriesQuery, profileShape, shapeFor } from './core.js';
 
 const ok = (body, status = 200) => ({ status, body });
 const num = (v) => (v === null || v === '' || Number.isNaN(Number(v)) ? 0 : Number(v));
@@ -28,6 +28,26 @@ function surgeLines(c, tick, k0) {
     exec_id: c.w.startRun.exec_id,
     level,
     message,
+  }));
+}
+
+// 시세 서비스(quote_svc) 로그: matching_svc와 같은 (I|W|E) 형식, 조건마다 5초에 한 번(demo/quote_svc.c)
+function quoteLines(c, tick) {
+  const r = quoteRate(tick, c.sig);
+  if (r < 6000) return [];
+  const b = quoteAt(tick, { ...c.sig, exact: true });
+  const hms = fmtKst(tick);
+  const p = b['biz.quote.delay_p99_ms'], q = b['biz.quote.backlog'];
+  const out = [];
+  if (r >= 8000) {
+    out.push(['error', `(E) ${hms} DELAY 시세 지연 p99 ${fmtN(p)}ms (위험 500ms)`]);
+    if (q >= 3000) out.push(['error', `(E) ${hms} BACKLOG 수신 대기 ${fmtN(q)}건 (위험 3,000건)`]);
+    out.push(['error', `(E) ${hms} GAP 순번 누락 ${fmtN(2 + (hash32('g' + tick) % 60))}건, 스냅샷 복구 3회, 못 보낸 시세 ${fmtN(14000 + (hash32('l' + tick) % 900))}건 (수신 버퍼 4,096건 넘침)`]);
+  } else if (hash32('qw' + tick) % 3 === 0) {
+    out.push(['warn', `(W) ${hms} DELAY 시세 지연 p99 ${fmtN(100 + (hash32('qp' + tick) % 40))}ms (경고 100ms)`]);
+  }
+  return out.map(([level, message], i) => ({
+    id: Math.floor(tick / 1000) * 10 + 6 + i, ts: tick, host: 'feed-01', source: 'quote', exec_id: c.w.quoteRun.exec_id, level, message,
   }));
 }
 
@@ -58,6 +78,11 @@ export function logEvents(c, f) {
       level: 'warn',
       message: `(W) ${fmtKst(ts)} ORDERBOOK 호가 정리 지연 ${12 + (hh % 40)}ms`,
     });
+  }
+  // 시세 서비스: 지난 시세 폭주 동안
+  if (c.w.quoteRun) {
+    const qs = c.sig.base - 14 * MIN;
+    for (let t = Math.ceil(Math.max(from, qs) / (5 * SEC)) * 5 * SEC; t <= Math.min(top, qs + 3 * MIN); t += 5 * SEC) all.push(...quoteLines(c, t));
   }
   // 스텝 로그의 (E) 줄
   for (const r of c.w.runs) {
@@ -118,8 +143,9 @@ function exportRuns(c) {
 function exportProfile(c) {
   const to = num(c.q.get('to')) || c.now;
   const from = num(c.q.get('from')) || to - 20 * SEC;
-  const total = Math.round(((to - from) / 1000) * 49);
-  const shape = profileShape(from, to, c.now, c.sig.surge);
+  const run = c.w.runs.find((x) => x.exec_id === c.q.get('exec_id'));
+  const [shape, busy] = (run && shapeFor(c, run, from, to)) || [profileShape(from, to, c.now, c.sig.surge), 1];
+  const total = Math.round(((to - from) / 1000) * 49 * busy);
   return text(shape.map(([f, pct]) => `${f} ${Math.round((total * pct) / 100)}`).join('\n') + '\n');
 }
 

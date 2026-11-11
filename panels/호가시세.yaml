@@ -1,0 +1,23 @@
+id: quote
+title: 시세
+group: 매매/시세
+# 시세 서비스(quote_svc, feed-01)가 1초마다 push하는 지표(종목별 10단계 호가와 체결가). 체결 패널과 다른 프로세스·다른 실행 ID다.
+# 패널은 파일 이름 순서로 읽는다: 이 파일이 체결.yaml 뒤라서 평시 관제 KPI 칸은 체결이 먼저, 시세가 위험이면 시세가 앞으로 온다.
+# 1분 시세량은 시작 뒤 1분이 차야 나오고, 시세가 끊기면 하한·값 끊김으로 위험이 된다(05 §18).
+tiles:
+  - { title: 시세 수신량,          signal: traffic,    metric: biz.quote.recv_tps,     agg: sum, unit: 건/초, kpi: true }
+  - { title: 시세 송출량,          signal: traffic,    metric: biz.quote.sent_tps,     agg: sum, unit: 건/초 }
+  - { title: 1분 시세량,           signal: traffic,    metric: biz.quote.count_1m,     agg: min, unit: 건/분, warn_below: 60000, crit_below: 10000, stale: 30s }
+  - { title: 시세 지연 p99,        signal: latency,    metric: biz.quote.delay_p99_ms, agg: max, unit: ms, warn: 100, crit: 500, kpi: true }
+  - { title: 평균 시세 지연,       signal: latency,    metric: biz.quote.delay_avg_ms, agg: max, unit: ms, warn: 50, crit: 250 }
+  - { title: 시세 누락,            signal: errors,     metric: biz.quote.lost,         agg: sum, unit: 건/초, warn: 1, crit: 100, kpi: true }
+  - { title: 스냅샷 복구,          signal: errors,     metric: biz.quote.recover,      agg: sum, unit: 회/초, warn: 1 }
+  - { title: 오류 로그 발생률,     signal: errors,     metric: log.error.count,        agg: sum, unit: 건/초, warn: 1, crit: 5 }
+  - { title: 수신 대기,            signal: saturation, metric: biz.quote.backlog,      agg: sum, unit: 건, warn: 1000, crit: 3000 }
+  - { title: 프로파일링 오버헤드,                      metric: agent.profiler.cpu_pct, agg: max, unit: "%", warn: 1 }
+charts:
+  - { title: 시세 처리량,          unit: 건/초, agg: sum, metrics: [biz.quote.recv_tps, biz.quote.sent_tps] }
+  - { title: 시세 지연,            unit: ms,    agg: max, metrics: [biz.quote.delay_avg_ms, biz.quote.delay_p99_ms] }
+  - { title: 시세 누락,            unit: 건/초, agg: sum, metrics: [biz.quote.lost] }
+  - { title: 수신 대기,            unit: 건,    agg: sum, metrics: [biz.quote.backlog] }
+log_levels: [error, warn]

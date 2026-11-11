@@ -1,4 +1,4 @@
-# 모의 서버 40대. 실제 컨테이너 3대와 같은 매니저에 붙는다(02 §13, 05 §2).
+# 모의 서버 39대. 실제 컨테이너 4대(match-01·gw-01·batch-01·feed-01)와 같은 매니저에 붙는다(02 §13, 05 §2).
 manager: http://manager:8080
 token: ${EUM_TOKEN}
 interval: 5s
@@ -12,7 +12,7 @@ allow:                         # 모의 서버도 명령을 실제로 실행하�
 hosts:
   - { group: 매매/주문접수,     prefix: gw,     from: 2, to: 6 }
   - { group: 매매/체결,         prefix: match,  from: 2, to: 8 }
-  - { group: 매매/시세,         prefix: feed,   from: 1, to: 6 }
+  - { group: 매매/시세,         prefix: feed,   from: 2, to: 6 }   # feed-01은 실제 에이전트(시세 서비스)
   - { group: 사후처리/청산정산, prefix: settle, from: 1, to: 4 }
   - { group: 사후처리/배치,     prefix: batch,  from: 2, to: 4 }
   - { group: 대외정보/대외연계, prefix: ext,    from: 1, to: 6 }

@@ -40,8 +40,25 @@ export function pointsOf(resp, name) {
   const s = ((resp && resp.series) || []).find((x) => x.name === name);
   return s ? s.points || [] : [];
 }
-export function hasBiz(resp) {
-  return ((resp && resp.series) || []).some((s) => (s.points || []).length > 0);
+// 업무 트랙은 실행이 낸 지표에 따라 고른다: 업무 프로세스마다 지표 이름 앞부분이 다르다.
+// 체결 서비스(matching_svc, market-open)는 biz.order.*, 시세 서비스(quote_svc, quote-open)는 biz.quote.*.
+// series: [이름표, 지표, 점선]. ref: 임계선을 가져올 패널 지표
+export const BIZ_BANDS = {
+  'biz.order.': [
+    { key: 'tps', title: '처리량', unit: 'TPS', series: [['주문 유입량', 'biz.order.in_tps', true], ['체결 처리량', 'biz.order.tps']] },
+    { key: 'queue', title: '대기 큐', unit: '건', ref: 'biz.order.queue', series: [['대기 큐', 'biz.order.queue']] },
+    { key: 'lat', title: '응답 시간', unit: 'ms', ref: 'biz.order.latency_p99_ms', series: [['평균', 'biz.order.latency_avg_ms'], ['p99', 'biz.order.latency_p99_ms']] },
+  ],
+  'biz.quote.': [
+    { key: 'tps', title: '시세 처리량', unit: '건/초', series: [['시세 수신량', 'biz.quote.recv_tps', true], ['시세 송출량', 'biz.quote.sent_tps']] },
+    { key: 'queue', title: '수신 대기', unit: '건', ref: 'biz.quote.backlog', series: [['수신 대기', 'biz.quote.backlog']] },
+    { key: 'lat', title: '시세 지연', unit: 'ms', ref: 'biz.quote.delay_p99_ms', series: [['평균', 'biz.quote.delay_avg_ms'], ['p99', 'biz.quote.delay_p99_ms']] },
+  ],
+};
+// 응답(biz.*)에서 점이 있는 업무 지표 묶음의 앞부분. 없으면 ''(업무 트랙을 숨긴다)
+export function bizFamily(resp) {
+  const live = ((resp && resp.series) || []).filter((s) => (s.points || []).length > 0).map((s) => s.name || '');
+  return Object.keys(BIZ_BANDS).find((p) => live.some((n) => n.startsWith(p))) || '';
 }
 // 고정 구간: A = 앞 30초, B = 마지막 30초
 export function fixedAB(view) {
@@ -90,14 +107,14 @@ export function peakOf(points, from, to) {
   return m;
 }
 
-// 트랙 정의. ref: 임계선을 가져올 패널 지표
-export const BANDS = [
-  { key: 'tps', title: '처리량', unit: 'TPS', biz: true },
-  { key: 'queue', title: '대기 큐', unit: '건', biz: true, ref: 'biz.order.queue' },
-  { key: 'lat', title: '응답 시간', unit: 'ms', biz: true, ref: 'biz.order.latency_p99_ms' },
+// 트랙 정의: 업무 트랙(있으면, BIZ_BANDS) + 자원 트랙
+const RES_BANDS = [
   { key: 'cpu', title: '프로세스 CPU 사용률', unit: '%', desc: '이 실행의 프로세스(자식 포함) CPU. 코어 여러 개를 쓰면 100%를 넘는다' },
   { key: 'host', title: '서버 CPU 사용률', unit: '%', max: 100 },
 ];
+export function bandsOf(family) {
+  return [...(BIZ_BANDS[family] || []), ...RES_BANDS];
+}
 
 // ---- 화면 ----
 let timers = [];
@@ -116,7 +133,7 @@ export async function render(host, params) {
   let tiles = [];
   try { tiles = ((await api('/panels')).panels || []).flatMap((p) => p.tiles || []); } catch (e) { /* 임계선 없이 */ }
 
-  const st = { run: detail.run, live: detail.live, view: null, sel: { a: null, b: null }, pending: null, userRange: false, biz: true, hl: null, tab: 'out' };
+  const st = { run: detail.run, live: detail.live, view: null, sel: { a: null, b: null }, pending: null, userRange: false, biz: '', hl: null, tab: 'out' };
   st.view = viewRange(st.run, st.live, Date.now());
 
   const head = el('div', { class: 'tm-head' });
@@ -195,19 +212,19 @@ export async function render(host, params) {
     const { from, to } = st.view;
     const qs = `from=${Math.round(from)}&to=${Math.round(to)}`;
     const [biz, cpu, hcpu] = await Promise.all([
-      api(`/series?exec_id=${q(id)}&name=biz.order.*&${qs}`),
+      api(`/series?exec_id=${q(id)}&name=biz.*&${qs}`),
       api(`/series?exec_id=${q(id)}&name=job.cpu.pct&${qs}`),
       api(`/series?host=${q(st.run.host)}&name=host.cpu.pct&${qs}`),
     ]);
-    st.biz = hasBiz(biz);
+    // 한 번 정한 업무 묶음은 끝까지 쓴다(구간을 옮기다 점이 잠깐 비어도 트랙이 사라지지 않게)
+    st.biz = st.biz || bizFamily(biz);
     const p = (r, n) => pointsOf(r, n);
-    return {
-      tps: [{ label: '주문 유입량', data: p(biz, 'biz.order.in_tps'), dash: true }, { label: '체결 처리량', data: p(biz, 'biz.order.tps') }],
-      queue: [{ label: '대기 큐', data: p(biz, 'biz.order.queue') }],
-      lat: [{ label: '평균', data: p(biz, 'biz.order.latency_avg_ms') }, { label: 'p99', data: p(biz, 'biz.order.latency_p99_ms') }],
+    const out = {
       cpu: [{ label: '프로세스', data: p(cpu, 'job.cpu.pct') }],
       host: [{ label: '서버', data: p(hcpu, 'host.cpu.pct') }],
     };
+    for (const b of BIZ_BANDS[st.biz] || []) out[b.key] = b.series.map(([label, name, dash]) => ({ label, data: p(biz, name), dash: !!dash }));
+    return out;
   }
 
   function shades() {
@@ -246,7 +263,7 @@ export async function render(host, params) {
     for (const c of charts) { try { c.destroy(); } catch (e) { /* 무시 */ } }
     charts = [];
     tracks.replaceChildren();
-    bands = BANDS.filter((b) => !b.biz || st.biz);
+    bands = bandsOf(st.biz);
     bands.forEach((b, i) => {
       const last = i === bands.length - 1;
       const box = el('div', { class: 'tm-plot' });
@@ -262,7 +279,7 @@ export async function render(host, params) {
   }
 
   function updateCharts(data) {
-    const need = BANDS.filter((b) => !b.biz || st.biz).length;
+    const need = bandsOf(st.biz).length;
     if (need !== charts.length) { buildCharts(data); return; }
     charts.forEach((c, i) => {
       c.setData(data[c.key], { from: st.view.from, to: st.view.to });
@@ -290,8 +307,11 @@ export async function render(host, params) {
     if (a) ranges.push(['A', '기준(A)', a, 'fa']);
     if (b) ranges.push(['B', '비교(B)', b, 'fb']);
     if (!ranges.length) {
-      const r = { from: Math.max(st.view.from, st.run.started_at || st.view.from), to: Math.min(st.view.to, st.run.ended_at || st.view.to) };
-      ranges.push(['', '실행 전체', r, 'fa']);
+      // 서비스를 띄우고 바로 끝나는 스텝(start-matching·start-quote)은 스텝 길이가 0초라
+      // 종료 시각에서 자르면 늘 빈 그래프다. 상주 프로세스가 살아 있으면 지금까지 본다.
+      const resident = st.live && st.live.procs > 0;
+      const r = { from: Math.max(st.view.from, st.run.started_at || st.view.from), to: resident ? st.view.to : Math.min(st.view.to, st.run.ended_at || st.view.to) };
+      ranges.push(['', resident ? '실행 전체(상주 프로세스 포함)' : '실행 전체', r, 'fa']);
     }
     flames.replaceChildren(...ranges.map(([, , , cls]) => el('div', { class: cls })));
     flames.classList.toggle('single', ranges.length === 1);

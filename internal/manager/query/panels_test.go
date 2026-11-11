@@ -482,3 +482,51 @@ func TestSeriesAggMin(t *testing.T) {
 		t.Fatal("/series agg=min")
 	}
 }
+
+// TestRepoPanels는 저장소의 panels/가 틀린 파일 없이 읽히고, 업무 프로세스 둘이 서버 그룹과 지표 이름을 따로 쓰는지 본다.
+// 체결(matching_svc, biz.order.*)과 시세(quote_svc, biz.quote.*)가 한 지표를 같이 쓰면 시연에서 어느 프로세스인지 흐려진다.
+func TestRepoPanels(t *testing.T) {
+	ps, errs, err := LoadPanels(filepath.Join("..", "..", "..", "panels"))
+	if err != nil || len(errs) != 0 {
+		t.Fatalf("panels/: %v %+v", err, errs)
+	}
+	want := map[string]struct{ group, prefix string }{
+		"matching": {"매매/체결", "biz.order."},
+		"quote":    {"매매/시세", "biz.quote."},
+	}
+	// 평시 관제 KPI 칸(정의 순서)과 업무 탭 첫 화면이 체결이도록 체결이 시세보다 앞이어야 한다.
+	order := map[string]int{}
+	for i, p := range ps {
+		order[p.ID] = i
+	}
+	if mi, ok1 := order["matching"]; ok1 {
+		if qi, ok2 := order["quote"]; ok2 && qi < mi {
+			t.Errorf("시세 패널(%d번째)이 체결 패널(%d번째)보다 앞", qi+1, mi+1)
+		}
+	}
+	for _, p := range ps {
+		w, ok := want[p.ID]
+		if !ok {
+			continue
+		}
+		delete(want, p.ID)
+		if p.Group != w.group {
+			t.Errorf("%s: group %q, want %q", p.ID, p.Group, w.group)
+		}
+		for _, tl := range p.Tiles {
+			if strings.HasPrefix(tl.Metric, "biz.") && !strings.HasPrefix(tl.Metric, w.prefix) {
+				t.Errorf("%s 타일 %q: %s는 %s로 시작해야 함", p.ID, tl.Title, tl.Metric, w.prefix)
+			}
+		}
+		for _, c := range p.Charts {
+			for _, m := range c.Metrics {
+				if strings.HasPrefix(m, "biz.") && !strings.HasPrefix(m, w.prefix) {
+					t.Errorf("%s 차트 %q: %s는 %s로 시작해야 함", p.ID, c.Title, m, w.prefix)
+				}
+			}
+		}
+	}
+	if len(want) != 0 {
+		t.Errorf("panels/에 없는 패널: %v", want)
+	}
+}

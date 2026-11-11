@@ -46,6 +46,15 @@ services:
       - ./agent-batch-01.yaml:/etc/eum/agent-batch-01.yaml:ro
     depends_on: [manager]
 
+  feed-01:                       # 시세 서비스(quote_svc). 체결(match-01)과 따로 도는 업무 프로세스
+    <<: *eum
+    command: [agent, --config, /etc/eum/agent-feed-01.yaml]
+    cap_add: [PERFMON]
+    # security_opt: [seccomp=unconfined]   # match-01과 같은 이유
+    volumes:
+      - ./agent-feed-01.yaml:/etc/eum/agent-feed-01.yaml:ro
+    depends_on: [manager]
+
   fleet:
     <<: *eum
     command: [fleet, --config, /etc/eum/fleet.yaml]

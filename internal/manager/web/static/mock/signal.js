@@ -12,10 +12,21 @@ export const BIZ_NAMES = [
   'biz.order.latency_p99_ms',
   'biz.order.histbuf_pct',
 ];
+// 시세 서비스(quote_svc, feed-01)가 push하는 지표. 체결(biz.order.*)과 다른 프로세스·다른 실행 ID다.
+export const QUOTE_NAMES = [
+  'biz.quote.recv_tps',
+  'biz.quote.sent_tps',
+  'biz.quote.backlog',
+  'biz.quote.delay_avg_ms',
+  'biz.quote.delay_p99_ms',
+  'biz.quote.lost',
+  'biz.quote.recover',
+  'biz.quote.count_1m',
+];
 export const LOG_NAMES = ['log.error.count', 'log.warn.count'];
 export const AGENT_NAMES = ['agent.profiler.cpu_pct', 'agent.profiler.errors'];
 export const RISK_NAMES = ['risk.index'];
-export const ALL_NAMES = [...HOST_NAMES, ...JOB_NAMES, ...BIZ_NAMES, ...LOG_NAMES, ...AGENT_NAMES, ...RISK_NAMES];
+export const ALL_NAMES = [...HOST_NAMES, ...JOB_NAMES, ...BIZ_NAMES, ...QUOTE_NAMES, ...LOG_NAMES, ...AGENT_NAMES, ...RISK_NAMES];
 
 // 폭주: 지금 − 4분에 시작해 계속된다. 표의 키는 [지금으로부터 몇 초 전, 값].
 const T_IN = [[250, 1500], [240, 1500], [235, 3000], [180, 3000], [175, 4500], [120, 4500], [115, 6000], [0, 6000]];
@@ -89,6 +100,59 @@ export function serviceAt(ts, ctx) {
   };
 }
 
+// ---- 시세 서비스(quote_svc): 체결 폭주와 따로 지난 시세 폭주 한 번 ----
+// 세계를 만든 때(ctx.base) − 14분부터 3분: 수신율 4000(40초) → 6000(40초) → 8000(100초) → 2000.
+// 값은 실제 리허설(deploy/demo.sh quote-surge)에서 잰 것에 맞춘다. 처리 한계는 약 6,000건/초라 8000에서
+// 수신 버퍼(4,096건)가 넘치고, 순번이 빠질 때마다 스냅샷 복구(recover_gap → rebuild_book)를 되풀이한다.
+export const QUOTE_SURGE = { ago: 14 * 60, len: 180, over: 80 };
+export function quoteSurgeRange(ctx) {
+  const from = (ctx.base || ctx.now) - QUOTE_SURGE.ago * SEC;
+  return { from, over: from + QUOTE_SURGE.over * SEC, to: from + QUOTE_SURGE.len * SEC };
+}
+export function quoteRate(ts, ctx) {
+  const r = quoteSurgeRange(ctx);
+  if (ts < r.from || ts >= r.to) return 2000;
+  const s = (ts - r.from) / SEC;
+  return s < 40 ? 4000 : s < 80 ? 6000 : 8000;
+}
+const quoteSent = (ts, ctx) => (quoteRate(ts, ctx) >= 8000 ? 5000 * (1 + nz('qs', ts, ctx, 0.12)) : quoteRate(ts, ctx));
+
+export function quoteAt(ts, ctx) {
+  const rate = quoteRate(ts, ctx);
+  const over = rate >= 8000;
+  const ph = ((ts / SEC) % 1.6) / 1.6; // 과부하 때 약 1.6초 주기: 버퍼가 차고 → 복구가 비운다
+  let c1m = 0; // 1분 시세량: 지난 60초 송출 합
+  for (let k = 0; k < 12; k++) c1m += quoteSent(ts - k * 5 * SEC, { ...ctx, exact: true }) * 5;
+  const busy = rate >= 4000 ? 1 : 0;
+  return {
+    'biz.quote.recv_tps': round(rate * (1 + nz('qr', ts, ctx, 0.002)), 0),
+    'biz.quote.sent_tps': round(quoteSent(ts, ctx), 0),
+    'biz.quote.backlog': over ? Math.round(4090 * ph) : rate >= 6000 ? 3 : 1,
+    'biz.quote.delay_avg_ms': round(over ? 500 * (1 + nz('qa', ts, ctx, 0.08)) : (0.9 + 1.1 * busy) * (1 + nz('qa', ts, ctx, 0.2)), 2),
+    'biz.quote.delay_p99_ms': round(over ? 600 * (1 + nz('qp', ts, ctx, 0.08)) : (15 + 5 * busy) * (1 + nz('qp', ts, ctx, 0.15)), 2),
+    'biz.quote.lost': over ? Math.round(2800 * (1 + nz('ql', ts, ctx, 0.3))) : 0,
+    'biz.quote.recover': over && ph < 0.6 ? 1 : 0,
+    'biz.quote.count_1m': round(c1m, 0),
+  };
+}
+
+// 시세 서비스 프로세스 자원: 수신율 2000에 코어 1개의 약 33%, 6000을 넘으면 코어 1개에 붙는다
+export function quoteServiceAt(ts, ctx) {
+  const cpu = clamp((quoteRate(ts, ctx) / 2000) * 33 + nz('qc', ts, ctx, 1.5), 1, 99.5);
+  const user = cpu * 0.97;
+  return {
+    'job.cpu.pct': round(cpu, 1),
+    'job.cpu.user_pct': round(user, 1),
+    'job.cpu.sys_pct': round(cpu - user, 1),
+    'job.mem.size_mb': 6.4,
+    'job.rss.mb': round(5.1 + nz('qrs', ts, ctx, 0.05), 1),
+    'job.mem.vsz_mb': 8.9,
+    'job.io.char_kbps': round(4 + nz('qio', ts, ctx, 0.5), 1),
+    'job.threads': 1,
+    'job.procs': 1,
+  };
+}
+
 // 짧게 돌고 끝나는 배치 스텝 프로세스
 export function batchJobAt(run, ts, ctx) {
   const cpu = clamp(run.job_cpu + nz(run.exec_id + 'c', ts, ctx, 8), 1, 200);
@@ -120,6 +184,7 @@ export function hostAt(h, ts, ctx) {
     else cpu = h.cpuBase + 12 * lv + 4 * wave;
   }
   if (h.id === 'match-01' && !ctx.surge) cpu = 28 + 4 * wave + nz(h.id + 'cpu', ts, ctx, 2);
+  if (h.id === 'feed-01') cpu = 10 + 0.35 * quoteServiceAt(ts, { ...ctx, exact: true })['job.cpu.pct'] + 2 * wave + nz(h.id + 'cpu', ts, ctx, 1.5);
   if (h.memFixed) mem = h.memFixed + nz(h.id + 'mem', ts, ctx, 0.4);
   cpu = round(clamp(cpu, 1, 99), 1);
   mem = round(clamp(mem, 5, 99), 1);

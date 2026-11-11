@@ -14,7 +14,7 @@ var (
 	verRe  = regexp.MustCompile(`@@?[A-Za-z0-9_.]+$`)
 	// 바깥쪽 시작 프레임: 함수 이름이 아니라 런타임 진입 코드다.
 	startFrames = map[string]bool{
-		"_start": true, "__libc_start_main": true, "__libc_start_call_main": true,
+		"_start": true, "__libc_start_main": true, "__libc_start_main_impl": true, "__libc_start_call_main": true,
 		"start_thread": true, "clone": true, "clone3": true,
 	}
 )
