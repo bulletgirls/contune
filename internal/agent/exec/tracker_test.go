@@ -330,6 +330,26 @@ func TestSeenCache(t *testing.T) {
 	}
 }
 
+// exec 중에 읽은 environ은 비거나 잘려(끝의 EUM_* 없이) 보일 수 있다. 막 뜬 프로세스는 다음 탐색에서 다시 보고,
+// 오래된 프로세스(커널 스레드 등)는 한 번만 본다.
+func TestSeenRetryYoung(t *testing.T) {
+	m, c := newFS(), newClock()                                                                        // 지금 = 부팅 + 100초
+	fakeProc{pid: 600, pgrp: 600, starttime: 99 * ClockTicks, env: map[string]string{"A": "b"}}.put(m) // 1초 전, 잘린 environ
+	fakeProc{pid: 700, pgrp: 700, starttime: 10 * ClockTicks, env: map[string]string{"A": "b"}}.put(m) // 90초 전
+	cf := &countFS{FS: m, reads: map[string]int{}}
+	tr := newT(cf, c)
+	collect(tr)
+	fakeProc{pid: 600, pgrp: 600, starttime: 99 * ClockTicks, env: marker("e1", "h1", false)}.put(m)
+	fakeProc{pid: 700, pgrp: 700, starttime: 10 * ClockTicks, env: marker("e1", "h1", false)}.put(m)
+	c.add(5 * time.Second)
+	if got := collect(tr)["e1"]["job.procs"]; got != 1 {
+		t.Fatalf("procs %v, 막 뜬 600만 다시 봐야 함", got)
+	}
+	if fmt.Sprint(tr.Targets(0)) != "map[]" || cf.reads["700/environ"] != 1 || cf.reads["600/environ"] != 2 {
+		t.Fatalf("reads %v", cf.reads)
+	}
+}
+
 func TestScanEvery(t *testing.T) {
 	m, c := newFS(), newClock()
 	tr := newT(m, c)
