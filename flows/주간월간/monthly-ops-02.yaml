@@ -3,9 +3,9 @@ id: monthly-ops-02
 schedule: "30 3 1 * *"
 steps:
   - id: step-1
-    host: ops-04
+    host: rds-04
     command: [eum, burn, --cpu, "1", --duration, 7s]
   - id: step-2
-    host: ops-04
+    host: rds-04
     command: [eum, burn, --cpu, "1", --duration, 2s]
     depends: [step-1]

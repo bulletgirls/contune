@@ -1,5 +1,5 @@
 host: match-01
-group: 매매/체결
+group: 매매체결
 manager: http://manager:8080
 token: ${EUM_TOKEN}
 # ca: /etc/eum/ca.pem          # manager가 https://일 때 믿을 인증서(PEM). 비면 시스템 루트
