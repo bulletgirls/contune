@@ -583,4 +583,5 @@ func RunState(t *testing.T, open func(t *testing.T) store.StateStore) {
 			t.Fatalf("목록의 LLM %+v", l)
 		}
 	})
+	runProcs(t, open) // procs.go(카드 P-C)
 }

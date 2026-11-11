@@ -2,6 +2,7 @@ package sched
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strconv"
@@ -17,7 +18,21 @@ const (
 	procsFresh    = 10 * time.Second // job.procs 값을 믿는 시간
 	runsDefault   = 100
 	runsMax       = 1000
+	runProcsMax   = 8    // 실행 목록: 실행마다 기동한 프로세스(리더 빼고) 수
+	runProcsRead  = 5000 // 실행 목록: 한 번에 읽는 프로세스 기록 상한
 )
+
+// procBrief는 실행 목록의 기동한 프로세스 하나다(ProcInfo 축약, 06·카드 P-C).
+type procBrief struct {
+	PID       int    `json:"pid"`
+	StartedAt int64  `json:"started_at"`
+	Comm      string `json:"comm"`
+	Service   string `json:"service,omitempty"`
+	Auto      bool   `json:"auto,omitempty"`
+	Leader    bool   `json:"leader,omitempty"`
+	EndedAt   int64  `json:"ended_at,omitempty"`
+	ExitID    string `json:"exit_id,omitempty"`
+}
 
 // mountAPI는 GET /api/v1/flows, /runs, /runs/{exec_id}, /export/runs를 붙인다.
 func (s *Scheduler) mountAPI(mux *http.ServeMux) {
@@ -192,7 +207,34 @@ func (s *Scheduler) handleRuns(w http.ResponseWriter, r *http.Request) {
 	for i := range runs {
 		runs[i].LogTail = ""
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"runs": runs})
+	writeJSON(w, http.StatusOK, map[string]any{"runs": runs, "procs": s.runProcs(r, runs)})
+}
+
+// runProcs는 실행마다 기동한 프로세스(리더 빼고, 시작 오름차순 8개까지)다. 프로세스 기록을 한 번만 읽는다.
+// 기동한 프로세스가 없는 실행은 칸이 없다. 기록이 없거나(Procs nil) 읽기 실패면 빈 묶음.
+func (s *Scheduler) runProcs(r *http.Request, runs []model.Run) map[string][]procBrief {
+	out := map[string][]procBrief{}
+	if s.d.Procs == nil || len(runs) == 0 {
+		return out
+	}
+	ids := make([]string, len(runs))
+	for i, run := range runs {
+		ids[i] = run.ExecID
+	}
+	ps, err := s.d.State.ListProcs(r.Context(), model.ProcFilter{ExecIDs: ids, Limit: min(max(500, len(ids)*4*runProcsMax), runProcsRead)})
+	if err != nil {
+		slog.Warn("실행 목록: 프로세스 기록 조회 실패", "err", err)
+		return out
+	}
+	sort.SliceStable(ps, func(i, j int) bool { return ps[i].StartedAt < ps[j].StartedAt })
+	for _, p := range ps {
+		if p.Leader || len(out[p.ExecID]) >= runProcsMax {
+			continue
+		}
+		out[p.ExecID] = append(out[p.ExecID], procBrief{PID: p.PID, StartedAt: p.StartedAt, Comm: p.Comm, Service: p.Service,
+			Auto: p.Auto, Leader: p.Leader, EndedAt: p.EndedAt, ExitID: p.ExitID})
+	}
+	return out
 }
 
 func (s *Scheduler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
@@ -216,7 +258,15 @@ func (s *Scheduler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	procs, ts := s.liveProcs(run.Host, run.ExecID, s.d.Now())
+	n, ts := s.liveProcs(run.Host, run.ExecID, s.d.Now())
+	// procs: 그 실행이 기동한 프로세스(06, 카드 P-C), 시작 내림차순. 기록이 없으면 빈 목록.
+	ps, err := s.d.Procs.List(r.Context(), model.ProcFilter{ExecID: run.ExecID})
+	if err != nil {
+		slog.Warn("실행 상세: 프로세스 기록 조회 실패", "exec_id", run.ExecID, "err", err)
+	}
+	if ps == nil {
+		ps = []model.ProcInfo{}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"run": run, "board": board, "events": events,
-		"live": map[string]any{"procs": procs, "ts": ts}})
+		"live": map[string]any{"procs": n, "ts": ts}, "procs": ps})
 }

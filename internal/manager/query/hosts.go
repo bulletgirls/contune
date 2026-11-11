@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	procreg "eum/internal/manager/procs"
 	"eum/internal/model"
 )
 
@@ -152,6 +153,7 @@ type procItem struct {
 	TS      int64   `json:"ts"`
 }
 
+// handleProcs는 GET /api/v1/hosts/{id}/procs다: procs(실행마다 job.* 합) + processes(살아 있는 프로세스, 플로우·스텝 채움).
 func handleProcs(w http.ResponseWriter, r *http.Request, d Deps) {
 	id := r.PathValue("id")
 	now := d.Now().UnixMilli()
@@ -180,5 +182,11 @@ func handleProcs(w http.ResponseWriter, r *http.Request, d Deps) {
 		}
 	}
 	sort.SliceStable(procs, func(i, j int) bool { return procs[i].CPU > procs[j].CPU })
-	writeJSON(w, http.StatusOK, map[string]any{"now": now, "procs": procs})
+	// processes: 그 서버의 살아 있는 프로세스 하나하나(06, 카드 P-C). procs(실행 합)는 그대로 둔다.
+	processes := d.Procs.Live(id)
+	procreg.FillRuns(r.Context(), d.State, processes)
+	if processes == nil {
+		processes = []model.ProcInfo{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"now": now, "procs": procs, "processes": processes})
 }
