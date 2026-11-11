@@ -37,7 +37,7 @@
 .bw-seg-gated { background:color-mix(in srgb, var(--warn) 14%, var(--surface)); border-color:var(--warn) !important; color:var(--t1); }
 .bw-seg-failed { background:color-mix(in srgb, var(--crit) 12%, var(--surface)); border-color:var(--crit) !important; color:var(--crit); }
 .bw-seg-plan { background:var(--surface); border-style:dashed !important; border-color:var(--t3) !important; color:var(--t2); }
-.bw-nowline { position:absolute; top:-3px; bottom:-3px; width:2px; margin-left:-1px; background:var(--accent); }
+.bw-nowline { position:absolute; top:-3px; bottom:-3px; width:2px; margin-left:-1px; background:var(--accent); pointer-events:none; }
 .bw-axis { position:relative; height:16px; font-size:11px; color:var(--t3); font-variant-numeric:tabular-nums; }
 .bw-axis span { position:absolute; top:0; transform:translateX(-50%); }
 .bw-axis span.first { transform:none; } .bw-axis span.last { transform:translateX(-100%); }
@@ -49,23 +49,31 @@
 .bw-sh { display:flex; align-items:baseline; gap:6px; }
 .bw-st { font-size:15px; font-weight:600; text-decoration:none; }
 a.bw-st:hover { color:var(--accent); text-decoration:underline; }
-.bw-kpis { display:flex; flex-direction:column; gap:2px; flex:1; }
-.bw-k { display:grid; grid-template-columns:minmax(0,1fr) auto 124px; align-items:baseline; column-gap:8px; font-size:13px; }
-.bw-kn { color:var(--t2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.bw-kv { font-size:20px; font-weight:700; line-height:26px; font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; }
-.bw-kv .unit { font-size:12px; font-weight:400; }
-.bw-kv.warn { color:var(--warn); } .bw-kv.crit { color:var(--crit); } .bw-kv.off { color:var(--t2); }
-.bw-kc { font-size:12px; color:var(--t2); text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; overflow:hidden; text-overflow:ellipsis; }
-.bw-kc.crit { color:var(--crit); }
-.bw-sig { display:flex; flex-wrap:wrap; gap:4px 14px; padding-top:6px; border-top:1px solid var(--line); font-size:12px; color:var(--t2); }
-.bw-sig span { display:inline-flex; align-items:center; gap:4px; cursor:help; }
-.bw-sig b, .bw-note b, .bw-er b, .bw-dr b, .bw-side b { font-size:11px; font-weight:400; }
+.bw-sig b, .bw-it b, .bw-er b, .bw-dr b, .bw-side b, .bw-hn b { font-size:11px; font-weight:400; }
 .ok:is(b, em) { color:var(--ok); } .warn:is(b, em) { color:var(--warn); } .crit:is(b, em) { color:var(--crit); }
-.off:is(b, em), .none:is(b, em) { color:var(--t3); }
-.bw-notes { display:flex; flex-direction:column; gap:2px; }
-.bw-note { display:flex; gap:6px; align-items:baseline; font-size:12px; text-decoration:none; color:var(--t2); }
-.bw-note.warn { color:var(--warn); } .bw-note.crit { color:var(--crit); }
-a.bw-note:hover span { text-decoration:underline; }
+.off:is(b, em), .none:is(b, em), .info:is(b, em) { color:var(--t3); }
+
+/* 대표 지표 하나: 이름 · 큰 값 / 평소 대비 · 골든 시그널 */
+.bw-main { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:baseline; column-gap:8px; row-gap:2px; padding-bottom:8px; border-bottom:1px solid var(--line); }
+.bw-mn { font-size:13px; color:var(--t2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bw-mv { font-size:22px; font-weight:700; line-height:28px; font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; }
+.bw-mv .unit { font-size:12px; font-weight:400; }
+.bw-mv.warn { color:var(--warn); } .bw-mv.crit { color:var(--crit); } .bw-mv.off { color:var(--t2); }
+.bw-mc { font-size:12px; color:var(--t2); white-space:nowrap; font-variant-numeric:tabular-nums; overflow:hidden; text-overflow:ellipsis; }
+.bw-mc.crit { color:var(--crit); }
+.bw-sig { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:2px 10px; font-size:12px; color:var(--t2); }
+.bw-sig span { display:inline-flex; align-items:center; gap:3px; cursor:help; }
+
+/* 판정 근거 · 원인 후보 · 일정 */
+.bw-facts { display:grid; grid-template-columns:30px minmax(0,1fr); column-gap:8px; row-gap:6px; align-items:start; flex:1; align-content:start; }
+.bw-il { font-size:11px; color:var(--t3); line-height:18px; }
+.bw-items { display:flex; flex-direction:column; gap:1px; min-width:0; }
+.bw-it { display:flex; gap:6px; align-items:baseline; font-size:12px; line-height:18px; text-decoration:none; color:var(--t1); min-width:0; }
+.bw-it span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bw-it.warn span { color:var(--warn); } .bw-it.crit span { color:var(--crit); }
+.bw-it.off span, .bw-it.info span { color:var(--t2); }
+a.bw-it:hover span { text-decoration:underline; }
+.bw-none { font-size:12px; line-height:18px; color:var(--t3); }
 
 /* 업무 상태 + 업무 이벤트 한 줄, 업무 흐름은 그 아래 전체 폭 */
 .bw-mid { display:flex; flex-wrap:wrap; gap:12px; align-items:stretch; }
@@ -116,9 +124,22 @@ a.bw-ec:hover span, a.bw-more:hover { text-decoration:underline; }
 .bw-dt { font-weight:600; }
 .bw-fine { margin-top:8px; font-size:13px; color:var(--ok); }
 
-/* 업무 추이 */
-.bw-chart { padding-bottom:4px; }
-.bw-chart .chart { margin-bottom:0; }
+/* 오늘 업무 상태 이력: 줄 = 업무, 칸 = 5분 */
+.bw-hist-grid { row-gap:4px; }
+.bw-hn { display:flex; align-items:center; gap:4px; text-decoration:none; white-space:nowrap; }
+a.bw-hn:hover { color:var(--accent); }
+.bw-cells { position:relative; display:grid; gap:1px; height:18px; }
+.bw-cells i { display:block; border-radius:1px; cursor:pointer; }
+.bw-cells i.ok { background:color-mix(in srgb, var(--ok) 32%, var(--surface)); }
+.bw-cells i.warn { background:var(--warn); } .bw-cells i.crit { background:var(--crit); }
+.bw-cells i.off { background:var(--bg); cursor:default; }
+.bw-cells i.future { background:none; cursor:default; }
+.bw-cells i:not(.off):not(.future):hover { outline:2px solid var(--accent); outline-offset:-1px; }
+.bw-hlg { display:flex; gap:10px; font-size:12px; color:var(--t2); }
+.bw-hlg span { display:inline-flex; align-items:center; gap:4px; }
+.bw-hlg i { display:inline-block; width:10px; height:10px; border-radius:2px; }
+.bw-hlg i.ok { background:color-mix(in srgb, var(--ok) 32%, var(--surface)); } .bw-hlg i.warn { background:var(--warn); }
+.bw-hlg i.crit { background:var(--crit); } .bw-hlg i.off { background:var(--bg); border:1px solid var(--line); }
 
 /* 실제 API 모드 안내 */
 .bw-only h1 { margin:0 0 6px; font-size:18px; }
@@ -126,6 +147,5 @@ a.bw-ec:hover span, a.bw-more:hover { text-decoration:underline; }
 
 @media (max-width:700px) {
   .bw-hr { margin-left:0; }
-  .bw-k { grid-template-columns:minmax(0,1fr) auto; }
-  .bw-kc { grid-column:1 / -1; text-align:left; }
+  .bw-sig { justify-content:flex-start; grid-column:1 / -1; }
 }

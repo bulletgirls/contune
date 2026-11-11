@@ -1,18 +1,18 @@
-// 업무 관제(#bizwatch): 업무 시간표 · 업무 상태 카드 · 업무 흐름 · 업무 이벤트와 마감 · 업무 추이(오늘과 어제).
-// 관제(#dashboard)가 IT 자원 관점이라면 여기는 업무 관점이다. 숫자 상세와 로그는 업무 탭(#biz/<panel>)이 맡는다.
+// 업무 관제(#bizwatch): 업무 시간표 · 업무 상태 카드 · 업무 이벤트와 마감 · 업무 흐름 · 오늘 업무 상태 이력.
+// 관제(#dashboard)가 IT 자원 관점이라면 여기는 업무 관점이다. 숫자 상세와 로그는 업무 탭(#biz/<panel>)이 맡으므로
+// 카드는 대표 지표 하나만 싣고 판정 근거 · 원인 후보 · 일정을 말한다. 아래 격자는 업무마다 5분 칸의 그때 등급이다.
 // 지금은 mock(/bizwatch)만 있다(?mock=1). 실제 매니저 API가 생기면 같은 응답 모양을 쓴다.
 // 주소: #bizwatch[?g=<그룹>&cmp=day|week&at=HH:MM] (at: mock에서 업무 시간 판단 시각, KST)
 import { api, poll, isMock } from '../api.js';
 import { el, esc, fmtNum, relTime, info, DASH } from '../ui.js';
-import { lineChart } from '../chart.js';
 import { hashWith } from '../tree.js';
 
-// 등급 기호 · 이름(ui.js STATE_TEXT와 같은 기호에 시간 외 · 지표 없음을 더함)
-export const LV = { ok: ['●', '정상'], warn: ['▲', '경고'], crit: ['■', '위험'], off: ['◷', '시간 외'], none: ['–', '지표 없음'], info: ['›', ''] };
+// 등급 기호 · 이름(ui.js STATE_TEXT와 같은 기호에 시간 외 · 지표 없음 · 참고를 더함)
+export const LV = { ok: ['●', '정상'], warn: ['▲', '경고'], crit: ['■', '위험'], off: ['◷', '시간 외'], none: ['–', '지표 없음'], info: ['›', '참고'] };
 export const SIGNALS = [['traffic', '트래픽'], ['latency', '지연'], ['errors', '오류'], ['saturation', '포화']];
 export const SEG_MARK = { done: '✓', running: '▶', gated: '⏸', plan: '◷', failed: '✕', past: '', now: '' };
-const CMP = { day: ['어제', 86400000], week: ['지난주', 7 * 86400000] };
-const TREND_MS = 30 * 60000;
+const CMP = { day: '어제', week: '지난주' };
+const MAX_ITEMS = 3;
 
 // ---- 순수 함수 ----
 
@@ -20,7 +20,8 @@ export const hm = (s) => {
   const [h, m] = String(s).split(':').map(Number);
   return h * 60 + m;
 };
-// 시간표 창(05:00~19:00) 안의 위치(%)
+export const clockOf = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+// 시간 창(05:00~19:00) 안의 위치(%)
 export function pos(min, win) {
   const a = hm(win.from), b = hm(win.to);
   return Math.max(0, Math.min(100, ((min - a) / (b - a)) * 100));
@@ -29,7 +30,7 @@ export function badge(lv, n) {
   const [m, t] = LV[lv] || ['•', lv];
   return `<span class="bw-b ${esc(lv)}">${m} ${esc(t)}${n == null ? '' : ' ' + esc(String(n))}</span>`;
 }
-// 비교 글자: 값 끊김 · 고정 글자 · '어제 1,500 · +300%'(±20% 이상만, 10배 이상은 '94배')
+// 평소 대비 글자: 값 끊김 · 고정 글자 · '어제 1,500 · +300%'(±20% 이상만, 10배 이상은 '94배')
 export function cmpText(k, label) {
   if (k.stale_text) return k.stale_text;
   if (k.base_text) return k.base_text;
@@ -42,12 +43,10 @@ export function cmpText(k, label) {
   }
   return s;
 }
-export function thresholdsOf(t) {
-  return (t.thresholds || []).map((x) => ({ value: x.value, level: x.level, label: `${x.below ? '하한 ' : ''}${LV[x.level][1]} ${fmtNum(x.value)}` }));
-}
-// 어제(지난주) 계열을 오늘 시간축으로 옮긴다.
-export function shiftPoints(points, ms) {
-  return (points || []).map(([t, v]) => [t + ms, v]);
+// 상태 이력 칸 → 그 구간을 볼 주소(업무 탭 또는 실행 이력). 앞뒤 10분을 붙인다.
+export function cellHref(row, i, h) {
+  const from = h.t0 + (i * h.slot - 10) * 60000, to = from + (h.slot + 20) * 60000;
+  return row.panel ? hashWith(`biz/${row.panel}`, { from, to }) : hashWith('runs', { from, to });
 }
 
 // ---- 그리기 ----
@@ -56,12 +55,12 @@ function head(d, query) {
   const cmp = CMP[query.cmp] ? query.cmp : 'day';
   const counts = el('div', { class: 'bw-counts' });
   counts.innerHTML = ['crit', 'warn', 'ok', 'off'].filter((k) => d.counts[k]).map((k) => badge(k, d.counts[k])).join('');
-  const seg = el('div', { class: 'bw-seg', role: 'group', 'aria-label': '비교 기준' });
+  const seg = el('div', { class: 'bw-seg', role: 'group', 'aria-label': '평소 대비 기준' });
   for (const [k, txt] of [['day', '어제 같은 시각'], ['week', '지난주 같은 요일']]) {
     seg.append(el('button', { type: 'button', class: cmp === k ? 'on' : '', 'aria-pressed': String(cmp === k), text: txt,
       onclick: () => { location.hash = hashWith('bizwatch', { ...query, cmp: k === 'day' ? '' : k }); } }));
   }
-  const right = el('div', { class: 'bw-hr' }, el('span', { class: 'bw-dim', text: '비교' }), seg);
+  const right = el('div', { class: 'bw-hr' }, el('span', { class: 'bw-dim', text: '평소 대비' }), seg);
   return el('div', { class: 'bw-head' }, el('h1', { text: '업무 관제' }), counts, right);
 }
 
@@ -75,12 +74,20 @@ function atPicker(query) {
   return el('label', { class: 'bw-at', title: 'mock 전용: 업무 시간을 이 시각으로 판단한다(값은 지금 값)' }, 'mock 시각 ', sel);
 }
 
+function axisEl(win) {
+  const axis = el('div', { class: 'bw-axis' });
+  for (let h = hm(win.from) / 60; h <= hm(win.to) / 60; h += 2) {
+    const p = pos(h * 60, win);
+    axis.append(el('span', { style: `left:${p.toFixed(2)}%`, class: p === 0 ? 'first' : p === 100 ? 'last' : '', text: String(h).padStart(2, '0') }));
+  }
+  return axis;
+}
+
 function timetable(d, query) {
   const sec = el('section', { class: 'bw-card bw-tt' });
-  const nowTxt = `지금 ${d.clock} · ${d.phase}`;
   sec.append(el('div', { class: 'bw-h' }, el('h2', { text: '업무 시간표' }), el('span', { class: 'bw-dim', text: d.day }),
     isMock() ? atPicker(query) : '',
-    el('span', { class: 'bw-now', text: nowTxt })));
+    el('span', { class: 'bw-now', text: `지금 ${d.clock} · ${d.phase}` })));
   const grid = el('div', { class: 'bw-tt-grid' });
   const nowPct = pos(d.scene_min, d.window);
   for (const ln of d.lanes) {
@@ -94,50 +101,56 @@ function timetable(d, query) {
     track.append(el('i', { class: 'bw-nowline', style: `left:${nowPct.toFixed(2)}%` }));
     grid.append(el('span', { class: 'bw-lane', text: ln.name }), track);
   }
-  const axis = el('div', { class: 'bw-axis' });
-  for (let h = hm(d.window.from) / 60; h <= hm(d.window.to) / 60; h += 2) {
-    const p = pos(h * 60, d.window);
-    axis.append(el('span', { style: `left:${p.toFixed(2)}%`, class: p === 0 ? 'first' : p === 100 ? 'last' : '', text: String(h).padStart(2, '0') }));
-  }
-  grid.append(el('span'), axis);
+  grid.append(el('span'), axisEl(d.window));
   sec.append(el('div', { class: 'bw-scroll' }, grid));
   return sec;
 }
 
+// 판정 근거 · 원인 후보 · 일정의 한 줄
+function itemEl(it) {
+  const mark = it.mark || (LV[it.level] || ['•'])[0];
+  const kids = [el('b', { class: it.level, text: mark }), el('span', { text: it.text })];
+  const cls = `bw-it ${it.level}`;
+  return it.href ? el('a', { class: cls, href: it.href, title: it.text }, ...kids) : el('div', { class: cls, title: it.text }, ...kids);
+}
+function factRow(label, items, empty) {
+  const list = el('div', { class: 'bw-items' });
+  if (!items.length) list.append(el('span', { class: 'bw-none', text: empty }));
+  for (const it of items.slice(0, MAX_ITEMS)) list.append(itemEl(it));
+  if (items.length > MAX_ITEMS) list.append(el('span', { class: 'bw-none', text: `외 ${items.length - MAX_ITEMS}개` }));
+  return [el('span', { class: 'bw-il', text: label }), list];
+}
+
 function serviceCard(s, cmpLabel) {
   const c = el('div', { class: `bw-card bw-svc ${s.level}` });
-  const title = s.panel ? el('a', { class: 'bw-st', href: `#biz/${encodeURIComponent(s.panel)}`, text: s.title }) : el('span', { class: 'bw-st', text: s.title, title: '업무 패널 없음' });
+  const title = s.panel ? el('a', { class: 'bw-st', href: `#biz/${encodeURIComponent(s.panel)}`, text: s.title, title: '업무 탭에서 지표 · 로그 보기' })
+    : el('span', { class: 'bw-st', text: s.title, title: '업무 패널 없음' });
   const b = el('span', { class: 'bw-badge' });
   b.innerHTML = badge(s.level);
   c.append(el('div', { class: 'bw-sh' }, el('span', { class: 'bw-dim', text: s.group_label, title: s.group }), title, el('span', { class: 'grow' }), b));
-  const ks = el('div', { class: 'bw-kpis' });
-  for (const k of s.kpis) {
-    const v = el('span', { class: `bw-kv ${k.state}` });
-    v.innerHTML = k.value == null ? DASH : `${esc(fmtNum(k.value))}<span class="unit">${esc(k.unit || '')}</span>`;
-    ks.append(el('div', { class: 'bw-k' }, el('span', { class: 'bw-kn', text: k.name, title: k.name }), v,
-      el('span', { class: `bw-kc${k.stale_text ? ' crit' : ''}`, text: cmpText(k, cmpLabel) })));
-  }
-  c.append(ks);
-  const sig = el('div', { class: 'bw-sig' });
+
+  // 대표 지표 하나 + 평소 대비 + 골든 시그널
+  const k = s.main;
+  const v = el('span', { class: `bw-mv ${k.state}` });
+  v.innerHTML = k.value == null ? DASH : `${esc(fmtNum(k.value))}<span class="unit">${esc(k.unit || '')}</span>`;
+  const sig = el('span', { class: 'bw-sig' });
   for (const [key, name] of SIGNALS) {
     const lv = s.signals[key] || 'none';
     sig.append(el('span', { title: `${name} · ${LV[lv][1]}` }, el('b', { class: lv, text: LV[lv][0] }), name));
   }
-  c.append(sig);
-  if (s.notes.length) {
-    const ns = el('div', { class: 'bw-notes' });
-    for (const n of s.notes) {
-      const kids = [el('b', { text: LV[n.level] ? LV[n.level][0] : '›' }), el('span', { text: n.text })];
-      ns.append(n.href ? el('a', { class: `bw-note ${n.level}`, href: n.href }, ...kids) : el('div', { class: `bw-note ${n.level}` }, ...kids));
-    }
-    c.append(ns);
-  }
+  c.append(el('div', { class: 'bw-main' }, el('span', { class: 'bw-mn', text: k.name }), v,
+    el('span', { class: `bw-mc${k.stale_text ? ' crit' : ''}`, text: cmpText(k, cmpLabel) }), sig));
+
+  c.append(el('div', { class: 'bw-facts' },
+    ...factRow('근거', s.basis, DASH),
+    ...factRow('원인', s.causes, '없음'),
+    el('span', { class: 'bw-il', text: '일정' }), el('div', { class: 'bw-items' }, itemEl(s.schedule))));
   return c;
 }
 
 function cards(d, cmpLabel) {
   const sec = el('section', { class: 'bw-sec' });
-  const tip = info('업무 등급 = 업무 지표 · 업무 로그는 그 등급 그대로, 서버 · 관련 배치 이상은 경고까지. 감시 시간 밖이면 시간 외');
+  const tip = info('등급: 업무 지표 · 업무 로그는 그 등급 그대로, 서버 · 관련 배치 이상은 경고까지, 감시 시간 밖이면 시간 외. 근거 = 등급을 정한 것, 원인 = 같은 업무의 서버 · 배치 · 함수');
   sec.append(el('div', { class: 'bw-h' }, el('h2', { text: '업무 상태' }), tip));
   const grid = el('div', { class: 'bw-grid' });
   for (const s of d.services) grid.append(serviceCard(s, cmpLabel));
@@ -207,9 +220,41 @@ function eventSec(d) {
   return sec;
 }
 
-// ---- 화면 ----
+// 오늘 업무 상태 이력: 줄 = 업무, 칸 = 5분, 색 = 그때의 업무 등급. 칸을 누르면 그 구간의 업무 탭(없으면 실행 이력).
+function historySec(d) {
+  const h = d.history;
+  const sec = el('section', { class: 'bw-card bw-hist' });
+  const lg = el('span', { class: 'bw-hlg' });
+  for (const k of ['ok', 'warn', 'crit', 'off']) lg.append(el('span', {}, el('i', { class: k }), LV[k][1]));
+  sec.append(el('div', { class: 'bw-h' }, el('h2', { text: '오늘 업무 상태 이력' }), el('span', { class: 'bw-dim', text: `${h.slot}분 단위 · 칸을 누르면 그 구간` }),
+    el('span', { class: 'grow' }), lg));
+  const win = { from: h.from, to: h.to };
+  const grid = el('div', { class: 'bw-tt-grid bw-hist-grid' });
+  const nowPct = pos(d.scene_min, win);
+  for (const r of h.rows) {
+    const name = r.panel ? el('a', { class: 'bw-lane bw-hn', href: `#biz/${encodeURIComponent(r.panel)}` }, el('b', { class: r.level, text: LV[r.level][0] }), r.title)
+      : el('span', { class: 'bw-lane bw-hn' }, el('b', { class: r.level, text: LV[r.level][0] }), r.title);
+    const cells = el('div', { class: 'bw-cells', style: `grid-template-columns:repeat(${r.cells.length},minmax(0,1fr))` });
+    r.cells.forEach((lv, i) => {
+      const m0 = hm(h.from) + i * h.slot;
+      const tip = lv === 'future' ? null : `${r.title} ${clockOf(m0)}–${clockOf(m0 + h.slot)} · ${LV[lv][1]}${r.tips[i] ? ' · ' + r.tips[i] : ''}`;
+      cells.append(el('i', { class: lv, title: tip, 'data-i': String(i) }));
+    });
+    cells.append(el('span', { class: 'bw-nowline', style: `left:${nowPct.toFixed(2)}%` }));
+    cells.addEventListener('click', (e) => {
+      const i = e.target && e.target.dataset ? e.target.dataset.i : undefined;
+      if (i == null || r.cells[i] === 'future' || r.cells[i] === 'off') return;
+      location.hash = cellHref(r, Number(i), h);
+    });
+    grid.append(name, cells);
+  }
+  if (!h.rows.length) grid.append(el('span'), el('p', { class: 'empty', text: '이 범위에 업무 없음' }));
+  grid.append(el('span'), axisEl(win));
+  sec.append(el('div', { class: 'bw-scroll' }, grid));
+  return sec;
+}
 
-let charts = [];
+// ---- 화면 ----
 
 export function render(root, params, query) {
   query = query || {};
@@ -221,65 +266,28 @@ export function render(root, params, query) {
       el('a', { href: `${location.pathname}?mock=1#bizwatch`, text: `${location.pathname}?mock=1#bizwatch` })));
     return;
   }
-  const cmp = CMP[query.cmp] ? query.cmp : 'day';
-  const [cmpLabel, cmpMs] = CMP[cmp];
+  const cmpLabel = CMP[query.cmp] || CMP.day;
   const q = new URLSearchParams();
   if (query.g) q.set('g', query.g);
   if (query.at) q.set('at', query.at);
   const path = '/bizwatch' + (q.toString() ? '?' + q : '');
 
   const wrap = el('div', { class: 'bw' });
-  const top = el('div', { class: 'bw-top' });
-  const trendSec = el('section', { class: 'bw-sec' });
-  wrap.append(top, trendSec);
   root.append(wrap);
-  charts = [];
-
+  // 이력 칸 위에 마우스가 있으면 다시 그리지 않는다(말풍선과 누르기가 2초 갱신에 끊기지 않게).
+  let hold = false;
+  wrap.addEventListener('mouseover', (e) => { hold = !!(e.target.closest && e.target.closest('.bw-cells')); });
+  wrap.addEventListener('mouseleave', () => { hold = false; });
   let lastSig = '';
   poll(async () => {
     const d = await api(path);
-    const sig = JSON.stringify({ ...d, now: 0 }) + Math.floor(Date.now() / 30000);
-    // 바뀐 것이 없거나 시각 고르기를 쓰는 중이면 다시 그리지 않는다.
-    if (sig === lastSig || (document.activeElement && document.activeElement.id === 'bw-at')) return;
+    const sig = JSON.stringify({ ...d, now: 0, history: { ...d.history, t0: 0 } });
+    // 바뀐 것이 없거나 시각 고르기 · 이력 칸을 쓰는 중이면 다시 그리지 않는다.
+    if (sig === lastSig || hold || (document.activeElement && document.activeElement.id === 'bw-at')) return;
     lastSig = sig;
     const mid = el('div', { class: 'bw-mid' }, cards(d, cmpLabel), eventSec(d));
-    top.replaceChildren(head(d, query), timetable(d, query), mid, flowSec(d));
-    if (!charts.length) buildTrends(d);
+    wrap.replaceChildren(head(d, query), timetable(d, query), mid, flowSec(d), historySec(d));
   }, 2000);
-
-  // 업무 추이: 오늘(최근 30분)과 어제(지난주) 같은 시각. 10초마다 다시 읽는다.
-  function buildTrends(d) {
-    trendSec.replaceChildren(el('div', { class: 'bw-h' }, el('h2', { text: '업무 추이' }), el('span', { class: 'bw-dim', text: `최근 30분 · 점선 = ${cmpLabel} 같은 시각` })));
-    const grid = el('div', { class: 'bw-grid' });
-    trendSec.append(grid);
-    for (const t of d.trends) {
-      const host = el('div', { class: 'bw-card bw-chart' });
-      grid.append(host);
-      charts.push({ t, host, chart: null });
-    }
-    if (!d.trends.length) grid.append(el('p', { class: 'empty', text: '이 범위에 추이 없음' }));
-    poll(loadTrends, 10000);
-  }
-  async function loadTrends() {
-    const to = Date.now(), from = to - TREND_MS;
-    await Promise.all(charts.map(async (h) => {
-      const sp = (a, b) => `/series?${new URLSearchParams({ group: h.t.group, name: h.t.metric, agg: h.t.agg, from: String(a), to: String(b) })}`;
-      const [now, prev] = await Promise.all([api(sp(from, to)), api(sp(from - cmpMs, to - cmpMs))]);
-      const pts = (r) => ((r.series || [])[0] || { points: [] }).points;
-      const ser = [
-        { label: '오늘', unit: h.t.unit, data: pts(now) },
-        { label: `${cmpLabel} 같은 시각`, unit: h.t.unit, data: shiftPoints(pts(prev), cmpMs), ref: true, color: '--t3' },
-      ];
-      if (h.chart) h.chart.setData(ser, { from, to });
-      else {
-        h.chart = lineChart(h.host, { title: `${h.t.title} · ${h.t.service}`, unit: h.t.unit, series: ser, height: 150, range: { from, to },
-          thresholds: thresholdsOf(h.t), onTitle: () => { location.hash = `#biz/${encodeURIComponent(h.t.panel)}`; } });
-      }
-    }));
-  }
 }
 
-export function dispose() {
-  for (const h of charts) if (h.chart && h.chart.destroy) h.chart.destroy();
-  charts = [];
-}
+export function dispose() {}
