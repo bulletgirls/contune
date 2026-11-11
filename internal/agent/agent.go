@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"eum/internal/agent/crash"
@@ -41,6 +42,9 @@ func Run(ctx context.Context, cfg Config) error {
 	if err := cfg.Exit.check(); err != nil {
 		return fmt.Errorf("agent %s: %w", cfg.Host, err)
 	}
+	if err := cfg.checkServices(); err != nil {
+		return fmt.Errorf("agent %s: %w", cfg.Host, err)
+	}
 	if len(allow) == 0 {
 		// 한 프로세스에 에이전트가 여럿(모의 서버)이어도 한 번만 알린다.
 		warnNoAllow.Do(func() {
@@ -73,10 +77,16 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("agent %s logs: %w", cfg.Host, err)
 	}
+	// 서비스 정의(06, 카드 P-B): 로컬 YAML + 원격 설정을 합쳐 추적기에 넘긴다. 시작할 때는 로컬만, 원격 판이 적용될 때마다 다시.
+	obs := exec.Observe{Users: cfg.Observe.Users, ExeRoots: cfg.Observe.ExeRoots}
+	tracker.SetServices(mergeServices(cfg.Group, cfg.Services, nil), obs)
 	// 원격 수집 설정(카드 L-collect): 꺼져 있어도 상태(disabled)는 보고하고 요청은 거절한다.
 	rem := remote.New(client, tailer, remote.Options{
 		Host: cfg.Host, Group: cfg.Group, LogDir: cfg.LogDir, WorkDir: cfg.WorkDir,
 		Enabled: cfg.Remote.Enabled, ReadRoots: cfg.Remote.ReadRoots, Local: cfg.Logs, Now: time.Now,
+		OnServices: func(remote []model.ServiceDef) {
+			tracker.SetServices(mergeServices(cfg.Group, cfg.Services, remote), obs)
+		},
 	})
 	runner := exec.NewRunner(client, cfg.Host, tracker, exec.RunnerOptions{
 		LogDir: cfg.LogDir, WorkDir: cfg.WorkDir, Vars: cfg.Vars,
@@ -107,6 +117,9 @@ func Run(ctx context.Context, cfg Config) error {
 	start("ship", shipper.Run)
 	start("runner", runner.Run)
 	start("remote", rem.Run)
+	var silent atomic.Bool // 고장 주입 뒤 프로세스 묶음도 멈춘다
+	ps := &procSender{c: client, tr: tracker, host: cfg.Host, log: log, silent: &silent, now: time.Now}
+	start("procs", func(ctx context.Context) error { ps.run(ctx, procsEvery); return nil })
 	if exits != nil {
 		start("exits", exits.Run)
 	}
@@ -117,6 +130,7 @@ func Run(ctx context.Context, cfg Config) error {
 		t := time.AfterFunc(cfg.FaultSilentAfter, func() {
 			log.Info("고장 주입: 지표 전송을 멈춤", "after", cfg.FaultSilentAfter)
 			shipper.SetPaused(true)
+			silent.Store(true)
 		})
 		defer t.Stop()
 	}
@@ -222,4 +236,71 @@ func durationOf(v any) (time.Duration, bool) {
 		return x, true
 	}
 	return 0, false
+}
+
+const (
+	procsEvery = 5 * time.Second
+	procsMax   = 1000 // 보내지 못해 쌓아 두는 끝난 프로세스의 한도
+)
+
+// procsPoster는 sender가 쓰는 client 쪽이다(api.Client가 만족, 시험에서 바꾼다).
+type procsPoster interface {
+	PostProcs(ctx context.Context, b api.ProcsBatch) error
+}
+
+// procSender는 5초마다 tracker.Procs()를 매니저에 보낸다(POST /agent/procs). 실패하면 끝난 것(EndedAt)만 다음 묶음에 다시 싣는다.
+// 살아 있는 것은 다음 묶음에 어차피 다시 나온다.
+type procSender struct {
+	c      procsPoster
+	tr     exec.ProcessTracker
+	host   string
+	log    *slog.Logger
+	silent *atomic.Bool
+	now    func() time.Time
+	carry  []model.ProcInfo // 보내지 못한 끝난 프로세스(오래된 것이 앞)
+}
+
+func (s *procSender) run(ctx context.Context, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			s.send(ctx)
+		}
+	}
+}
+
+// send는 한 번 보낸다. 고장 주입으로 멈췄으면 아무것도 하지 않는다.
+func (s *procSender) send(ctx context.Context) {
+	if s.silent != nil && s.silent.Load() {
+		return
+	}
+	procs := append(append([]model.ProcInfo(nil), s.carry...), s.tr.Procs()...)
+	if len(procs) == 0 {
+		return
+	}
+	err := s.c.PostProcs(ctx, api.ProcsBatch{Host: s.host, TS: s.now().UnixMilli(), Procs: procs})
+	if err == nil {
+		s.carry = nil
+		return
+	}
+	if ctx.Err() != nil {
+		return
+	}
+	var ended []model.ProcInfo
+	for _, p := range procs {
+		if p.EndedAt != 0 {
+			ended = append(ended, p)
+		}
+	}
+	if over := len(ended) - procsMax; over > 0 {
+		s.log.Warn("프로세스 묶음을 보내지 못해 오래된 끝난 프로세스를 버림", "dropped", over, "err", err)
+		ended = ended[over:]
+	} else {
+		s.log.Warn("프로세스 묶음을 보내지 못함, 끝난 것은 다음에 다시 보냄", "ended", len(ended), "err", err)
+	}
+	s.carry = ended
 }

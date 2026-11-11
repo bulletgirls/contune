@@ -39,6 +39,9 @@ type Options struct {
 	ReadRoots       []string               // 에이전트 YAML remote.read_roots(절대 경로)
 	Local           []logtail.SourceConfig // 에이전트 YAML logs(로컬 출처, 언제나 먼저 돈다)
 	Now             func() time.Time
+	// OnServices는 받은 원격 설정을 적용할 때마다 그 설정의 서비스 정의(AgentConfig.Services, 매니저가 그룹으로 거름)를 넘긴다.
+	// 시작할 때 캐시 적용도 포함. 꺼져 있으면(Enabled false) 부르지 않는다. 막지 않는다(P-B).
+	OnServices func([]model.ServiceDef)
 
 	ProcDir        string        // 기본 /proc
 	Syslog         []string      // nil이면 /var/log/syslog·/var/log/messages·/var/log/kern.log
@@ -225,6 +228,9 @@ func (r *Remote) apply(cfg model.AgentConfig, save bool) bool {
 	r.mu.Lock()
 	r.rev, r.remote, r.state, r.errMsg, r.errKind = cfg.Rev, statuses, state, "", ""
 	r.mu.Unlock()
+	if r.o.OnServices != nil {
+		r.o.OnServices(cfg.Services)
+	}
 	if save {
 		if err := r.saveCache(cfg); err != nil {
 			slog.Warn("원격 수집 설정 캐시를 쓰지 못함", "host", r.o.Host, "err", err)

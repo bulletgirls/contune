@@ -209,6 +209,9 @@ func LoadConfig(path string) (Config, error) {
 	if err := c.Exit.check(); err != nil {
 		return Config{}, fmt.Errorf("%s: %w", path, err)
 	}
+	if err := c.checkServices(); err != nil {
+		return Config{}, fmt.Errorf("%s: %w", path, err)
+	}
 	c.applyDefaults()
 	return c, nil
 }
@@ -277,4 +280,57 @@ func expandVars(s string) string {
 	return varRe.ReplaceAllStringFunc(s, func(m string) string {
 		return os.Getenv(m[2 : len(m)-1])
 	})
+}
+
+// checkServices는 로컬 서비스 정의(model.ValidateServiceDef)와 observe.exe_roots(절대 경로)를 검사한다. 문제가 있으면 시작하지 않는다.
+func (c Config) checkServices() error {
+	var msgs []string
+	seen := map[string]bool{}
+	for i, d := range c.Services {
+		for _, p := range model.ValidateServiceDef(d) {
+			msgs = append(msgs, fmt.Sprintf("services[%d] %q: %s", i, d.ID, p))
+		}
+		if d.ID != "" && seen[d.ID] {
+			msgs = append(msgs, fmt.Sprintf("services[%d] %q: id가 겹침", i, d.ID))
+		}
+		seen[d.ID] = true
+	}
+	for i, r := range c.Observe.ExeRoots {
+		if !filepath.IsAbs(r) {
+			msgs = append(msgs, fmt.Sprintf("observe.exe_roots[%d] %q: 절대 경로여야 함", i, r))
+		}
+	}
+	if len(msgs) > 0 {
+		return fmt.Errorf("%s", strings.Join(msgs, "; "))
+	}
+	return nil
+}
+
+// groupCovers는 서비스 정의의 group이 에이전트 그룹에 맞는지다: 비었거나, 에이전트 그룹이 그 경로이거나 그 아래.
+func groupCovers(defGroup, agentGroup string) bool {
+	defGroup = strings.Trim(defGroup, "/")
+	agentGroup = strings.Trim(agentGroup, "/")
+	return defGroup == "" || agentGroup == defGroup || strings.HasPrefix(agentGroup, defGroup+"/")
+}
+
+// mergeServices는 로컬 정의(에이전트 그룹에 맞는 것만)와 원격 정의(매니저가 이미 그룹으로 거름)를 합친다.
+// 같은 ID면 로컬이 이긴다. 순서는 로컬 먼저, 그다음 원격(로컬에 없는 것).
+func mergeServices(group string, local, remote []model.ServiceDef) []model.ServiceDef {
+	out := make([]model.ServiceDef, 0, len(local)+len(remote))
+	seen := map[string]bool{}
+	for _, d := range local {
+		if !groupCovers(d.Group, group) || seen[d.ID] {
+			continue
+		}
+		seen[d.ID] = true
+		out = append(out, d)
+	}
+	for _, d := range remote {
+		if seen[d.ID] {
+			continue
+		}
+		seen[d.ID] = true
+		out = append(out, d)
+	}
+	return out
 }
