@@ -143,6 +143,7 @@ func (r *Runner) handleRun(c model.Command) {
 	job, err := Start(c, StartOptions{
 		LogDir: r.o.LogDir, WorkDir: r.o.WorkDir, Host: r.host,
 		Vars: r.o.Vars, KillGrace: r.o.KillGrace, Now: r.o.Now,
+		OnStop: func(model.RunStatus) { markKilled(r.t, c.ExecID) },
 	})
 	if err != nil {
 		slog.Warn("명령 기동 실패", "exec_id", c.ExecID, "err", err)
@@ -153,7 +154,7 @@ func (r *Runner) handleRun(c model.Command) {
 	r.jobs[c.ExecID] = job
 	r.mu.Unlock()
 
-	if err := r.t.Track(c.ExecID, job.PID(), c.Profile); err != nil {
+	if err := r.track(c, job); err != nil {
 		slog.Warn("프로세스 추적 등록 실패", "exec_id", c.ExecID, "pid", job.PID(), "err", err)
 	}
 	r.q.push(api.EventReport{
@@ -172,6 +173,16 @@ func (r *Runner) handleRun(c model.Command) {
 		Host: r.host, ExecID: c.ExecID, Seq: 2, Type: "finished", TS: res.EndedAt,
 		Status: res.Status, ExitCode: &code, Usage: &usage, LogTail: res.LogTail,
 	})
+}
+
+// track은 Job을 추적기에 등록한다. 이 패키지의 추적기면 Start가 잠금 안에서 읽은 (pid, 시작 시각)으로
+// 리더를 넣어, Track 전에 이미 끝난 리더도 종료 보고를 할 수 있다.
+func (r *Runner) track(c model.Command, j *Job) error {
+	if t, ok := r.t.(*tracker); ok {
+		t.trackJob(c.ExecID, j, c.Profile)
+		return nil
+	}
+	return r.t.Track(c.ExecID, j.PID(), c.Profile)
 }
 
 // startFailed는 띄우지 못한 명령을 started 없이 finished FAILED(종료 코드 127)로 보고한다.

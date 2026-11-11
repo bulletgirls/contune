@@ -21,6 +21,9 @@ type StartOptions struct {
 	Vars                  map[string]string
 	KillGrace             time.Duration // 기본 5s
 	Now                   func() time.Time
+	// OnStop은 에이전트가 종료 절차(강제 종료·시간 초과)를 시작할 때 한 번 불린다. nil이면 부르지 않는다.
+	// 추적기가 그 뒤 끝난 프로세스에 KilledByAgent를 붙이는 데 쓴다(종료 보고서).
+	OnStop func(model.RunStatus)
 }
 
 // Result는 끝난 명령의 결과다. 시각은 unix ms.
@@ -30,6 +33,9 @@ type Result struct {
 	LogTail   string
 	StartedAt int64
 	EndedAt   int64
+	// Signal은 리더가 신호로 끝났을 때 그 번호다(ExitCode는 그대로 128+신호). CoreDumped는 커널이 core를 썼다고 알렸는지다.
+	Signal     int
+	CoreDumped bool
 }
 
 const (
@@ -47,6 +53,8 @@ type Job struct {
 	grace   time.Duration
 	now     func() time.Time
 	started int64
+	key     procKey // (pid, 시작 시각): 거둔 상태 보관의 열쇠
+	onStop  func(model.RunStatus)
 
 	mu       sync.Mutex
 	ended    bool            // 리더가 끝남. 이 뒤에는 Kill이 아무것도 하지 않는다
@@ -166,12 +174,21 @@ func Start(c model.Command, o StartOptions) (*Job, error) {
 	if grace <= 0 {
 		grace = defaultKillGrace
 	}
+	// 리더 등록은 cmd.Start와 같은 잠금 안에서 한다: 거두기가 Start 직후 끝난 리더를 가로채지 않게(계약 2).
+	reaps.mu.Lock()
 	if err := cmd.Start(); err != nil {
+		reaps.mu.Unlock()
 		return nil, err
 	}
+	pid := cmd.Process.Pid
+	registerLeaderLocked(pid, cmd)
+	start := readStartTicks(pid) // os/exec가 아직 Wait하지 않았으므로 /proc에 남아 있다(좀비라도)
+	reaps.mu.Unlock()
 	j := &Job{
 		cmd:     cmd,
-		pid:     cmd.Process.Pid,
+		pid:     pid,
+		key:     procKey{pid, start},
+		onStop:  o.OnStop,
 		logPath: logPath,
 		timeout: time.Duration(c.TimeoutSec) * time.Second,
 		grace:   grace,
@@ -280,6 +297,9 @@ func (j *Job) stop(st model.RunStatus) bool {
 	td := make(chan struct{})
 	j.termDone = td
 	j.mu.Unlock()
+	if j.onStop != nil {
+		j.onStop(st)
+	}
 	go func() {
 		terminateGroup(j.pid, j.grace)
 		close(td)
@@ -306,6 +326,8 @@ func (j *Job) run() {
 		}
 		werr = <-exited
 	}
+	ws, wsOK := statusFromState(j.cmd.ProcessState, time.Now())
+	leaderDone(j.pid, j.cmd, j.key, ws, wsOK)
 
 	j.mu.Lock()
 	j.ended = true
@@ -330,6 +352,9 @@ func (j *Job) run() {
 		LogTail:   readTail(j.logPath),
 		StartedAt: j.started,
 		EndedAt:   j.now().UnixMilli(),
+	}
+	if wsOK && ws.signaled {
+		j.res.Signal, j.res.CoreDumped = ws.signal, ws.core
 	}
 	close(j.done)
 }

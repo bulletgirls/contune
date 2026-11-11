@@ -3,16 +3,20 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"eum/internal/agent/logtail"
+	"eum/internal/api"
 	"eum/internal/model"
 )
 
@@ -311,5 +315,145 @@ logs:
 		Logs: []logtail.SourceConfig{{Name: "a", Path: "{log_dir}/a.log", Metrics: []model.LogMetric{{Name: "log.error.count", Re: "x", Agg: "count"}}}}})
 	if err == nil || !strings.Contains(err.Error(), "지표 이름") {
 		t.Errorf("Run이 틀린 지표를 거절해야 함: %v", err)
+	}
+}
+
+// TestAgentConfigExit는 종료 보고서 설정이다(T1): 없으면 기본값으로 켜지고, enabled: false면 모두 끈다.
+func TestAgentConfigExit(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "a.yaml")
+	os.WriteFile(p, []byte("host: x\n"), 0o644)
+	c, err := LoadConfig(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := c.Exit
+	if !e.On() || !e.SubreaperOn() || !e.KmsgOn() || e.CoreLimit != "256MiB" || e.CoreKeep != 3 || e.OutputLines != 40 || e.GDB != "auto" {
+		t.Errorf("기본값 %+v", e)
+	}
+	if n, _ := e.CoreLimitBytes(); n != 256<<20 {
+		t.Errorf("core_limit %d", n)
+	}
+
+	os.WriteFile(p, []byte("host: x\nexit:\n  subreaper: false\n  core_limit: 0\n  core_keep: 5\n  output_lines: 10\n  gdb: off\n  kmsg: false\n"), 0o644)
+	if c, err = LoadConfig(p); err != nil {
+		t.Fatal(err)
+	}
+	e = c.Exit
+	if !e.On() || e.SubreaperOn() || e.KmsgOn() || e.CoreKeep != 5 || e.OutputLines != 10 || e.GDB != "off" {
+		t.Errorf("%+v", e)
+	}
+	if n, err := e.CoreLimitBytes(); n != 0 || err != nil {
+		t.Errorf("core_limit 0: %d %v", n, err)
+	}
+
+	os.WriteFile(p, []byte("host: x\nexit:\n  enabled: false\n"), 0o644)
+	if c, err = LoadConfig(p); err != nil {
+		t.Fatal(err)
+	}
+	if c.Exit.On() || c.Exit.SubreaperOn() {
+		t.Errorf("enabled: false %+v", c.Exit)
+	}
+	if q, o := exitReports(slog.Default(), c, nil); q != nil || o.OnExit != nil {
+		t.Error("꺼져 있는데 보고 큐가 있음")
+	}
+
+	for _, body := range []string{"core_limit: 12parsecs", "core_limit: lots", "gdb: gdb", "output_lines: 5000"} {
+		os.WriteFile(p, []byte("host: x\nexit:\n  "+body+"\n"), 0o644)
+		if _, err := LoadConfig(p); err == nil || !strings.Contains(err.Error(), "exit.") {
+			t.Errorf("%s: 에러 %v", body, err)
+		}
+	}
+	if err := Run(context.Background(), Config{Host: "x", LogDir: dir, WorkDir: dir, Allow: []string{"^x$"},
+		Exit: ExitConfig{CoreLimit: "-1"}}); err == nil || !strings.Contains(err.Error(), "exit.core_limit") {
+		t.Errorf("코드로 준 틀린 core_limit도 Run 에러: %v", err)
+	}
+}
+
+func TestParseByteSize(t *testing.T) {
+	cases := map[string]uint64{
+		"0": 0, "1": 1, "512B": 512, "1KiB": 1 << 10, "1 MiB": 1 << 20, "256MiB": 256 << 20, "2g": 2 << 30,
+		"3GB": 3 << 30, "1k": 1024, "unlimited": math.MaxUint64,
+	}
+	for in, want := range cases {
+		if got, err := ParseByteSize(in); err != nil || got != want {
+			t.Errorf("%q → %d, %v (%d이어야 함)", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", "MiB", "1XB", "-1", "99999999999999999999", "18446744073709551615GiB"} {
+		if _, err := ParseByteSize(in); err == nil {
+			t.Errorf("%q: 에러여야 함", in)
+		}
+	}
+}
+
+// TestRunExitWiring은 조립이다(T1): 스텝 리더가 SIGKILL로 끝나면 POST /api/v1/agent/exits로 보고가 간다.
+func TestRunExitWiring(t *testing.T) {
+	host := "exit-" + strconv.Itoa(os.Getpid()) + "-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	id := "EX" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	var mu sync.Mutex
+	var batches []api.ExitsBatch
+	polls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/agent/commands":
+			mu.Lock()
+			polls++
+			n := polls
+			mu.Unlock()
+			cmds := []model.Command{}
+			if n == 1 {
+				cmds = append(cmds, model.Command{Type: "run", ExecID: id, Flow: "f", Step: "s",
+					Command: []string{"sh", "-c", "sleep 0.2; kill -9 $$"}})
+			}
+			json.NewEncoder(w).Encode(map[string]any{"commands": cmds})
+		case "/api/v1/agent/exits":
+			var b api.ExitsBatch
+			json.NewDecoder(r.Body).Decode(&b)
+			mu.Lock()
+			batches = append(batches, b)
+			mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	dir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(ctx, Config{Host: host, Manager: srv.URL, Interval: 100 * time.Millisecond, Allow: []string{"^sh -c "},
+			LogDir: filepath.Join(dir, "logs"), WorkDir: filepath.Join(dir, "work")})
+	}()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Error("Run이 끝나지 않음")
+		}
+	}()
+	got := func() *model.ExitReport {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, b := range batches {
+			for _, r := range b.Reports {
+				if r.ExecID == id && b.Host == host {
+					return &r
+				}
+			}
+		}
+		return nil
+	}
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline) && got() == nil; {
+		time.Sleep(20 * time.Millisecond)
+	}
+	r := got()
+	if r == nil {
+		t.Fatal("종료 보고가 오지 않음")
+	}
+	if !r.Leader || r.Signal != 9 || r.SignalName != "SIGKILL" || r.HowSource != model.HowFromWait || r.Host != host || r.Comm != "sh" {
+		t.Errorf("%+v", r)
 	}
 }
