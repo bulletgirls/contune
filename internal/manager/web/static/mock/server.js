@@ -1,7 +1,8 @@
-// /catalog /hosts/{id}/procs
+// /catalog /hosts/{id}/procs(procs: 실행 합, processes: 그 서버에 살아 있는 프로세스 — 06, 카드 P-C 계약 3)
 import { CATALOG } from './catalog.js';
 import { serviceAt, batchJobAt } from './signal.js';
 import { procsOf } from './world.js';
+import { procsList } from './procs.js';
 
 const ok = (body, status = 200) => ({ status, body });
 const err = (status, msg) => ({ status, body: { error: msg } });
@@ -34,7 +35,7 @@ function procs(c, m) {
       ts: c.now - 1000,
     });
   }
-  return ok({ now: c.now, procs: list });
+  return ok({ now: c.now, procs: list, processes: procsList(c, { host: h.id, alive: true }) });
 }
 
 export const routes = [

@@ -339,6 +339,37 @@ export const CATALOG = {
           "id": "job_procs",
           "title": "프로세스 수",
           "scope": "job"
+        },
+        {
+          "id": "svc_cpu",
+          "title": "CPU 사용률",
+          "stack": true,
+          "scope": "svc"
+        },
+        {
+          "id": "svc_mem",
+          "title": "메모리",
+          "scope": "svc"
+        },
+        {
+          "id": "svc_vsz",
+          "title": "가상 메모리",
+          "scope": "svc"
+        },
+        {
+          "id": "svc_io",
+          "title": "I/O",
+          "scope": "svc"
+        },
+        {
+          "id": "svc_threads",
+          "title": "스레드 수",
+          "scope": "svc"
+        },
+        {
+          "id": "svc_procs",
+          "title": "프로세스 수",
+          "scope": "svc"
         }
       ],
       "metrics": [
@@ -435,6 +466,74 @@ export const CATALOG = {
           "title": "프로세스",
           "unit": "개",
           "chart": "job_procs",
+          "procfs": true
+        },
+        {
+          "name": "svc.cpu.user_pct",
+          "title": "사용자",
+          "unit": "%",
+          "chart": "svc_cpu",
+          "procfs": true,
+          "desc": "서비스 프로세스 합. 코어 1개 = 100%"
+        },
+        {
+          "name": "svc.cpu.sys_pct",
+          "title": "시스템",
+          "unit": "%",
+          "chart": "svc_cpu",
+          "procfs": true,
+          "desc": "서비스 프로세스 합. 코어 1개 = 100%"
+        },
+        {
+          "name": "svc.cpu.pct",
+          "title": "CPU 사용률",
+          "unit": "%",
+          "chart": "svc_cpu",
+          "procfs": true,
+          "derived": true,
+          "desc": "사용자 + 시스템"
+        },
+        {
+          "name": "svc.rss.mb",
+          "title": "RSS",
+          "unit": "MB",
+          "chart": "svc_mem",
+          "procfs": true,
+          "desc": "서비스 프로세스 합"
+        },
+        {
+          "name": "svc.mem.size_mb",
+          "title": "데이터",
+          "unit": "MB",
+          "chart": "svc_mem",
+          "procfs": true
+        },
+        {
+          "name": "svc.mem.vsz_mb",
+          "title": "가상",
+          "unit": "MB",
+          "chart": "svc_vsz",
+          "procfs": true
+        },
+        {
+          "name": "svc.io.char_kbps",
+          "title": "읽기+쓰기",
+          "unit": "KB/s",
+          "chart": "svc_io",
+          "procfs": true
+        },
+        {
+          "name": "svc.threads",
+          "title": "스레드",
+          "unit": "개",
+          "chart": "svc_threads",
+          "procfs": true
+        },
+        {
+          "name": "svc.procs",
+          "title": "프로세스",
+          "unit": "개",
+          "chart": "svc_procs",
           "procfs": true
         }
       ]

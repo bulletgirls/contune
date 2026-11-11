@@ -397,7 +397,7 @@ async function renderFlow(host, params, query) {
     const f = S.flow;
     const fr = selRun();
     const box = el('div', { class: 'bt-graph' });
-    renderFlowGraph(box, f, lastOf(fr), { now: S.now, selected: S.step, onNode: (sid, info) => {
+    renderFlowGraph(box, f, lastOf(fr), { now: S.now, selected: S.step, services: S.svcs, onNode: (sid, info) => {
       const runs = fr && fr.steps[sid];
       if (runs) openRun(runs[runs.length - 1].exec_id, sid);
       else if (info.st) openRun(info.st.exec_id, sid);
@@ -652,6 +652,8 @@ async function renderFlow(host, params, query) {
       return;
     }
     S.flow = f;
+    // 스텝 starts(띄우는 서비스)가 있으면 그 서버 인스턴스 상태. 응답이 없거나 실패하면 null(그래프는 ○)
+    S.svcs = f.steps.some((s) => (s.starts || []).length) ? await api('/services').then((r) => r.services || [], () => null) : null;
     S.runs = rr.runs || [];
     S.frs = groupFlowRuns(S.runs, f.steps.map((s) => s.id));
     // 최근 플로우 실행 상태는 /flows의 last가 정답

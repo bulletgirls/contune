@@ -84,3 +84,14 @@ table.rn-tbl { width:100%; border-collapse:collapse; table-layout:fixed; font-si
 .rn-exit.crit { color:var(--crit); border-color:var(--crit); } .rn-exit.warn { color:var(--warn); border-color:var(--warn); }
 .rn-exit:hover { text-decoration:underline; }
 .rn-exit .n { color:var(--t3); }
+/* 기동한 프로세스 칩(06 §7): 실행 중 ● · 종료 보고서 ■ · 끝남 ○ */
+/* 이름 칸: 플로우 › 스텝이 먼저 줄어들고 칩·종료 표시는 다 보인다 */
+.rn-nm { display:flex; align-items:center; min-width:0; }
+.rn-nm .fs { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rn-nm .rn-pcs, .rn-nm .rn-exit { flex:none; }
+.rn-pcs { display:inline-flex; gap:3px; margin-left:8px; vertical-align:middle; }
+.rn-pc { display:inline-flex; align-items:center; gap:3px; white-space:nowrap; font-size:12px; padding:0 5px; border-radius:9px; border:1px solid var(--line); color:var(--t2); text-decoration:none; }
+.rn-pc i { font-style:normal; font-size:9px; font-family:system-ui,sans-serif; }
+.rn-pc.up i { color:var(--ok); } .rn-pc.down { color:var(--crit); border-color:var(--crit); } .rn-pc.end { color:var(--t3); }
+a.rn-pc:hover { text-decoration:underline; border-color:var(--accent); }
+.rn-pcn { font-size:12px; color:var(--t3); }

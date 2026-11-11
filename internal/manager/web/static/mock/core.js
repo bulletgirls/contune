@@ -8,7 +8,11 @@ import {
   HOST_NAMES, ALL_NAMES, hostAt, serviceAt, batchJobAt, bizAt, logLevelsAt, riskAt, BIZ_NAMES, LOG_NAMES, JOB_NAMES,
   QUOTE_NAMES, quoteAt, quoteServiceAt, quoteRate, quoteSurgeRange,
 } from './signal.js';
+import { CATALOG } from './catalog.js';
+import { procsList, procsByRun, procValues, asSvc } from './procs.js';
 
+// 서비스 주인(svc:<서비스>@<서버>)의 자원 계열(06, 카드 P)
+const SVC_NAMES = CATALOG.groups.flatMap((g) => g.metrics.map((m) => m.name)).filter((n) => n.startsWith('svc.'));
 const ok = (body, status = 200) => ({ status, body });
 const err = (status, msg) => ({ status, body: { error: msg } });
 const num = (v) => (v === null || v === '' || Number.isNaN(Number(v)) ? 0 : Number(v));
@@ -32,6 +36,7 @@ export function flowView(c, f) {
       depends: s.depends || [],
       level: levels.get(s.id) || 0,
       profile: !!s.profile,
+      ...(s.starts ? { starts: s.starts } : {}),
     })),
     last: flowLast(c.w, f),
   };
@@ -56,7 +61,7 @@ function runs(c) {
     .sort((a, b) => b.scheduled_at - a.scheduled_at || b.seq - a.seq)
     .slice(0, limit)
     .map((r) => runPublic(r));
-  return ok({ runs: list });
+  return ok({ runs: list, procs: procsByRun(c, list.map((r) => r.exec_id)) });
 }
 
 function runOne(c, m) {
@@ -68,6 +73,7 @@ function runOne(c, m) {
     board: flow ? flow.board : '',
     events: r.events.map((e) => ({ ...e })),
     live: { procs: procsOf(r), ts: c.now },
+    procs: procsList(c, { exec_id: r.exec_id }),
   });
 }
 
@@ -80,7 +86,7 @@ function expandNames(raw) {
   for (const n0 of String(raw || '').split(',')) {
     const n = n0.trim();
     if (!n) continue;
-    if (n.endsWith('*')) out.push(...ALL_NAMES.filter((x) => x.startsWith(n.slice(0, -1))));
+    if (n.endsWith('*')) out.push(...[...ALL_NAMES, ...SVC_NAMES].filter((x) => x.startsWith(n.slice(0, -1))));
     else out.push(n);
   }
   return [...new Set(out)];
@@ -174,6 +180,26 @@ export function seriesQuery(c, p) {
         names: nm,
         range: [r.started_at, runEnd(r, now)],
         at: (ts) => runValues(c, r, ts),
+      });
+    }
+  }
+  // 서비스 주인: 그 서비스 인스턴스 프로세스의 svc.*, 체결·시세 서비스면 업무·로그 지표도(push service:)
+  const own = /^svc:(.+)@([^@]+)$/.exec(p.exec_id || '');
+  if (own) {
+    const allow = new Set([...SVC_NAMES, ...LOG_NAMES]);
+    for (const pr of c.w.procs.filter((x) => x.service === own[1] && x.host === own[2] && !x.leader)) {
+      const extra = pr.sig === 'match' ? BIZ_NAMES : pr.sig === 'quote' ? QUOTE_NAMES : [];
+      const nm = names.filter((n) => allow.has(n) || extra.includes(n));
+      if (!nm.length) continue;
+      entities.push({
+        host: pr.host,
+        exec_id: p.exec_id,
+        names: nm,
+        range: [pr.started_at, pr.ended_at || now],
+        at: (ts) => ({
+          ...asSvc(procValues(pr, ts, c.sig)),
+          ...(pr.sig === 'match' ? { ...bizAt(ts, c.sig), ...logVals(ts, c.sig) } : pr.sig === 'quote' ? { ...quoteAt(ts, c.sig), ...quoteLogVals(ts, c.sig) } : {}),
+        }),
       });
     }
   }
