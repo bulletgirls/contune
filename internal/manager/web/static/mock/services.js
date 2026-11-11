@@ -314,8 +314,15 @@ function ownerRewrite(c) {
 }
 hook(bizRoutes, 'GET', '/logs', (c, m, orig) => {
   const ex = c.q.get('exec_id') || '';
-  if (ex && !parseOwnerKey(ex)) return orig(c, m);
   const re = ownerRewrite(c);
+  if (ex.endsWith('*')) { // 주인 키 접두사(보드의 서비스 범위 svc:<서비스>@*, 07): 바꾼 주인 키로 거른다
+    const pre = ex.slice(0, -1);
+    const r = orig(withQuery(c, { exec_id: '' }), m);
+    if (r.status !== 200 || !r.body) return r;
+    const evs = (r.body.events || []).map((e) => (re.has(e.exec_id) ? { ...e, exec_id: re.get(e.exec_id) } : e));
+    return ok({ ...r.body, events: evs.filter((e) => String(e.exec_id || '').startsWith(pre)) });
+  }
+  if (ex && !parseOwnerKey(ex)) return orig(c, m);
   let r;
   if (ex) {
     const run = backingRun(c, ex);

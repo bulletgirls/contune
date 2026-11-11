@@ -32,7 +32,7 @@ export const WIDGETS = {
   hours:      { title: '시간대별 배치', kind: 'domain', w: 8, h: 2, fields: ['scope.board'], needs: ['hours', 'flows'], render: D.hours },
   risk:       { title: '장애 위험도', kind: 'domain', w: 3, h: 2, fields: [], needs: ['risk', 'hosts', 'panels'], render: D.risk },
   logs:       { title: '로그', kind: 'domain', w: 6, h: 2, fields: ['scope.group', 'scope.service', 'levels', 'limit'], fetch: D.fetchLogs, render: D.logs },
-  services:   { title: '서비스', kind: 'domain', w: 4, h: 2, fields: ['scope.group', 'scope.service', 'limit'], needs: ['services'], render: D.services },
+  services:   { title: '서비스', kind: 'domain', w: 4, h: 2, fields: ['scope.group', 'scope.service', 'limit'], needs: ['services', 'hosts'], render: D.services },
 };
 export const TYPE_ORDER = ['stat', 'timeseries', 'bar', 'table', 'text', 'kpi', 'events', 'servers', 'servermap', 'batch', 'hours', 'risk', 'logs', 'services'];
 export const KIND_TEXT = { metric: '지표', domain: '운영', text: '기타' };
