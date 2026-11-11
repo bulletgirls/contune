@@ -1,1 +1,78 @@
-/* 사용자 보드(07, 카드 W) */
+/* 사용자 보드(07, 카드 W) — 지표 위젯(카드 W-D): stat · timeseries · bar · table · text.
+   뿌리 .mw는 몸통(.dw-b) 높이를 채운다. 색은 style.css 변수만 쓴다(밝음·어두움 같이). */
+.mw { display:block; height:100%; min-width:0; min-height:0; font-size:13px; color:var(--t1); }
+.mw-none { display:flex; align-items:center; justify-content:center; height:100%; min-height:24px; color:var(--t3); }
+.mw .mw-mk { flex:none; font-size:12px; } .mw-mk.warn { color:var(--warn); } .mw-mk.crit { color:var(--crit); }
+
+/* 값(stat): 큰 값 · 단위 · 상태 기호 / 값 끊김 / 추이선 / 불릿. 글자 크기는 칸 폭(cqw)과 줄 수(data-h)로 */
+.mw-stat { display:flex; flex-direction:column; gap:3px; overflow:hidden; text-decoration:none; container-type:inline-size; }
+.mw-stat.go { cursor:pointer; }
+.mw-sv { display:flex; align-items:baseline; min-width:0; white-space:nowrap; overflow:hidden; flex:none; }
+.mw-big { min-width:0; overflow:hidden; text-overflow:ellipsis; font-size:clamp(16px, 15cqw, 48px); font-weight:700; line-height:1.15; font-variant-numeric:tabular-nums; }
+.mw-stat[data-h="1"] .mw-big { font-size:clamp(15px, 11cqw, 30px); }
+.mw-big.warn { color:var(--warn); } .mw-big.crit { color:var(--crit); } .mw-big.none { color:var(--t3); } .mw-big.off { color:var(--t2); }
+.mw-stat .mw-big.txt { font-size:15px; font-weight:500; line-height:1.6; }
+.mw-stat.go:hover .mw-big { text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:3px; }
+.mw-sv .unit { flex:none; font-size:13px; margin-left:3px; }
+.mw-sv .mw-mk { margin-left:6px; font-size:13px; }
+.mw-sv .km-off { flex:none; align-self:center; }
+.mw-sub { flex:none; font-size:11px; font-weight:600; color:var(--crit); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mw-spark { flex:1 1 18px; min-height:0; }
+.mw-sp { display:block; width:100%; height:100%; }
+.mw-sp .l { fill:none; stroke:var(--s1); stroke-width:1.5; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
+.mw-sp .a { fill:var(--s1); opacity:.12; }
+.mw-sp.warn .l { stroke:var(--warn); } .mw-sp.warn .a { fill:var(--warn); }
+.mw-sp.crit .l { stroke:var(--crit); } .mw-sp.crit .a { fill:var(--crit); }
+.mw-sp.off .l, .mw-sp.none .l { stroke:var(--t3); } .mw-sp.off .a, .mw-sp.none .a { fill:var(--t3); }
+.mw-bl { flex:none; }
+
+/* 시계열: 머리 한 줄(단위 · 이름표) + 차트(높이는 렌더러가 몸통에 맞춘다) */
+.mw-ts { display:flex; flex-direction:column; position:relative; }
+.mw-th { display:flex; align-items:baseline; gap:8px; flex:none; min-height:18px; font-size:12px; line-height:18px; white-space:nowrap; overflow:hidden; }
+.mw-th[hidden] { display:none; }
+.mw-th .unit { margin-left:0; font-size:12px; }
+.mw-keys { display:flex; gap:10px; margin-left:auto; min-width:0; overflow:hidden; color:var(--t2); }
+.mw-keys .ckey { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mw-more { flex:none; color:var(--t3); }
+.mw-tc { flex:1 1 auto; min-height:0; }
+.mw-tc.chart { margin-bottom:0; }
+
+/* 막대: 이름 · 막대 · 값(줄 하나). 줄은 16~26px로 칸 높이에 맞춰 늘고, 넘치면 안에서 스크롤.
+   칸이 240px보다 좁으면 이름 · 값 줄 아래에 막대(이름이 잘려 읽히지 않는 것을 막는다). DOM 순서는 이름 · 값 · 막대 */
+.mw-bar { overflow:auto; container-type:inline-size; }
+.mw-bars { display:grid; grid-template-columns:fit-content(42%) minmax(24px, 1fr) auto; grid-auto-rows:minmax(16px, 26px); grid-auto-flow:row dense;
+  align-content:start; align-items:center; gap:2px 8px; font-size:12px; line-height:16px; }
+.mw-bars .mw-n { grid-column:1; } .mw-bars .mw-tr { grid-column:2; } .mw-bars .mw-bv { grid-column:3; }
+@container (max-width:240px) {
+  .mw-bars { grid-template-columns:minmax(0, 1fr) auto; grid-auto-rows:auto; row-gap:1px; }
+  .mw-bars .mw-bv { grid-column:2; } .mw-bars .mw-tr { grid-column:1 / -1; height:6px; margin-bottom:5px; }
+}
+.mw-n { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--t2); text-decoration:none; }
+a.mw-n:hover { color:var(--accent); text-decoration:underline; }
+.mw-tr { position:relative; height:10px; border-radius:2px; background:var(--bg); box-shadow:inset 0 0 0 1px var(--line); }
+.mw-f { position:absolute; left:0; top:0; bottom:0; min-width:2px; border-radius:2px; background:var(--s1); }
+.mw-f.warn { background:var(--warn); } .mw-f.crit { background:var(--crit); }
+.mw-lm { position:absolute; top:-3px; bottom:-3px; width:0; border-left:1px dashed var(--warn); }
+.mw-lm.crit { border-left-color:var(--crit); }
+.mw-bv { white-space:nowrap; text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+.mw-bv.warn { color:var(--warn); } .mw-bv.crit { color:var(--crit); } .mw-bv.none { color:var(--t3); font-weight:400; }
+.mw-bv .mw-mk, .mw-tb .mw-mk { margin-right:3px; font-size:10px; }
+
+/* 표: 머리는 붙어 있고(스크롤해도) 숫자는 오른쪽 정렬 */
+.mw-table { overflow:auto; }
+.mw-tb { width:100%; border-collapse:collapse; font-size:12px; }
+.mw-tb th, .mw-tb td { padding:3px 6px; white-space:nowrap; border-bottom:1px solid var(--line); }
+.mw-tb th { position:sticky; top:0; z-index:1; background:var(--surface); border-bottom:0; box-shadow:inset 0 -1px 0 var(--line);
+  color:var(--t3); font-weight:500; text-align:right; }
+.mw-tb th.n, .mw-tb td.n { text-align:left; }
+.mw-tb .mw-cl { display:inline-block; max-width:12em; overflow:hidden; text-overflow:ellipsis; vertical-align:bottom; }
+.mw-tb td.n { color:var(--t2); }
+.mw-tb td.n a { color:inherit; text-decoration:none; } .mw-tb td.n a:hover { color:var(--accent); text-decoration:underline; }
+.mw-tb td.num { text-align:right; font-variant-numeric:tabular-nums; }
+.mw-tb td.warn { color:var(--warn); font-weight:600; } .mw-tb td.crit { color:var(--crit); font-weight:600; } .mw-tb td.none { color:var(--t3); }
+.mw-tb tbody tr:last-child td { border-bottom:0; }
+.mw-tb th .unit { margin-left:3px; }
+
+/* 글: 글자 그대로(줄바꿈 유지) */
+.mw-text { overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.5; }
+.mw-text.empty { color:var(--t3); }
