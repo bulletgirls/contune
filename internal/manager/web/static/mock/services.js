@@ -6,7 +6,8 @@
 //                           그 전날 프로세스는 다음 기동 때 SIGTERM(③), 지금 프로세스는 오늘 start-matching(w.startRun)이 띄움
 //        matching@match-02  이음 밖에서 잠깐 띄웠다 끝난 것(감시 시간 밖이면 off, 안이면 down)
 //   시세 quote@feed-01      어제 OOM(②) 뒤 오늘 start-quote(w.quoteRun)가 다시 띄움 · quote@feed-02 2시간 전에 끝남(down, 서비스 미기동)
-//   자동 svr_a·svr_b·svr_c  BATCH_JOB › start가 띄움(mock 세계의 w.batchRun·w.procs, 06 §2.1), svr_b는 끝남
+//   자동 svr_a·svr_b·svr_c  BATCH_JOB › start가 띄움(mock 세계의 w.batchRuns·w.procs, 06 §2.1). svr_b는 SIGSEGV(⑤)로 끝나고
+//                           수동 재실행이 svr_b만 다시 띄움(재기동 1회, 계보 06 §7.2)
 //
 // 서비스 주인 키("svc:<서비스>@<서버>")로 오는 /series·/profile·/logs, 서비스 패널의 /panels, /alerts·/exits는
 // 앞선 mock 모듈의 경로를 감싸서 받는다(ROUTES에서 services가 뒤라 정규식만으로는 먼저 받을 수 없다).
@@ -115,29 +116,35 @@ function story(c) {
       exec_id: x.exec_id, flow_id: x.flow_id || '', step_id: x.step_id || '', service: svc, exit_id: x.id, profile: true, threads: svc === 'matching' ? 4 : 3,
       _how: x.signal_name || (x.exit_code != null ? `종료 코드 ${x.exit_code}` : '끝남'), _level: /^(crash|oom)/.test(x.category || '') ? 'crit' : /^killed/.test(x.category || '') ? 'warn' : '' });
   }
+  // 지금 프로세스는 세계(w.procs)의 것과 같은 pid · 시각 · 부모(실행 화면의 계보와 맞게)
+  const inWorld = (r, comm) => (w.procs || []).find((p) => r && p.exec_id === r.exec_id && p.comm === comm) || {};
   if (w.startRun && w.startRun.started_at) {
-    P({ host: w.startRun.host, pid: 52310, started_at: w.startRun.started_at + 1200, comm: 'matching_svc', exe: '/opt/eum/demo/bin/matching_svc',
-      cmdline: '/opt/eum/demo/bin/matching_svc --port 9100 --accept-rate 1500 --token=***', ...fromRun(w.startRun), service: 'matching', profile: true, threads: 4 });
+    const x = inWorld(w.startRun, 'matching_svc');
+    P({ host: w.startRun.host, pid: x.pid ?? 52310, ppid: x.ppid ?? 1, started_at: x.started_at ?? w.startRun.started_at + 1200, comm: 'matching_svc', exe: '/opt/eum/demo/bin/matching_svc',
+      cmdline: '/opt/eum/demo/bin/matching_svc --port 9100 --accept-rate 1500 --token=***', ...fromRun(w.startRun), service: 'matching', profile: true, threads: 4, _now: true });
   }
   P({ host: 'match-02', pid: 61204, started_at: now - 2 * DAY + 3 * HOUR, ended_at: now - DAY - 5 * HOUR, comm: 'matching_svc', exe: '/opt/eum/demo/bin/matching_svc',
     cmdline: '/opt/eum/demo/bin/matching_svc --port 9100 --accept-rate 200', service: 'matching', threads: 4 });
   if (w.quoteRun && w.quoteRun.started_at) {
-    P({ host: w.quoteRun.host, pid: 41877, started_at: w.quoteRun.started_at + 1000, comm: 'quote_svc', exe: '/opt/eum/demo/bin/quote_svc',
+    const x = inWorld(w.quoteRun, 'quote_svc');
+    P({ host: w.quoteRun.host, pid: x.pid ?? 41877, ppid: x.ppid ?? 1, started_at: x.started_at ?? w.quoteRun.started_at + 1000, comm: 'quote_svc', exe: '/opt/eum/demo/bin/quote_svc',
       cmdline: '/opt/eum/demo/bin/quote_svc --port 9200 --recv-rate 2000', ...fromRun(w.quoteRun), service: 'quote', profile: true, threads: 3 });
   }
   P({ host: 'feed-02', pid: 30215, started_at: now - DAY - 4 * HOUR, ended_at: now - 2 * HOUR - 12 * MIN, comm: 'quote_svc', exe: '/opt/eum/demo/bin/quote_svc',
     cmdline: '/opt/eum/demo/bin/quote_svc --port 9200 --recv-rate 2000 --standby', service: 'quote', profile: true, threads: 3 });
-  // 자동 svr_a·svr_b·svr_c: mock 세계의 BATCH_JOB › start(w.batchRun)가 띄운 프로세스(w.procs)와 같은 pid·시각·종료.
-  // 세계에 없으면(예전 세계) daily-settle › settle로 대신한다.
-  const st = w.batchRun || latestRun(w, 'daily-settle', 'settle');
-  if (st) {
-    const wp = (w.procs || []).filter((p) => p.exec_id === st.exec_id);
-    AUTO.forEach((n, i) => {
-      const x = wp.find((p) => p.comm === n) || {};
-      P({ host: x.host || st.host, pid: x.pid ?? 4101 + i, ppid: x.ppid ?? 4100, started_at: x.started_at ?? st.started_at + 300 + i * 40, comm: n,
-        exe: x.exe || `/opt/batch/bin/${n}`, cmdline: x.cmdline || `/opt/batch/bin/${n}`, ...fromRun(st), service: n, auto: true, threads: x.threads || 2,
-        ended_at: x.ended_at ?? (n === 'svr_b' ? st.started_at + 3 * HOUR + 12 * MIN : 0), ...(x.exit_id ? { exit_id: x.exit_id } : {}) });
-    });
+  // 자동 svr_a·svr_b·svr_c: mock 세계의 BATCH_JOB › start 실행들(w.batchRuns: 정기 · svr_b만 다시 띄운 수동 재실행)이 띄운
+  // 프로세스(w.procs)와 같은 pid · 시각 · 종료. 세계에 없으면(예전 세계) daily-settle › settle로 대신한다.
+  const bruns = (w.batchRuns && w.batchRuns.length ? w.batchRuns : [w.batchRun || latestRun(w, 'daily-settle', 'settle')]).filter(Boolean);
+  for (const st of bruns) {
+    const wp = (w.procs || []).filter((p) => p.exec_id === st.exec_id && AUTO.includes(p.comm));
+    const list = wp.length || st !== bruns[0] ? wp : AUTO.map((n, i) => ({ comm: n, pid: 4101 + i, ppid: 4100, started_at: st.started_at + 300 + i * 40,
+      ended_at: n === 'svr_b' ? st.started_at + 3 * HOUR + 12 * MIN : 0 }));
+    for (const x of list) {
+      const n = x.comm;
+      P({ host: x.host || st.host, pid: x.pid, ppid: x.ppid ?? 1, started_at: x.started_at, comm: n,
+        exe: x.exe || `/opt/batch/bin/${n}`, cmdline: x.cmdline || `/opt/batch/bin/${n}`, ...fromRun(st), service: n, auto: true, threads: (x.sig && x.sig.threads) || 2,
+        ended_at: x.ended_at || 0, ...(x.exit_id ? { exit_id: x.exit_id, _how: 'SIGSEGV', _level: 'crit' } : {}) });
+    }
   }
   // 직전 측정 값
   for (const p of procs) {
@@ -155,7 +162,7 @@ function story(c) {
 const toSvc = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k.replace(/^job\./, 'svc.'), v]));
 function valuesAt(c, p, ts) {
   if (p.service === 'matching') {
-    const calm = p.pid !== 52310; // 지난 프로세스는 폭주 없이
+    const calm = !p._now; // 지난 프로세스는 폭주 없이
     const sig = calm ? { ...c.sig, surge: false } : c.sig;
     return { ...toSvc(serviceAt(ts, sig)), ...bizAt(ts, sig) };
   }

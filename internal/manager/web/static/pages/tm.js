@@ -12,6 +12,7 @@ import { can } from '../auth.js';
 import { exitStrip, endText } from './exit.js';
 import { bandsFromPanel, pickPanel } from './panelbands.js';
 import { procChips } from './runs.js';
+import { lineageOf, renderLineage } from '../lineage.js';
 
 const PAD_MIN = 30000, PAD_MAX = 5 * 60000;
 const FIXED = 30000;
@@ -192,26 +193,20 @@ export async function render(host, params) {
     head.querySelector('.tm-title .grow').before(chipsEl);
   }
 
-  // 기동한 프로세스(06 §7.1): comm · pid · 상태 · CPU · RSS · 서비스 →(끝났고 보고서가 있으면 종료 보고서 →)
+  // 기동한 프로세스(06 §7.1 · §7.2 계보): 스텝 명령(리더)에서 부모 프로세스로 이은 가로 트리. 칸마다 comm · pid · 상태 ·
+  // (살아 있으면) CPU · RSS · 서비스 →, 끝났고 보고서가 있으면 종료 보고서 →
   function drawProcs() {
-    const ps = (detail.procs || []).filter((p) => !p.leader).sort((a, b) => a.started_at - b.started_at || a.pid - b.pid);
-    procCard.hidden = !ps.length;
-    chipsEl.replaceChildren(...[procChips(detail.procs, st.run.host)].filter(Boolean));
+    const all = detail.procs || [];
+    const n = all.filter((p) => !p.leader).length;
+    procCard.hidden = !n;
+    chipsEl.replaceChildren(...[procChips(all, st.run.host)].filter(Boolean));
+    if (!n) return;
     const ex = new Map(exits.map((x) => [x.id, x]));
-    const rows = ps.map((p) => {
-      const x = p.exit_id ? ex.get(p.exit_id) : null;
-      const state = !p.ended_at ? el('span', { class: 'tp-up', text: '실행 중' })
-        : el('span', { class: p.exit_id ? 'tp-down' : 'tp-end' }, p.exit_id ? '■ ' : '', x ? endText(x) : '종료', ' ', el('span', { class: 'num', text: fmtClock(p.ended_at) }));
-      const num = (html) => { const s = el('span', { class: 'tp-n' }); s.innerHTML = p.ended_at ? '' : html; return s; };
-      const svcHref = p.service ? `#svc/${q(p.service)}?host=${q(p.host || st.run.host)}` + (p.ended_at ? `&at=${Math.round(p.ended_at)}` : '') : '';
-      const go = p.exit_id ? el('a', { href: '#exit/' + q(p.exit_id), text: '종료 보고서 →' })
-        : p.service ? el('a', { href: svcHref, text: `서비스 ${titleOf(p.service)} →` }) : el('span');
-      return el('div', { class: 'tp-row' },
-        el('b', { class: 'tp-c', text: p.comm || DASH }), el('span', { class: 'tp-pid num', text: `pid ${p.pid ?? DASH}` }), state,
-        num(`<span class="tl">CPU</span> ${numUnit(p.cpu, '%')}`), num(`<span class="tl">RSS</span> ${numUnit(p.rss_mb, 'MB', 0)}`), go);
-    });
-    procCard.replaceChildren(el('div', { class: 'tm-ch' }, el('h3', { class: 'sec', text: '기동한 프로세스' }), el('span', { class: 'tp-cnt num', text: `${fmtNum(ps.length, 0)}개` })),
-      el('div', { class: 'tp-list' }, rows));
+    const groups = lineageOf(all.map((p) => ({ ...p, exec_id: p.exec_id || id, host: p.host || st.run.host })));
+    procCard.replaceChildren(el('div', { class: 'tm-ch' }, el('h3', { class: 'sec', text: '기동한 프로세스' }),
+      info('스텝 명령이 띄운 프로세스를 부모 프로세스로 이은 트리. 부모 기록이 없으면(데몬처럼 부모를 끊고 나간 것) 스텝 명령 바로 아래에 둔다. 서비스로 옮겨 간 것은 서비스 이름을 누르면 서비스 타임머신'),
+      el('span', { class: 'tp-cnt num', text: `${fmtNum(n, 0)}개` })),
+      renderLineage(groups, { here: id, values: true, svcTitle: titleOf, exitText: (p) => { const x = ex.get(p.exit_id); return x ? endText(x) : ''; } }));
   }
   // 서비스로 옮겨 간 프로세스: 실행 지표 트랙 위 한 줄
   function drawMoved() {

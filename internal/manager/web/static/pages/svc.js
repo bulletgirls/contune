@@ -14,9 +14,11 @@ import { bandsFromPanel, pickPanel } from './panelbands.js';
 import { fixedAB, topChanges } from './tm.js';
 import { bizTabs, splitPrefix } from './biz.js';
 import { svcHash, servicesOf } from './dashboard.js';
+import { lineageOf, renderLineage } from '../lineage.js';
 
 const q = encodeURIComponent;
 const AT_PAD = 15 * 60e3;
+const LG_RUNS = 4; // 계보에 그리는 실행 수(최근 것부터)
 
 // ---- 순수 함수 ----
 // 인스턴스 상태 → 색 이름 · 기호 · 글자. 정의에 expect가 있으면 없는 것이 곧 '서비스 미기동'(05 §14.2 용어)
@@ -60,6 +62,19 @@ export function eventMarks(events, view, withLabel) {
     out.push(m);
   }
   return out;
+}
+// 계보에 그릴 실행: 이 서비스 프로세스를 띄운 실행 ID를 마지막 기동이 늦은 순으로 max개(실행 밖 기동은 빼고)
+export function lineageRuns(procs, max = LG_RUNS) {
+  const at = new Map();
+  for (const p of procs || []) if (p.exec_id) at.set(p.exec_id, Math.max(at.get(p.exec_id) || 0, p.started_at || 0));
+  const ids = [...at.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
+  return { ids: ids.slice(0, max), total: ids.length };
+}
+// 프로세스 기록 합치기(같은 서버 · pid · 시작 시각이면 하나, 뒤의 것이 이긴다)
+export function mergeProcs(...lists) {
+  const m = new Map();
+  for (const p of lists.flat()) if (p) m.set(`${p.host}/${p.pid}/${p.started_at}`, { ...(m.get(`${p.host}/${p.pid}/${p.started_at}`) || {}), ...p });
+  return [...m.values()];
 }
 export function pointsOf(resp, name) {
   const s = ((resp && resp.series) || []).find((x) => x.name === name);
@@ -213,6 +228,13 @@ async function renderTM(root, id, query) {
 
   const head = el('div', { class: 'tm-head' });
   const kpis = el('div', { class: 'bt-kpis tm-kpis' });
+  const lgCnt = el('span', { class: 'lg-cnt num' });
+  const lgBody = el('div');
+  const lgCard = el('section', { class: 'tm-card sv-lg', hidden: true },
+    el('div', { class: 'tm-ch' }, el('h3', { class: 'sec', text: '계보' }),
+      info('고른 구간에 이 서버의 이 서비스를 띄운 실행(플로우 › 스텝)과, 그 실행이 같이 띄운 프로세스. 부모 프로세스로 잇고, 부모 기록이 없으면(데몬처럼 부모를 끊고 나간 것) 스텝 명령 바로 아래에 둔다. 테두리가 굵은 칸이 이 서비스'),
+      el('span', { class: 'grow' }), lgCnt),
+    lgBody);
   const toolbar = el('div', { class: 'tm-tools' });
   const tracks = el('div', { class: 'tm-tracks' });
   const metricCard = el('section', { class: 'tm-card' },
@@ -230,7 +252,7 @@ async function renderTM(root, id, query) {
   const tabsEl = el('div', { class: 'tm-tabs', role: 'tablist' });
   const pane = el('div', { class: 'tm-pane' });
   const logCard = el('section', { class: 'tm-card tm-logcard' }, tabsEl, pane);
-  page.append(head, kpis, rangeBar, metricCard, profCard, logCard);
+  page.append(head, lgCard, kpis, rangeBar, metricCard, profCard, logCard);
 
   function drawHead() {
     const ins = st.detail.instances || [];
@@ -426,6 +448,25 @@ async function renderTM(root, id, query) {
     await drawFlames();
   }
 
+  // 계보: 이 서비스 프로세스를 띄운 실행마다 그 실행의 프로세스 전부(GET /procs?exec_id=, 구간 없이: 스텝 명령은 몇 초 만에 끝난다)
+  let lgKey = '';
+  async function loadLineage(force) {
+    const own = mine(st.detail.procs);
+    const { ids, total } = lineageRuns(own);
+    const key = ids.join(',') + '|' + own.map((p) => `${p.pid}:${p.ended_at || 0}`).join(',');
+    if (!force && key === lgKey) return;
+    lgKey = key;
+    const sets = await Promise.all(ids.map((x) => api(`/procs?exec_id=${q(x)}&limit=200`).then((r) => r.procs || []).catch(() => [])));
+    const keep = new Set(ids);
+    const procs = mergeProcs(sets.flat(), own.filter((p) => !p.exec_id || keep.has(p.exec_id)));
+    const groups = lineageOf(procs, (p) => p.service === id && (!host || p.host === host));
+    lgCard.hidden = !groups.length;
+    if (!groups.length) return;
+    const exitText = new Map(mine(st.detail.events).filter((e) => e.exit_id).map((e) => [e.exit_id, e.text]));
+    lgCnt.textContent = `실행 ${fmtNum(ids.length)}개${total > ids.length ? ` (전체 ${fmtNum(total)}개 중 최근)` : ''}` + (groups.some((g) => !g.exec_id) ? ' · 이음 밖 기동' : '');
+    lgBody.replaceChildren(renderLineage(groups, { dim: true, exitText: (p) => exitText.get(p.exit_id) || '' }));
+  }
+
   // 아래 탭: 프로세스 · 사건 · 애플리케이션 로그
   function procTable() {
     const ps = mine(st.detail.procs);
@@ -496,6 +537,7 @@ async function renderTM(root, id, query) {
   }
 
   drawHead(); drawKpis(); drawTools(); drawTabs();
+  loadLineage(true);
   buildCharts(await fetchAll());
   await drawFlames();
   loadLogs();
@@ -503,6 +545,7 @@ async function renderTM(root, id, query) {
   tr.onChange(async () => {
     buildCharts(await reloadAll(false));
     drawTabs();
+    loadLineage(false);
     drawFlames();
     loadLogs();
   });
@@ -514,6 +557,7 @@ async function renderTM(root, id, query) {
     }
     updateCharts(await reloadAll(true));
     drawTabs();
+    loadLineage(false);
   }, 5000));
 }
 

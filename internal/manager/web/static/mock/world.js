@@ -1,6 +1,7 @@
 // 결정적 세계: 서버 43대·그룹 8개, 플로우 41개·배치판 6개, 실행 이력, 장애 기록.
 // 업무 프로세스 둘: 체결(match-01 matching_svc, market-open → w.startRun), 시세(feed-01 quote_svc, quote-open → w.quoteRun).
 // 실행 · 프로세스 · 서비스(06 §2.1): BATCH_JOB › start(batch-02)가 svr_a·svr_b·svr_c를 띄우고 2초 만에 끝난다(w.batchRun, w.procs).
+// svr_b가 SIGSEGV로 죽은 뒤 수동 재실행(w.batchRuns[1])이 svr_b만 다시 띄운다(계보, 06 §7.2).
 // 다른 mock 모듈은 이 파일이 만든 세계만 본다. 시각은 처음 만든 때(base)를 기준으로 상대 배치한다.
 import { hash32, rnd, ulid, mulberry32, MIN, HOUR, DAY, SEC } from './util.js';
 import { hostAt } from './signal.js';
@@ -526,6 +527,19 @@ function buildProcs(w, base) {
   svr(4101, 'svr_a', { sig: { cpu: 38, rss: 210, threads: 6 } });
   svr(4102, 'svr_b', { ended_at: base - 12 * MIN, exit_id: 'exit-svr_b-4102', sig: { cpu: 52, rss: 380, threads: 4 } });
   svr(4103, 'svr_c', { sig: { cpu: 121, rss: 1204, threads: 12 } });
+  // svr_b가 죽고 3분 뒤 운영자가 BATCH_JOB을 수동으로 다시 돌림: start_job.sh는 살아 있는 svr_a·svr_c를 건너뛰고 svr_b만 띄운다
+  const b1 = base - 9 * MIN;
+  const bfr2 = newFlowRun(w, bj, 'manual', b1);
+  const br2 = newRun(w, bfr2, bj, bj.steps[0], 1, { trigger: 'manual', scheduledAt: b1, startAt: b1 + 400, endAt: b1 + 1900, status: 'SUCCEEDED',
+    log: '(I) start_job 시작\n(I) svr_a 이미 실행 중 pid 4101, 건너뜀\n(I) svr_b 기동 pid 4188\n(I) svr_c 이미 실행 중 pid 4103, 건너뜀\n(I) start_job 끝남\n' });
+  br2.job_cpu = 3.2;
+  br2.job_mem = 6.1;
+  br2.peak_cpu_pct = 3.2;
+  br2.peak_rss_mb = 3.3;
+  w.batchRuns = [br, br2];
+  leader(br2, 4180, 'start_job.sh');
+  P(br2, { pid: 4188, ppid: 4180, started_at: br2.started_at + 700, comm: 'svr_b', exe: '/opt/batch/bin/svr_b',
+    cmdline: '/opt/batch/bin/svr_b --conf /opt/batch/conf/svr_b.yaml', service: 'svr_b', auto: true, sig: { cpu: 49, rss: 362, threads: 4 } });
   // 서비스에 맞지 않은 상주: 개장준비 fetch-ref › pull-ref가 남긴 ref_cache(주인은 그 실행, 스텝은 끝남)
   const pr = w.runs.filter((r) => r.flow_id === 'fetch-ref' && r.step_id === 'pull-ref' && r.ended_at).sort((a, b) => b.started_at - a.started_at)[0];
   if (pr) {
@@ -561,6 +575,7 @@ export function getWorld(now) {
     quoteRun: null,
     extFail: null,
     batchRun: null,
+    batchRuns: [],
     procs: [],
   };
   buildHistory(w, w.flows, base);
