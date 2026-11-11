@@ -92,11 +92,9 @@ func identityFresh(tr *tracker, pid int) bool {
 	}
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
-	for _, r := range tr.runs {
-		for k, p := range r.procs {
-			if k.pid == pid && p.info != nil {
-				return !tr.execed(pid, p.info, st)
-			}
+	for k := range tr.members { // 실행 주인이든 서비스 주인(자동 서비스)이든
+		if p := tr.lookup(k); k.pid == pid && p != nil && p.info != nil {
+			return !tr.execed(pid, p.info, st)
 		}
 	}
 	return false
