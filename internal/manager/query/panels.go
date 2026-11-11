@@ -48,6 +48,7 @@ func LoadPanelsWith(dir string, flowOK func(id string) bool) (panels []model.Pan
 		return nil, nil, err
 	}
 	seen := map[string]string{} // id → 파일
+	var files []string          // panels와 같은 순서의 파일 이름
 	for _, e := range ents {
 		name := e.Name()
 		if e.IsDir() || !strings.HasSuffix(name, ".yaml") {
@@ -81,8 +82,90 @@ func LoadPanelsWith(dir string, flowOK func(id string) bool) (panels []model.Pan
 		}
 		seen[p.ID] = name
 		panels = append(panels, p)
+		files = append(files, name)
 	}
+	panels, errs = checkNext(panels, files, errs)
 	return panels, errs, nil
+}
+
+// checkNext는 패널을 넘는 규칙(05 §19.13)이다: next의 패널이 있어야 하고(읽지 못한 패널도 없는 것), 돌아오는 연결이 없어야 한다.
+// 어긴 패널은 읽지 못한 파일로 옮긴다. 하나를 빼면 그것을 가리키던 패널도 어기게 되므로 바뀌지 않을 때까지 되풀이한다.
+func checkNext(panels []model.Panel, files []string, errs []PanelError) ([]model.Panel, []PanelError) {
+	drop := func(bad map[int]string) {
+		var ps []model.Panel
+		var fs []string
+		for i, p := range panels {
+			if msg, ok := bad[i]; ok {
+				errs = append(errs, PanelError{File: files[i], Msg: msg})
+				continue
+			}
+			ps, fs = append(ps, p), append(fs, files[i])
+		}
+		panels, files = ps, fs
+	}
+	for {
+		idx := map[string]int{}
+		for i, p := range panels {
+			idx[p.ID] = i
+		}
+		bad := map[int]string{}
+		for i, p := range panels {
+			for _, n := range p.Next {
+				if _, ok := idx[n]; !ok {
+					bad[i] = fmt.Sprintf("next: 패널 %q가 없습니다(panels 폴더의 패널 id 확인, 읽지 못한 패널이면 그 파일부터)", n)
+					break
+				}
+			}
+		}
+		if len(bad) == 0 {
+			// 돌아오는 연결: 깊이 우선으로 찾은 고리에 든 패널을 모두 뺀다.
+			state := make([]int, len(panels)) // 0 처음, 1 도는 중, 2 끝
+			var path []int
+			var visit func(i int) []int
+			visit = func(i int) []int {
+				state[i] = 1
+				path = append(path, i)
+				for _, n := range panels[i].Next {
+					j := idx[n]
+					if state[j] == 1 {
+						for k, x := range path {
+							if x == j {
+								return append([]int{}, path[k:]...)
+							}
+						}
+					}
+					if state[j] == 0 {
+						if c := visit(j); c != nil {
+							return c
+						}
+					}
+				}
+				path = path[:len(path)-1]
+				state[i] = 2
+				return nil
+			}
+			for i := range panels {
+				if state[i] != 0 {
+					continue
+				}
+				if c := visit(i); c != nil {
+					names := make([]string, 0, len(c)+1)
+					for _, x := range c {
+						names = append(names, panels[x].ID)
+					}
+					names = append(names, panels[c[0]].ID)
+					for _, x := range c {
+						bad[x] = "next가 돌아옵니다: " + strings.Join(names, " → ")
+					}
+					break
+				}
+			}
+		}
+		if len(bad) == 0 {
+			return panels, errs
+		}
+		drop(bad)
+	}
 }
 
 func validatePanel(p model.Panel, flowOK func(string) bool) error {
@@ -101,6 +184,25 @@ func validatePanel(p model.Panel, flowOK func(string) bool) error {
 		if !found {
 			return fmt.Errorf("main %q: 이 패널에 그 제목의 타일이 없습니다", p.Main)
 		}
+	}
+	// 업무 흐름 칸(05 §19.13): in · out은 이 패널의 타일 제목, 둘 다 쓰면 단위가 같아야 쌓임(in − out)을 센다.
+	in, out := p.TileIndex(p.In), p.TileIndex(p.Out)
+	switch {
+	case p.In != "" && in < 0:
+		return fmt.Errorf("in %q: 이 패널에 그 제목의 타일이 없습니다", p.In)
+	case p.Out != "" && out < 0:
+		return fmt.Errorf("out %q: 이 패널에 그 제목의 타일이 없습니다", p.Out)
+	case in >= 0 && in == out:
+		return fmt.Errorf("in과 out이 같은 타일 %q입니다", p.In)
+	case in >= 0 && out >= 0 && p.Tiles[in].Unit != p.Tiles[out].Unit:
+		return fmt.Errorf("in %q(%s)과 out %q(%s)의 단위가 달라 쌓임(in − out)을 셀 수 없습니다", p.In, p.Tiles[in].Unit, p.Out, p.Tiles[out].Unit)
+	}
+	seenNext := map[string]bool{}
+	for _, id := range p.Next {
+		if id == "" || seenNext[id] || id == p.ID {
+			return fmt.Errorf("next: 빈 패널 ID, 두 번 쓴 %q, 또는 자기 자신입니다", id)
+		}
+		seenNext[id] = true
 	}
 	seenFlow := map[string]bool{}
 	for _, id := range p.Flows {

@@ -1,7 +1,8 @@
-// 업무 관제(#bizwatch)(05 §19): 업무 상태 카드 · 업무 이벤트 · 업무 마감 · 오늘 업무 배치 띠 · 오늘 업무 상태 이력.
+// 업무 관제(#bizwatch)(05 §19): 업무 상태 카드 · 업무 이벤트 · 업무 마감 · 업무 흐름 · 오늘 업무 배치 띠 · 오늘 업무 상태 이력.
 // 업무 = 패널 하나. 관제(#dashboard)가 IT 자원 관점이라면 여기는 업무 관점이고, 숫자 상세와 로그는 업무 탭(#biz/<panel>)이 맡는다.
 // 카드는 대표 지표 하나와 근거(등급을 정한 증상) · 원인(그룹 서버 · 관련 배치 · 함수) · 일정(감시 시간)만 싣는다.
 // 업무 배치(2단계) = 플로우 YAML에 deadline이 적힌 배치: 마감까지 남은 시간(조건 대기면 gate 조건과 남은 양)과 오늘 실행 기록.
+// 업무 흐름(3단계) = 패널 in · out · next: 화살표 = 앞 업무의 out, 쌓임 = in − out.
 // 매니저 GET /api/v1/bizwatch(05 §19.7)를 읽는다. mock(?mock=1)도 같은 응답 모양이다.
 // 주소: #bizwatch[?g=<그룹>&cmp=day|week&at=HH:MM] (at: mock 전용, 감시 시간 · 업무 마감 판단 시각 KST)
 import { api, poll, isMock } from '../api.js';
@@ -54,6 +55,31 @@ export const dueRight = (b) => `마감 ${b.deadline}${b.left ? ' · ' + b.left :
 export function span(from, to, win) {
   const l = pos(from, win);
   return [l, Math.max(0, pos(to, win) - l)];
+}
+// 업무 흐름 배치(순수): 열 = next를 거슬러 간 가장 긴 길이(앞 업무가 없으면 0), 줄 = 그 열 안에서 나온 순서.
+export const FN = { w: 232, h: 100, gx: 156, gy: 18, pad: 8, top: 8 };
+export function flowLayout(f) {
+  const ids = f.nodes.map((n) => n.id);
+  const prev = new Map(ids.map((id) => [id, []]));
+  for (const e of f.edges) if (prev.has(e.to) && prev.has(e.from)) prev.get(e.to).push(e.from);
+  const col = new Map();
+  const depth = (id, seen) => {
+    if (col.has(id)) return col.get(id);
+    if (seen.has(id)) return 0; // 돌아오는 연결은 매니저가 읽지 않는다(방어)
+    seen.add(id);
+    const d = Math.max(0, ...prev.get(id).map((p) => depth(p, seen) + 1));
+    col.set(id, d);
+    return d;
+  };
+  for (const id of ids) depth(id, new Set());
+  const rows = new Map(), pos = new Map();
+  for (const id of ids) {
+    const c = col.get(id), r = rows.get(c) || 0;
+    rows.set(c, r + 1);
+    pos.set(id, { x: FN.pad + c * (FN.w + FN.gx), y: FN.top + r * (FN.h + FN.gy), col: c, row: r });
+  }
+  const ncol = ids.length ? Math.max(...col.values()) + 1 : 0, nrow = Math.max(1, ...rows.values());
+  return { pos, width: FN.pad * 2 + ncol * FN.w + Math.max(0, ncol - 1) * FN.gx, height: FN.top + nrow * FN.h + (nrow - 1) * FN.gy + FN.pad };
 }
 // 상태 이력 칸 → 그 구간(앞뒤 10분)의 업무 탭
 export function cellHref(row, i, h) {
@@ -206,6 +232,63 @@ function bandRow(b, win, nowPct) {
   return [name, track];
 }
 
+// 업무 흐름: 노드 = 업무(등급 · in · out · 쌓임), 화살표 = 앞 업무의 out(그 타일의 지금 값과 판정 색)
+function flowSec(d) {
+  const f = d.bizflow || { nodes: [], edges: [] };
+  const sec = el('section', { class: 'bw-card bw-flow' });
+  sec.append(el('div', { class: 'bw-h' }, el('h2', { text: '업무 흐름' }),
+    el('span', { class: 'bw-dim', text: '화살표 = 앞 업무의 out · 쌓임 = in − out' }),
+    info('패널 YAML의 in · out(타일 제목)과 next(다음 업무 패널)로만 그린다. 값은 그 타일의 지금 값, 화살표 색은 그 타일의 판정. 쌓임은 기준이 없어 판정하지 않는다. 업무 등급에는 넣지 않는다')));
+  if (!f.nodes.length) {
+    sec.append(el('p', { class: 'empty', text: '업무 흐름 칸이 적힌 업무 없음(패널 in · out · next)' }));
+    return sec;
+  }
+  const L = flowLayout(f);
+  const box = el('div', { class: 'bw-flowc', style: `width:${L.width}px;height:${L.height}px` });
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'bw-fsvg');
+  svg.setAttribute('width', String(L.width));
+  svg.setAttribute('height', String(L.height));
+  svg.setAttribute('aria-hidden', 'true');
+  for (const e of f.edges) {
+    const a = L.pos.get(e.from), b = L.pos.get(e.to);
+    if (!a || !b) continue;
+    const st = e.qty ? e.qty.state : 'none';
+    const x1 = a.x + FN.w, y1 = a.y + FN.h / 2, x2 = b.x - 2, y2 = b.y + FN.h / 2, dx = Math.max(30, (x2 - x1) / 2);
+    const g = document.createElementNS(NS, 'g');
+    g.setAttribute('class', `bw-fe ${st}`);
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2 - 7},${y2}`);
+    const head = document.createElementNS(NS, 'polygon');
+    head.setAttribute('points', `${x2 - 8},${y2 - 5} ${x2},${y2} ${x2 - 8},${y2 + 5}`);
+    g.append(path, head);
+    svg.append(g);
+    // 화살표 글자: 앞 업무 out의 이름과 값(가까운 쪽 = 앞 업무 끝에 붙여 화살표가 여럿이어도 겹치지 않게)
+    const lx = x1 + Math.min(FN.gx / 2, (x2 - x1) / 2), ly = y1 + (y2 - y1) * 0.12 - 6;
+    box.append(el('div', { class: 'bw-fl', 'data-s': st, style: `left:${lx}px;top:${ly}px`, title: e.qty ? `${e.qty.name} ${e.qty.text}` : 'out 없음(패널 out 확인)' },
+      el('span', { text: e.qty ? e.qty.name : 'out 없음' }), el('b', { text: e.qty ? e.qty.text : DASH })));
+  }
+  box.prepend(svg);
+  for (const n of f.nodes) {
+    const p = L.pos.get(n.id);
+    const b = el('span', { class: 'bw-badge' });
+    b.innerHTML = badge(n.level);
+    const q = (label, sub, x) => el('div', { class: 'bw-fq' }, el('span', { text: label }), el('span', { text: sub, title: sub }),
+      el('b', { 'data-s': x.state, text: x.text }));
+    const rows = [];
+    if (n.in) rows.push(q('in', n.in.name, n.in));
+    if (n.out) rows.push(q('out', n.out.name, n.out));
+    if (n.backlog) rows.push(q('쌓임', 'in − out', n.backlog));
+    if (!rows.length) rows.push(el('div', { class: 'bw-none', text: 'in · out 없음' }));
+    box.append(el('a', { class: `bw-fn ${n.level}`, href: n.href, style: `left:${p.x}px;top:${p.y}px;width:${FN.w}px;height:${FN.h}px`, title: '업무 탭에서 지표 · 로그 보기' },
+      el('div', { class: 'bw-fnh' }, el('span', { class: 'bw-dim', text: n.group.split('/')[0], title: n.group }), el('b', { text: n.title }), el('span', { class: 'grow' }), b),
+      ...rows));
+  }
+  sec.append(el('div', { class: 'bw-scroll' }, box));
+  return sec;
+}
+
 function axisEl(win) {
   const axis = el('div', { class: 'bw-axis' });
   const a = hm(win.from) / 60, z = hm(win.to) / 60, step = z - a > 12 ? 3 : 2;
@@ -282,7 +365,7 @@ export function render(root, params, query) {
     if (sig === lastSig || hold || (document.activeElement && document.activeElement.id === 'bw-at')) return;
     lastSig = sig;
     const mid = el('div', { class: 'bw-mid' }, cards(d, cmpLabel), eventSec(d));
-    wrap.replaceChildren(head(d, query), mid, historySec(d));
+    wrap.replaceChildren(head(d, query), mid, flowSec(d), historySec(d));
   }, 2000);
 }
 

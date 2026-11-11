@@ -103,6 +103,7 @@ type resp struct {
 	} `json:"services"`
 	Events  []EventGroup `json:"events"`
 	Batches []Batch      `json:"batches"`
+	Flow    BizFlow      `json:"bizflow"`
 	History struct {
 		From, To string
 		Rows     []struct {
@@ -340,5 +341,32 @@ func TestAPIBatches(t *testing.T) {
 		if got := flows(e.get(t, "?g="+g)); got != want {
 			t.Errorf("범위 %s: %q", g, got)
 		}
+	}
+}
+
+// 업무 흐름(05 §19.13): 패널 in · out · next와 실제 타일 판정(live 값)으로 노드 · 화살표, 그룹 범위.
+func TestAPIFlow(t *testing.T) {
+	e := newEnv(t)
+	nowMS := e.now.UnixMilli()
+	e.lv.Put("match-01", "매매/체결", []model.Sample{{TS: nowMS, Name: "biz.order.in_tps", Value: 6000, ExecID: "E9"}}, nowMS)
+	m := matching()
+	m.Tiles = append(m.Tiles, model.Tile{Title: "주문 유입량", Metric: "biz.order.in_tps", Agg: "sum", Unit: "TPS"})
+	m.In, m.Out, m.Next = "주문 유입량", "체결 처리량", []string{"quote"}
+	quote := model.Panel{ID: "quote", Title: "시세", Group: "매매/시세", Active: "mon-fri 08:00-15:30", Tiles: []model.Tile{{Title: "1분 시세량", Metric: "biz.quote.count_1m", Agg: "min", KPI: true}}}
+	e.w.d.Panels = query.PanelsOf(kst, m, quote)
+	r := e.get(t, "")
+	if len(r.Flow.Nodes) != 2 || len(r.Flow.Edges) != 1 {
+		t.Fatalf("흐름 %+v", r.Flow)
+	}
+	n := r.Flow.Nodes[0]
+	if n.ID != "matching" || n.Level != "crit" || n.In.Text != "6,000 TPS" || n.Out.Text != "5,860 TPS" || n.Backlog.Text != "+140 TPS" {
+		t.Errorf("체결 %+v in %+v out %+v 쌓임 %+v", n, n.In, n.Out, n.Backlog)
+	}
+	if e := r.Flow.Edges[0]; e.From != "matching" || e.To != "quote" || e.Qty.Name != "체결 처리량" || e.Qty.Text != "5,860 TPS" || e.Qty.State != "ok" {
+		t.Errorf("화살표 %+v %+v", e, e.Qty)
+	}
+	// 시세만 보면 체결이 빠져 화살표도 시세 노드도 없다(시세는 흐름 칸이 없음).
+	if r := e.get(t, "?g=매매/시세"); len(r.Flow.Nodes) != 0 || len(r.Flow.Edges) != 0 {
+		t.Errorf("범위 %+v", r.Flow)
 	}
 }

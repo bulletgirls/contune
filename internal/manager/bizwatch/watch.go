@@ -71,6 +71,7 @@ func (w *Watch) Mount(mux *http.ServeMux) {
 type snap struct {
 	svcs   []Service
 	panels []model.Panel
+	tiles  [][]query.TileState // panels와 같은 순서(업무 흐름의 in · out 값)
 	firing []model.Alert
 	hosts  []model.Host
 }
@@ -91,6 +92,7 @@ func (w *Watch) snapshot(ctx context.Context, now time.Time, cmp time.Duration, 
 	local := now.In(w.d.Loc)
 	svcs := make([]Service, 0, len(states))
 	panels := make([]model.Panel, 0, len(states))
+	tiles := make([][]query.TileState, 0, len(states))
 	for _, ps := range states {
 		p := ps.Panel
 		in := Input{Panel: p, Tiles: ps.Tiles, Now: local}
@@ -128,8 +130,9 @@ func (w *Watch) snapshot(ctx context.Context, now time.Time, cmp time.Duration, 
 		}
 		svcs = append(svcs, Judge(in))
 		panels = append(panels, p)
+		tiles = append(tiles, ps.Tiles)
 	}
-	return snap{svcs: svcs, panels: panels, firing: firing, hosts: hosts}, nil
+	return snap{svcs: svcs, panels: panels, tiles: tiles, firing: firing, hosts: hosts}, nil
 }
 
 // hostIssues는 정상이 아닌 서버다(/hosts와 같은 JudgeHost). What은 원인 줄 글자.
@@ -437,6 +440,7 @@ func (w *Watch) handle(rw http.ResponseWriter, r *http.Request) {
 	}
 	var shown []Service
 	var shownPanels []model.Panel
+	var shownTiles [][]query.TileState
 	levels := map[string]string{}
 	counts := map[string]int{"crit": 0, "warn": 0, "ok": 0, "off": 0}
 	for i, s := range sn.svcs {
@@ -445,6 +449,7 @@ func (w *Watch) handle(rw http.ResponseWriter, r *http.Request) {
 		}
 		shown = append(shown, s)
 		shownPanels = append(shownPanels, sn.panels[i])
+		shownTiles = append(shownTiles, sn.tiles[i])
 		levels[s.ID] = s.Level
 		counts[s.Level]++
 	}
@@ -462,6 +467,7 @@ func (w *Watch) handle(rw http.ResponseWriter, r *http.Request) {
 		"services":  shown,
 		"events":    Events(shown, sn.firing, now.UnixMilli()),
 		"batches":   shownBatches,
+		"bizflow":   BuildFlow(shown, shownPanels, shownTiles, local),
 		"history":   BuildHistory(shownPanels, shownBatches, levels, states, local),
 	})
 }

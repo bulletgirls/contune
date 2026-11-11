@@ -1,7 +1,8 @@
 // /bizwatch: 업무 관제(#bizwatch) mock(05 §19). 매니저 GET /api/v1/bizwatch와 같은 응답 모양이다.
 // 원칙: 새 데이터를 만들지 않는다. 업무 = 패널 하나. 서버 · 배치 · 업무 지표를 패널에 적힌 연결로만 묶는다.
 //   group(있음) = 그 그룹 서버, tiles(있음) = 업무 지표, active = 업무 감시 시간,
-//   flows = 이 업무가 기대는 배치, main = 대표 지표, 플로우 deadline(2단계) = 업무 마감. 적지 않은 연결은 추정하지 않는다.
+//   flows = 이 업무가 기대는 배치, main = 대표 지표, 플로우 deadline(2단계) = 업무 마감,
+//   in · out · next(3단계) = 업무 흐름. 적지 않은 연결은 추정하지 않는다.
 // 등급: 증상(타일 판정 · 그룹 로그 알림)은 그대로, 원인(그룹 서버 · flows 실패)은 경고까지, 감시 시간 밖이면 시간 외.
 // ?at=HH:MM(mock 전용)이면 그 시각(KST)으로 감시 시간 · 업무 마감을 판단한다(값은 지금 값, 이력은 그 시각까지).
 import { MIN, SEC, DAY, KST, fmtN, round, clamp, cronDay } from './util.js';
@@ -303,6 +304,32 @@ function bizwatch(c) {
   const listed = new Set(scoped.flatMap((s) => s.flows));
   const shownBatches = batches.filter((b) => !g || listed.has(b.flow) || b._hosts.some((h) => inScope(hostGroup.get(h) || ''))).map(({ _hosts, ...b }) => b);
 
+  // ---- 업무 흐름(05 §19.13): 패널 in · out · next로만. 화살표 = 앞 업무의 out, 쌓임 = in − out(판정 없음) ----
+  const unitTxt = (u) => (!u ? '' : u === '%' ? '%' : ' ' + u);
+  const qtyOf = (sv, title) => {
+    const t = title && sv._p.tiles.find((x) => x.title === title);
+    if (!t) return null;
+    const tOff = sv.off || !activeAt(parseActive(t.active) || sv._act, dow, min);
+    const stale = t.reason === 'stale';
+    const text = stale ? staleText(t) : t.value == null ? '–' : `${fmtN(t.value)}${unitTxt(t.unit)}`;
+    return { name: t.title, value: t.value ?? null, unit: t.unit || '', state: tOff ? 'off' : t.state || 'none', text, _stale: stale };
+  };
+  const backlogOf = (sv, a, z) => {
+    const q = { name: '쌓임', value: null, unit: a.unit, state: sv.off ? 'off' : 'none', text: '–' };
+    if (a.value == null || z.value == null || a._stale || z._stale) return q;
+    const v = a.value - z.value;
+    return { ...q, value: v, text: `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmtN(Math.abs(v))}${unitTxt(a.unit)}` };
+  };
+  const clean = (q) => (q ? (({ _stale, ...x }) => x)(q) : null);
+  const targets = new Set(scoped.flatMap((sv) => sv._p.next || []));
+  const flowNodes = scoped.filter((sv) => sv._p.in || sv._p.out || (sv._p.next || []).length || targets.has(sv.id)).map((sv) => {
+    const i = qtyOf(sv, sv._p.in), o = qtyOf(sv, sv._p.out);
+    return { id: sv.id, title: sv.title, group: sv.group, level: sv.level, href: `#biz/${sv.id}`, in: clean(i), out: clean(o), backlog: i && o ? backlogOf(sv, i, o) : null };
+  });
+  const shownIds = new Set(scoped.map((sv) => sv.id));
+  const flowEdges = scoped.flatMap((sv) => (sv._p.next || []).filter((to) => shownIds.has(to))
+    .map((to) => ({ from: sv.id, to, qty: (flowNodes.find((n) => n.id === sv.id) || {}).out || null })));
+
   // ---- 오늘 업무 상태 이력: 5분 칸마다 같은 규칙으로 다시 판정 ----
   // 창 = 감시 시간 · 업무 배치(첫 실행 ~ 마감, 실행 기록) 중 가장 이른 때 1시간 전 ~ 가장 늦은 때 1시간 뒤(정시).
   // 감시 시간이 없는 업무가 있으면 하루 전체.
@@ -358,6 +385,7 @@ function bizwatch(c) {
     services: shown,
     events: events.filter((e) => inScope(services.find((s) => s.id === e.service).group)),
     batches: shownBatches,
+    bizflow: { nodes: flowNodes, edges: flowEdges },
     history: { slot: SLOT, from: clock(a0), to: a1 >= 24 * 60 ? '24:00' : clock(a1), t0: Math.round(real(a0)), rows },
   });
 }

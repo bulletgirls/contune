@@ -413,10 +413,14 @@ export const PANELS = [
     id: 'matching',
     title: '체결',
     group: '매매/체결',
-    // 업무 관제 1단계 칸(05 §19.3): 감시 시간 · 이 업무가 기대는 배치 · 대표 지표. 매니저 구현 전이라 panels/*.yaml에는 아직 없다.
+    // 업무 관제 칸(05 §19.3): 감시 시간 · 이 업무가 기대는 배치 · 대표 지표.
     active: 'mon-fri 08:30-15:30',
     flows: ['market-open'],
     main: '체결 처리량',
+    // 업무 흐름(05 §19.13): 들어오는 양 · 내보내는 양 · 다음 업무. mock 예: 체결 결과가 시세로 간다(실제 연결은 운영자가 패널에 적는다).
+    in: '주문 유입량',
+    out: '체결 처리량',
+    next: ['quote'],
     tiles: [
       { title: '주문 유입량', signal: 'traffic', metric: 'biz.order.in_tps', agg: 'sum', unit: 'TPS', kpi: true },
       { title: '체결 처리량', signal: 'traffic', metric: 'biz.order.tps', agg: 'sum', unit: 'TPS' },
