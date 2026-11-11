@@ -13,7 +13,7 @@ import { servicesOf } from './dashboard.js';
 const DASH_ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const RESERVED = ['templates', 'metrics', 'data']; // 경로 /dashboards/<이름>과 겹친다(model.DashIDOK)
 const METRIC_RE = /^[A-Za-z0-9_.:-]+\*?$/;
-const MAX_WIDGETS = 60, MAX_QUERIES = 8, MAX_TITLE = 80, MAX_TEXT = 2000;
+const MAX_WIDGETS = 60, MAX_QUERIES = 8, MAX_TITLE = 80, MAX_TEXT = 2000, MAX_NODES = 20;
 const AGG_TEXT = { avg: '평균', sum: '합계', max: '최대', min: '최소' };
 const LEVELS = [['error', '오류'], ['warn', '경고'], ['info', '정보']];
 const DEFAULT_LEVELS = ['error', 'warn'];
@@ -50,8 +50,9 @@ export function prefixes(paths) {
 }
 
 // 새 위젯: 종류의 기본 크기(sized), 지표 위젯은 빈 쿼리 하나.
-export function newWidget(type, widgets) {
+export function newWidget(type, widgets, panels) {
   const w = { id: nextWidgetId(widgets), type, ...pickSize(sized({ type })), scope: {} };
+  if (type === 'bizflow') w.nodes = startNodes(panels);
   if (type === 'bar' || type === 'table') w.queries = [{ metric: '', by: 'host' }];
   else if (isMetric(type)) w.queries = [{ metric: '' }];
   if (type === 'text') w.text = '';
@@ -59,10 +60,71 @@ export function newWidget(type, widgets) {
 }
 const pickSize = (s) => ({ w: s.w, h: s.h });
 
+// ---- 업무 흐름(bizflow) nodes ----
+// 패널의 traffic 타일 첫째·둘째를 in·out으로(없으면 비움).
+export function nodeTiles(p) {
+  const tr = (p && p.traffic) || [];
+  return { in: tr[0] || '', out: tr[1] || '' };
+}
+// 새 위젯의 시작값: 패널 목록 앞에서 3개를 상자로, 앞 상자를 from으로 잇는다.
+export function startNodes(panels) {
+  const ps = (panels || []).slice(0, 3);
+  return ps.map((p, i) => {
+    const t = nodeTiles(p);
+    const n = { panel: p.id };
+    if (t.in) n.in = t.in;
+    if (t.out) n.out = t.out;
+    if (i > 0) n.from = [ps[i - 1].id];
+    return n;
+  });
+}
+// from을 따라가다 되돌아오는 순환 경로(['a','b','a']). 없으면 null. 모르는 from은 무시.
+export function flowCycle(nodes) {
+  const by = new Map((nodes || []).map((n) => [n.panel, n]));
+  const state = new Map(); // 1 = 지나는 중, 2 = 끝
+  const stack = [];
+  const visit = (id) => {
+    state.set(id, 1);
+    stack.push(id);
+    for (const f of (by.get(id).from || [])) {
+      if (!by.has(f)) continue;
+      if (state.get(f) === 1) return [...stack.slice(stack.indexOf(f)), f];
+      if (!state.has(f)) { const c = visit(f); if (c) return c; }
+    }
+    stack.pop();
+    state.set(id, 2);
+    return null;
+  };
+  for (const n of nodes || []) if (n.panel && !state.has(n.panel)) { const c = visit(n.panel); if (c) return c; }
+  return null;
+}
+// 상자 목록의 첫 문제(짧은 명사). 없으면 ''. 서버 ValidateDash 중 화면에서 바로 알 수 있는 것만.
+export function nodesProblem(nodes) {
+  if (!Array.isArray(nodes) || !nodes.length) return '상자 없음';
+  if (nodes.length > MAX_NODES) return `상자는 ${MAX_NODES}개까지`;
+  const seen = new Set(), cells = new Set();
+  for (const n of nodes) {
+    if (!n.panel) return '상자에 패널 없음';
+    if (seen.has(n.panel)) return `패널 중복 ${n.panel}`;
+    seen.add(n.panel);
+  }
+  for (const n of nodes) {
+    for (const f of n.from || []) if (!seen.has(f)) return `앞 업무 ${f}는 이 위젯의 상자가 아님`;
+    if (Array.isArray(n.at) && n.at.length) {
+      const k = n.at.join(',');
+      if (cells.has(k)) return `같은 위치 ${n.at[0]}열 ${n.at[1]}줄`;
+      cells.add(k);
+    }
+  }
+  const c = flowCycle(nodes);
+  if (c) return `앞 업무가 순환 ${c.join(' → ')}`;
+  return '';
+}
+
 // 위젯 속성 → 등록부 fields 칸. 새 종류의 fields에 없는 칸은 지운다.
 const PROP_FIELD = {
   ref: 'ref', unit: 'unit', reduce: 'reduce', warn: 'limits', crit: 'limits', warn_below: 'limits', crit_below: 'limits',
-  max: 'max', stack: 'stack', top: 'top', levels: 'levels', limit: 'limit', text: 'text',
+  max: 'max', stack: 'stack', top: 'top', levels: 'levels', limit: 'limit', text: 'text', nodes: 'nodes',
 };
 // 지표 위젯의 범위 칸. 등록부 fields에는 없지만 값 계산 규칙(scope.hosts·group·service)을 따른다.
 const METRIC_SCOPE = ['group', 'hosts', 'service'];
@@ -116,6 +178,7 @@ const numOrNull = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ?
 // 위젯 하나의 첫 문제(짧은 명사). 없으면 ''. 매니저 ValidateDash의 화면 몫(저장 전·미리보기 자리표).
 export function widgetProblem(w) {
   if (!WIDGETS[w.type]) return `모르는 종류 ${w.type}`;
+  if (w.type === 'bizflow') return nodesProblem(w.nodes);
   if (isMetric(w.type)) {
     if (w.type === 'stat' && w.ref) {
       if (!w.ref.panel || !w.ref.tile) return '패널 타일 없음';
@@ -156,8 +219,9 @@ export const previewOf = (dash) => clone(dash);
 // ---- 정의 보기: 저장될 모양을 간단한 YAML로(읽기 전용) ----
 const DASH_KEYS = ['id', 'title', 'desc', 'range', 'group', 'widgets'];
 const WIDGET_KEYS = ['id', 'type', 'title', 'w', 'h', 'scope', 'queries', 'unit', 'reduce', 'warn', 'crit', 'warn_below', 'crit_below',
-  'max', 'stack', 'top', 'ref', 'levels', 'limit', 'text'];
-const KEYS = { scope: ['group', 'hosts', 'service', 'board', 'panel'], queries: ['metric', 'label', 'agg', 'by'], ref: ['panel', 'tile'] };
+  'max', 'stack', 'top', 'ref', 'levels', 'limit', 'text', 'nodes'];
+const KEYS = { scope: ['group', 'hosts', 'service', 'board', 'panel'], queries: ['metric', 'label', 'agg', 'by'], ref: ['panel', 'tile'],
+  nodes: ['panel', 'title', 'in', 'out', 'stock', 'edge', 'from', 'at'] };
 const POINTER = new Set(['warn', 'crit', 'warn_below', 'crit_below', 'max']); // 0도 값이다
 
 export function yamlScalar(v, flow) {
@@ -265,7 +329,8 @@ export async function render(page, params = {}, query = {}) {
     services: servicesOf(svcR).map((it) => (it && it.def) || it || {}).filter((s) => s.id && !seen.has(s.id) && seen.add(s.id))
       .map((s) => [s.id, s.title && s.title !== s.id ? `${s.title} (${s.id})` : s.id]),
     boards: prefixes(((flowsR && flowsR.flows) || []).map((f) => f.board).filter(Boolean)),
-    panels: ((panelsR && panelsR.panels) || []).map((p) => ({ id: p.id, title: p.title || p.id, tiles: (p.tiles || []).map((t) => t.title).filter(Boolean) })),
+    panels: ((panelsR && panelsR.panels) || []).map((p) => ({ id: p.id, title: p.title || p.id, tiles: (p.tiles || []).map((t) => t.title).filter(Boolean),
+      traffic: (p.tiles || []).filter((t) => t.signal === 'traffic' && t.title).map((t) => t.title) })),
   };
   mount(page, st, refs, { params, query, reload: () => { dispose(); page.replaceChildren(); render(page, params, query); } });
 }
@@ -532,6 +597,8 @@ function mount(page, st, refs, ctx) {
       }
     }
 
+    if (f.has('nodes')) { sec('상자'); kids.push(nodesBox(w)); }
+
     const show = [];
     if (!refMode && f.has('unit')) {
       const q0 = (w.queries || [])[0];
@@ -601,6 +668,81 @@ function mount(page, st, refs, ctx) {
       row('타일', sel([['', panel && !tiles.length ? '타일 없음' : '고르기'], ...tiles.map((x) => [x, x])], r.tile || '', (v) => { r.tile = v; touch(); drawSide(); },
         { disabled: !r.panel })),
     ];
+  }
+
+  // 업무 흐름 상자들: 상자마다 한 칸(패널 · in · out · 쌓임 · 화살표 · 앞 업무 · 위치).
+  function nodesBox(w) {
+    if (!Array.isArray(w.nodes)) w.nodes = [];
+    const nodes = w.nodes;
+    const box = el('div', { class: 'de-qs de-nodes' });
+    const panelOf = (id) => refs.panels.find((x) => x.id === id);
+    const label = (x) => (x.title === x.id ? x.id : `${x.title} (${x.id})`);
+    const redraw = () => { touch(); drawSide(); };
+    const tileSel = (n, key, blank, extra = []) => {
+      const tiles = (panelOf(n.panel) || { tiles: [] }).tiles;
+      return sel([['', blank], ...extra, ...tiles.map((x) => [x, x])], n[key] || '', (v) => { setStr(n, key, v); touch(); }, { disabled: !n.panel });
+    };
+    nodes.forEach((n, ni) => {
+      const p = panelOf(n.panel);
+      const others = nodes.filter((x) => x !== n && x.panel);
+      const pick = sel([['', '패널 고르기'], ...refs.panels.map((x) => [x.id, label(x)])], n.panel || '', (v) => {
+        const old = n.panel;
+        n.panel = v;
+        const np = panelOf(v), t = nodeTiles(np), tl = np ? np.tiles : [];
+        for (const k of ['in', 'out', 'edge']) if (n[k] && !tl.includes(n[k])) delete n[k];
+        if (n.stock && n.stock !== 'none' && !tl.includes(n.stock)) delete n.stock;
+        if (!n.in && t.in) n.in = t.in;
+        if (!n.out && t.out) n.out = t.out;
+        for (const x of nodes) if (x.from && old) x.from = x.from.map((f) => (f === old ? v : f)).filter((f) => f && f !== x.panel);
+        for (const x of nodes) if (x.from && !x.from.length) delete x.from;
+        redraw();
+      }, { 'aria-label': `상자 ${ni + 1} 패널` });
+      const head = el('div', { class: 'de-qh' }, el('span', { class: 'de-qn', text: String(ni + 1) }), pick,
+        el('button', { type: 'button', class: 'de-x', title: '위로', text: '↑', disabled: ni === 0, onclick: () => { [nodes[ni - 1], nodes[ni]] = [nodes[ni], nodes[ni - 1]]; redraw(); } }),
+        el('button', { type: 'button', class: 'de-x', title: '아래로', text: '↓', disabled: ni === nodes.length - 1, onclick: () => { [nodes[ni + 1], nodes[ni]] = [nodes[ni], nodes[ni + 1]]; redraw(); } }),
+        el('button', { type: 'button', class: 'de-x', title: '상자 빼기', text: '✕', onclick: () => {
+          nodes.splice(ni, 1);
+          for (const x of nodes) if (x.from) { x.from = x.from.filter((f) => f !== n.panel); if (!x.from.length) delete x.from; }
+          redraw();
+        } }));
+      const kids = [head];
+      kids.push(el('div', { class: 'de-row2' },
+        row('이름', el('input', { type: 'text', value: n.title || '', maxlength: String(MAX_TITLE), placeholder: (p && p.title) || '패널 제목',
+          oninput: (e) => { setStr(n, 'title', e.target.value); touch(); } })),
+        row('in', tileSel(n, 'in', '없음')),
+        row('out', tileSel(n, 'out', '없음')),
+        row('쌓임', sel([['', 'in − out'], ['none', '없음'], ...(p ? p.tiles : []).map((x) => [x, x])], n.stock || '', (v) => { setStr(n, 'stock', v); touch(); }, { disabled: !n.panel })),
+        row('화살표 값', tileSel(n, 'edge', 'out과 같게'))));
+      if (others.length) {
+        const cur = new Set(n.from || []);
+        kids.push(grp('앞 업무', el('div', { class: 'de-chk de-from' }, others.map((o) => el('label', {},
+          el('input', { type: 'checkbox', checked: cur.has(o.panel), onchange: (e) => {
+            if (e.target.checked) cur.add(o.panel); else cur.delete(o.panel);
+            const fr = nodes.map((x) => x.panel).filter((x) => cur.has(x));
+            if (fr.length) n.from = fr; else delete n.from;
+            redraw();
+          } }), (panelOf(o.panel) || { title: o.panel }).title)))));
+      }
+      const fixed = Array.isArray(n.at) && n.at.length === 2;
+      const at = fixed ? n.at : [0, 0];
+      kids.push(el('div', { class: 'de-row3 de-at' },
+        row('위치', sel([['', '자동'], ['fix', '고정']], fixed ? 'fix' : '', (v) => { if (v) n.at = [0, 0]; else delete n.at; redraw(); })),
+        fixed ? row('열 (0~11)', intIn(at[0], 0, 11, (v) => { n.at = [v, n.at[1]]; touch(); })) : null,
+        fixed ? row('줄 (0~7)', intIn(at[1], 0, 7, (v) => { n.at = [n.at[0], v]; touch(); })) : null));
+      box.append(el('div', { class: 'de-q' }, kids));
+    });
+    if (nodes.length < MAX_NODES) {
+      box.append(el('button', { type: 'button', class: 'de-addq', text: '+ 상자', onclick: () => {
+        const used = new Set(nodes.map((x) => x.panel));
+        const p = refs.panels.find((x) => !used.has(x.id));
+        const n = { panel: p ? p.id : '' };
+        if (p) { const t = nodeTiles(p); if (t.in) n.in = t.in; if (t.out) n.out = t.out; }
+        if (nodes.length && nodes[nodes.length - 1].panel) n.from = [nodes[nodes.length - 1].panel];
+        nodes.push(n);
+        redraw();
+      } }));
+    }
+    return box;
   }
 
   function queriesBox(w, many, showBy) {
@@ -733,7 +875,7 @@ function mount(page, st, refs, ctx) {
   }
   function addWidget(type) {
     if (dash.widgets.length >= MAX_WIDGETS) { showMsg(`위젯은 ${MAX_WIDGETS}개까지`); return; }
-    const w = newWidget(type, dash.widgets);
+    const w = newWidget(type, dash.widgets, refs.panels);
     dash.widgets.push(w);
     ui.scrollTo = w.id;
     touch();

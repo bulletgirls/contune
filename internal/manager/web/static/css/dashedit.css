@@ -127,3 +127,9 @@ body[data-page="dashedit"] #tree { display:none; }
 /* 편집할 수 없을 때 */
 .de-off { display:flex; flex-direction:column; gap:8px; align-items:flex-start; }
 .de-off > * { margin:0; }
+
+/* 업무 흐름 상자 칸(카드 U3) */
+.de-nodes .de-qh select { flex:1; min-width:0; }
+.de-nodes .de-qh .de-x:disabled { opacity:.35; cursor:default; }
+.de-nodes .de-from { gap:2px 10px; }
+.de-nodes .de-at { grid-template-columns:1.2fr 1fr 1fr; }
