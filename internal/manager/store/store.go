@@ -57,4 +57,7 @@ type StateStore interface {
 	// owner·last_seen·ended_at(0이 아닐 때만)·exit_id(비지 않을 때만)를 바꾼다. exec_id는 처음 값을 지킨다.
 	UpsertProcs(ctx context.Context, ps []model.ProcInfo) error
 	ListProcs(ctx context.Context, f model.ProcFilter) ([]model.ProcInfo, error) // started_at 내림차순
+	// PruneProcs는 ended_at이 before 전인 끝난 기록과, last_seen이 before 전인 끝나지 않은 기록(에이전트가 끝남을 못 알린 것)을 지운다.
+	// 지운 수를 돌려준다(카드 P-C: 매니저가 한 시간에 한 번 7일 전으로 부른다).
+	PruneProcs(ctx context.Context, before int64) (int, error)
 }

@@ -304,14 +304,19 @@ func maxOf(ps []model.Point) float64 {
 	return m
 }
 
-// evJob은 그 실행의 job.rss.mb·job.cpu.pct [E−2분, E]다.
+// evJob은 그 주인의 RSS·CPU [E−2분, E]다: 보고서에 Service가 있으면 서비스 주인 키의 svc.rss.mb·svc.cpu.pct
+// (실행 합이 아니라 그 서비스 인스턴스, 06 §2.1), 없으면 그 실행의 job.rss.mb·job.cpu.pct.
 func (s *Service) evJob(ctx context.Context, r model.ExitReport) *model.Evidence {
 	if s.d.Metrics == nil {
 		return nil
 	}
+	owner, rssName, cpuName := r.ExecID, "job.rss.mb", "job.cpu.pct"
+	if r.Service != "" {
+		owner, rssName, cpuName = model.ServiceOwner(r.Service, r.Host), "svc.rss.mb", "svc.cpu.pct"
+	}
 	E := r.EndedAt
-	rss := s.points(ctx, r.Host, "job.rss.mb", r.ExecID, E-jobBefore, E)
-	cpu := s.points(ctx, r.Host, "job.cpu.pct", r.ExecID, E-jobBefore, E)
+	rss := s.points(ctx, r.Host, rssName, owner, E-jobBefore, E)
+	cpu := s.points(ctx, r.Host, cpuName, owner, E-jobBefore, E)
 	if len(rss) == 0 && len(cpu) == 0 {
 		return nil
 	}

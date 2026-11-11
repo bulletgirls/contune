@@ -74,6 +74,7 @@ func (s *Service) handleIngest(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, "종료 보고서 저장 실패")
 			return
 		}
+		s.d.Procs.LinkExit(r.Context(), rep) // 그 프로세스 기록에 보고서 ID(nil이면 하지 않음)
 		slog.Info("종료 보고서", "id", rep.ID, "host", rep.Host, "exec_id", rep.ExecID, "pid", rep.PID, "comm", rep.Comm,
 			"how", rep.How, "signal", rep.SignalName)
 		ids = append(ids, rep.ID)
