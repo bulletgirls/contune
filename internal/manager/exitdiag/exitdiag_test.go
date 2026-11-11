@@ -166,6 +166,9 @@ func ruleCases() []ruleCase {
 		{"13 unknown", pack(unk), model.ExitUnknown, "low", "종료 상태를 모름 — 에이전트가 부모가 아니고 core·커널 로그 없음", []string{"exit"}},
 
 		// 같은 줄의 다른 갈래
+		{"8 killed.run 정상 종료(SIGTERM을 받고 종료 코드 0)", pack(exited(r, 0), runsEv), model.ExitKilledRun, "medium", "같은 서버의 market-open/start-matching 시작 2초 뒤 정상 종료(기동 스크립트의 pkill 등이 종료를 요청)", []string{"exit", "runs"}},
+		{"8 killed.run 종료 코드 143", pack(exited(r, 143), runsEv), model.ExitKilledRun, "medium", "같은 서버의 market-open/start-matching 시작 2초 뒤 정상 종료(기동 스크립트의 pkill 등이 종료를 요청)", []string{"exit", "runs"}},
+		{"11 exit.error 다른 실행 직후라도 코드 3", pack(errR, evOutput(errR), runsEv), model.ExitError, "high", "종료 코드 3 — (E) CONFIG port in use", []string{"exit", "output"}},
 		{"9 oom 의심 서버 메모리", pack(sig(r, 9), evFacts(model.EvHost, map[string]float64{"mem_used_pct_max": 97, "cpu_pct_max": 40})),
 			model.ExitOOM, "medium", "메모리 부족 의심(커널 로그 없음, 서버 메모리 최대 97%)", []string{"exit", "host"}},
 		{"9 RSS가 작으면 아님", pack(sig(r, 9), evFacts(model.EvJob, map[string]float64{"rss_first_mb": 40, "rss_last_mb": 90})),

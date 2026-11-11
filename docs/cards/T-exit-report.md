@@ -22,6 +22,13 @@
 | 1 | **T6** | 시연: 체결 서비스 버그 스위치, `demo.sh crash`, 에이전트 YAML | 레인 F | 하 |
 | 마무리 | T9 | 병합, 실제 바이너리 리허설(별도 포트), 05 §19, README, 미리보기 | 오케스트레이터 직접 | — |
 
+**결과(11-11):** 여섯 레인을 동시에 진행해 모두 병합했다. 카드에 없던 결정은 다음과 같다.
+- T1: 리더 등록·거두기·상태 보관을 잠금 하나(`reaps.mu`)로, `cmd.Start` 전체를 그 안에서. SIGCHLD에 거두므로 core 없는 보고는 약 1초, gdb가 붙으면 몇 초 더(최대 30초). 기존 탐색의 경쟁도 고쳤다: exec 중에 읽은 environ이 잘려 setsid 서비스를 영영 빼던 것.
+- T2: `Settings.ExtractDir`(coredumpctl로 꺼낸 core를 둘 곳). gdb는 `frame-arguments none`·`frame-info location-and-address`로 칸마다 주소를 찍게 한다. 내장 분석은 0번 칸만 정확하고 그 뒤는 추정(꼬리 호출로 빠진 칸, 이미 돌아온 호출의 값이 섞일 수 있음).
+- T3: 규칙 진단은 끝난 지 30초 뒤 계산한 것만 고정. crit 알림은 바로, warn과 "알림 없음"은 고정 뒤. 묶음 하나에 질의 10번. `alert.Deps.Exits`, 수신 성공 200 `{"ids":[…]}`.
+- T4: core가 없어도 커널 `segfault at` 줄로 신호·주소를 추정. SIGSEGV+SI_KERNEL(일반 보호 오류, 주소가 늘 0)은 NULL로 보지 않음.
+- T9: 8줄에 "상주 서비스가 SIGTERM을 받고 종료 코드 0·143으로 끝남"을 더했다(리허설에서 `pkill`로 끝난 체결 서비스가 `exit.ok`로 나왔다). 타임머신의 프로파일 기본 구간을 종료 보고서의 시각까지 늘렸다. 관제 알림 목록의 exit 링크, mock 운영 권한.
+
 T1~T6은 **쓰는 경로가 겹치지 않으므로 동시에 진행한다.** 서로의 결과는 아래 계약과 T0 stub만 믿는다.
 
 ## 계약
@@ -113,7 +120,7 @@ sqlite 표 `exits(id TEXT PRIMARY KEY, ended_at, host, exec_id, pid, comm, how, 
 | 5 | SIGABRT 스스로(SI_TKILL이고 보낸 PID = 자기, 또는 core 없이 출력에 abort 문구) | `crash.abort` | high | 출력에 힙 문구면 `힙 손상: free(): double free detected — <첫 앱 칸>`, `Assertion`이면 `assert 실패: …`, `stack smashing`이면 `스택 손상`, 그 밖 `abort — <첫 앱 칸>` |
 | 6 | 코어 신호(SEGV·ABRT·BUS…)인데 si_code ≤ 0이고 보낸 PID ≠ 자기 | `killed.other` | high | `다른 프로세스(PID 4044)가 SIGABRT를 보냄` |
 | 7 | SIGFPE·SIGILL·SIGBUS·SIGTRAP·SIGSYS | `crash.signal` | high | `price_cross에서 0으로 나눔(SIGFPE)` |
-| 8 | TERM·KILL·INT·HUP + `runs.nearest_before_s ≤ 10` | `killed.run` | medium | `같은 서버의 market-open/start-matching 시작 2초 뒤 종료(기동 스크립트의 pkill 등)` |
+| 8 | (TERM·KILL·INT·HUP, 또는 상주 서비스의 종료 코드 0·143 — SIGTERM을 받고 깨끗이 끝남) + `runs.nearest_before_s ≤ 10` | `killed.run` | medium | `같은 서버의 market-open/start-matching 시작 2초 뒤 종료(기동 스크립트의 pkill 등)` |
 | 9 | SIGKILL + (`rss_last ≥ 1.5×rss_first`이고 `rss_last ≥ 100MB`, 또는 `mem_used_pct_max ≥ 95`) | `oom` | medium | `메모리 부족 의심(커널 로그 없음, RSS 120 → 1,830MB)` |
 | 10 | TERM·KILL·INT·HUP 그 밖 | `killed.other` | low | `밖에서 SIGKILL로 종료(보낸 쪽 모름)` |
 | 11 | 종료 코드 ≠ 0 | `exit.error` | high | `종료 코드 3 — (E) CONFIG port in use` (출력·로그의 마지막 (E) 줄, 없으면 마지막 줄) |

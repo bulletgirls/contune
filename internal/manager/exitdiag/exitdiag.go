@@ -515,7 +515,9 @@ func ruleCrashSignal(v *view) (diag, bool) {
 // 8. TERM·KILL·INT·HUP + 같은 서버의 다른 실행이 10초 안에 시작.
 func ruleKilledRun(v *view) (diag, bool) {
 	n, ok := v.fact(model.EvRuns, "nearest_before_s")
-	if !isTermSig(v.sig) || !ok || n < 0 || n > 10 {
+	// SIGTERM을 받아 깨끗이 끝나는 상주 서비스는 신호가 아니라 종료 코드 0(또는 128+15)을 남긴다(T9 리허설).
+	graceful := v.sig == 0 && v.r.Resident && v.r.ExitCode != nil && (*v.r.ExitCode == 0 || *v.r.ExitCode == 128+sigTERM)
+	if !(isTermSig(v.sig) || graceful) || !ok || n < 0 || n > 10 {
 		return diag{}, false
 	}
 	name := v.nearestRun(n)
@@ -526,7 +528,13 @@ func ruleKilledRun(v *view) (diag, bool) {
 	d := diag{cat: model.ExitKilledRun, conf: "medium",
 		title: fmt.Sprintf("같은 서버의 %s 시작 %s초 뒤 종료(기동 스크립트의 pkill 등)", who, num(n))}
 	d.cite(model.EvRuns)
-	d.say("같은 서버에서 %s 실행이 시작되고 %s초 뒤 %s 끝났습니다.", who, num(n), ro(v.sigN))
+	if graceful {
+		d.title = fmt.Sprintf("같은 서버의 %s 시작 %s초 뒤 정상 종료(기동 스크립트의 pkill 등이 종료를 요청)", who, num(n))
+		d.say("같은 서버에서 %s 실행이 시작되고 %s초 뒤 종료 코드 %d로 끝났습니다.", who, num(n), *v.r.ExitCode)
+		d.say("종료 신호(SIGTERM)를 받아 스스로 정리하고 끝나는 서비스는 신호 대신 종료 코드를 남깁니다.")
+	} else {
+		d.say("같은 서버에서 %s 실행이 시작되고 %s초 뒤 %s 끝났습니다.", who, num(n), ro(v.sigN))
+	}
 	d.say("그 실행의 기동 스크립트가 pkill·killall로 이전 프로세스를 정리했을 수 있습니다(보낸 쪽은 확인되지 않음).")
 	if c, ok := v.fact(model.EvRuns, "count"); ok && c > 1 {
 		d.say("그 무렵 같은 서버의 다른 실행은 %s건입니다.", num(c))

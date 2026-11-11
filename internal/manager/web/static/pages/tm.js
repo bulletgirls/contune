@@ -22,11 +22,17 @@ export function padOf(run, now) {
   return Math.min(PAD_MAX, Math.max(PAD_MIN, dur));
 }
 // 보는 구간: 시작 - 여백 ~ 끝 + 여백. 실행 중(상주 프로세스 포함)이면 지금까지.
-export function viewRange(run, live, now) {
-  const pad = padOf(run, now);
-  const from = (run.started_at || run.scheduled_at || now) - pad;
-  const running = !run.ended_at || (live && live.procs > 0);
-  return { from, to: running ? now : run.ended_at + pad, running };
+// residentEnd: 스텝이 끝난 뒤 상주 프로세스가 끝난 마지막 시각(종료 보고서). 스텝 끝보다 늦으면 그때를 끝으로 본다.
+export function viewRange(run, live, now, residentEnd = 0) {
+  const r = run.ended_at && residentEnd > run.ended_at ? { ...run, ended_at: residentEnd } : run;
+  const pad = padOf(r, now);
+  const from = (r.started_at || r.scheduled_at || now) - pad;
+  const running = !r.ended_at || (live && live.procs > 0);
+  return { from, to: running ? now : r.ended_at + pad, running };
+}
+// lastExit은 종료 보고서 목록에서 마지막으로 끝난 시각이다(없으면 0).
+export function lastExit(exits) {
+  return (exits || []).reduce((m, e) => Math.max(m, e.ended_at || 0), 0);
 }
 // 시작·종료 표시선. 둘이 가까우면(구간의 4% 안) 이름표를 하나로 합친다.
 export function runMarks(run, view, withLabel) {
@@ -133,9 +139,11 @@ export async function render(host, params) {
   try { hostInfo = ((await api('/hosts')).hosts || []).find((h) => h.id === detail.run.host); } catch (e) { /* 그룹 없이 진행 */ }
   let tiles = [];
   try { tiles = ((await api('/panels')).panels || []).flatMap((p) => p.tiles || []); } catch (e) { /* 임계선 없이 */ }
+  let exits = [];
+  try { exits = (await api('/exits?exec_id=' + q(id))).exits || []; } catch (e) { /* 종료 보고 없이 */ }
 
-  const st = { run: detail.run, live: detail.live, view: null, sel: { a: null, b: null }, pending: null, userRange: false, biz: '', hl: null, tab: 'out' };
-  st.view = viewRange(st.run, st.live, Date.now());
+  const st = { run: detail.run, live: detail.live, view: null, sel: { a: null, b: null }, pending: null, userRange: false, biz: '', hl: null, tab: 'out', residentEnd: lastExit(exits) };
+  st.view = viewRange(st.run, st.live, Date.now(), st.residentEnd);
 
   const head = el('div', { class: 'tm-head' });
   const kpis = el('div', { class: 'bt-kpis tm-kpis' });
@@ -155,8 +163,7 @@ export async function render(host, params) {
   const pane = el('div', { class: 'tm-pane' });
   const logCard = el('section', { class: 'tm-card tm-logcard' }, tabsEl, pane);
   // 이 실행의 프로세스 종료 보고가 있으면 맨 위 띠(종료 보고서로 가는 링크)
-  const exitBar = el('div', { hidden: true });
-  api('/exits?exec_id=' + q(id)).then((r) => { const s = exitStrip((r && r.exits) || []); if (s) exitBar.replaceWith(s); }).catch(() => { /* 종료 보고 없이 */ });
+  const exitBar = exitStrip(exits) || el('div', { hidden: true });
   host.append(exitBar, head, kpis, metricCard, profCard, logCard);
 
   function drawHead() {
@@ -313,9 +320,12 @@ export async function render(host, params) {
     if (!ranges.length) {
       // 서비스를 띄우고 바로 끝나는 스텝(start-matching·start-quote)은 스텝 길이가 0초라
       // 종료 시각에서 자르면 늘 빈 그래프다. 상주 프로세스가 살아 있으면 지금까지 본다.
+      // 상주 프로세스가 스텝 뒤에 끝났으면(종료 보고서) 그 시각까지 본다.
       const resident = st.live && st.live.procs > 0;
-      const r = { from: Math.max(st.view.from, st.run.started_at || st.view.from), to: resident ? st.view.to : Math.min(st.view.to, st.run.ended_at || st.view.to) };
-      ranges.push(['', resident ? '실행 전체(상주 프로세스 포함)' : '실행 전체', r, 'fa']);
+      const lived = !resident && st.run.ended_at && st.residentEnd > st.run.ended_at;
+      const end = lived ? st.residentEnd : (st.run.ended_at || st.view.to);
+      const r = { from: Math.max(st.view.from, st.run.started_at || st.view.from), to: resident ? st.view.to : Math.min(st.view.to, end) };
+      ranges.push(['', resident || lived ? '실행 전체(상주 프로세스 포함)' : '실행 전체', r, 'fa']);
     }
     flames.replaceChildren(...ranges.map(([, , , cls]) => el('div', { class: cls })));
     flames.classList.toggle('single', ranges.length === 1);
@@ -386,7 +396,11 @@ export async function render(host, params) {
   const stop = poll(async () => {
     if (st.userRange) return;
     try { const d = await api('/runs/' + q(id)); st.run = d.run; st.live = d.live; detail.events = d.events || detail.events; } catch (e) { return; }
-    const v = viewRange(st.run, st.live, Date.now());
+    let v = viewRange(st.run, st.live, Date.now(), st.residentEnd);
+    if (!v.running && st.view.running) { // 상주 프로세스가 방금 끝났으면 종료 보고서의 시각까지 본다
+      try { st.residentEnd = lastExit((await api('/exits?exec_id=' + q(id))).exits); } catch (e) { /* 그대로 */ }
+      v = viewRange(st.run, st.live, Date.now(), st.residentEnd);
+    }
     if (!v.running) { if (st.view.running) { st.view = v; updateCharts(await fetchAll()); drawHead(); drawKpis(); } return; }
     st.view = v;
     updateCharts(await fetchAll());
