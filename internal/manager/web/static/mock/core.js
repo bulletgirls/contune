@@ -1,8 +1,8 @@
-// /hosts /flows /runs /runs/{id} /series /panels /profile 와 플로우 수동 실행
-import { MIN, SEC, cronNext, round } from './util.js';
+// /hosts /flows /flows/hours /runs /runs/{id} /series /panels /profile 와 플로우 수동 실행
+import { MIN, SEC, HOUR, DAY, KST, cronNext, round } from './util.js';
 import { openAt } from './riskhold.js';
 import {
-  hostsView, HOST_TH, groupMatch, flowLevels, flowLast, flowOf, runPublic, procsOf, startFlowRun, PANELS,
+  hostsView, HOST_TH, groupMatch, flowLevels, flowLast, flowOf, runPublic, procsOf, startFlowRun, PANELS, isDead,
 } from './world.js';
 import {
   HOST_NAMES, ALL_NAMES, hostAt, serviceAt, batchJobAt, bizAt, logLevelsAt, riskAt, BIZ_NAMES, LOG_NAMES, JOB_NAMES,
@@ -46,6 +46,52 @@ function flows(c) {
   const b = c.q.get('board');
   const list = c.w.flows.filter((f) => !b || f.board === b || f.board.startsWith(b + '/'));
   return ok({ now: c.now, flows: list.map((f) => flowView(c, f)) });
+}
+
+// 시간대별 배치(05 §14.3): 오늘(KST) 시간마다 플로우별 실행·예정. 서버 sched/hours.go와 같은 모양과 규칙
+const HOUR_RANK = { failed: 0, running: 1, gated: 2, done: 3, plan: 4 };
+function frState(flow, rows) {
+  const latest = new Map();
+  for (const r of rows) { const cur = latest.get(r.step_id); if (!cur || r.attempt > cur.attempt) latest.set(r.step_id, r); }
+  const ls = [...latest.values()];
+  if (ls.some((r) => isDead(r, flow))) return 'failed';
+  if (ls.length === flow.steps.length && ls.every((r) => r.status === 'SUCCEEDED')) return 'done';
+  if (!ls.some((r) => r.status === 'RUNNING' || r.status === 'DISPATCHED') && ls.some((r) => r.status === 'HELD')) return 'gated';
+  return 'running';
+}
+function flowsHours(c) {
+  const day0 = Math.floor((c.now + KST) / DAY) * DAY - KST, day1 = day0 + DAY;
+  const hours = Array.from({ length: 24 }, (_, h) => ({ h, from: day0 + h * HOUR, to: day0 + (h + 1) * HOUR, cell: new Map() }));
+  const cellOf = (t, f) => {
+    if (!(t >= day0 && t < day1)) return null;
+    const hr = hours[Math.floor((t - day0) / HOUR)];
+    if (!hr.cell.has(f.id)) hr.cell.set(f.id, { id: f.id, board: f.board, state: 'plan', runs: 0, at: 0 });
+    return hr.cell.get(f.id);
+  };
+  const byFr = new Map();
+  for (const r of c.w.runs) { if (!byFr.has(r.flow_run_id)) byFr.set(r.flow_run_id, []); byFr.get(r.flow_run_id).push(r); }
+  for (const fr of c.w.flowRuns) {
+    const f = flowOf(c.w, fr.flow_id);
+    const x = f && cellOf(fr.started_at, f);
+    if (!x) continue;
+    const st = frState(f, byFr.get(fr.id) || []);
+    x.runs++;
+    if (st === 'failed') x.failed = (x.failed || 0) + 1;
+    if (!x.flow_run_id || HOUR_RANK[st] < HOUR_RANK[x.state] || (st === x.state && fr.started_at > x.at)) {
+      Object.assign(x, { state: st, at: fr.started_at, flow_run_id: fr.id, trigger: fr.trigger });
+    }
+  }
+  for (const f of c.w.flows) {
+    for (const t of cronNext(f.schedule, c.now, 24 * 60, false, day1)) {
+      const x = cellOf(t, f);
+      if (!x) continue;
+      x.plans = (x.plans || 0) + 1;
+      if (!x.runs && (x.plans === 1 || t < x.at)) x.at = t;
+    }
+  }
+  const out = hours.map(({ cell, ...h }) => ({ ...h, flows: [...cell.values()]
+    .sort((a, b) => HOUR_RANK[a.state] - HOUR_RANK[b.state] || a.at - b.at || (a.id < b.id ? -1 : 1)) }));
+  return ok({ now: c.now, from: day0, to: day1, hours: out, truncated: false });
 }
 
 function runs(c) {
@@ -438,6 +484,7 @@ function runFlow(c, m) {
 export const routes = [
   ['GET', /^\/hosts$/, hosts],
   ['GET', /^\/flows$/, flows],
+  ['GET', /^\/flows\/hours$/, flowsHours],
   ['GET', /^\/runs$/, runs],
   ['GET', /^\/runs\/([^/]+)$/, runOne],
   ['GET', /^\/series$/, series],

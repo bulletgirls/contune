@@ -146,13 +146,13 @@ export function parseCron(expr, strict = true) {
   return { m, h, d, w };
 }
 
-// 다음 n번의 발화 시각(ms). 지원하지 않는 표현이면 []
-export function cronNext(expr, from, n = 3, strict = true) {
+// 다음 n번의 발화 시각(ms). until(ms)을 주면 그 전까지만. 지원하지 않는 표현이면 []
+export function cronNext(expr, from, n = 3, strict = true, until = Infinity) {
   const c = parseCron(expr, strict);
   if (!c) return [];
   const out = [];
   let t = Math.floor(from / MIN) * MIN + MIN;
-  for (let i = 0; i < 40 * 24 * 60 && out.length < n; i++, t += MIN) {
+  for (let i = 0; i < 40 * 24 * 60 && out.length < n && t < until; i++, t += MIN) {
     const d = new Date(t + KST);
     if (!fieldHas(c.m, d.getUTCMinutes())) continue;
     if (!fieldHas(c.h, d.getUTCHours())) continue;

@@ -42,9 +42,10 @@ export function createTimeRange(host, opts = {}) {
   const label = el('span', { class: 'trlabel' });
   function paintLabel() {
     const c = current();
-    label.replaceChildren(
+    // replaceChildren은 null을 글자 "null"로 넣으므로 빼고 넘긴다
+    label.replaceChildren(...[
       c.live ? el('span', { class: 'trlive', text: '● 실시간' }) : null,
-      el('span', { class: 'num', text: fmtSpan(c.from, c.to) }));
+      el('span', { class: 'num', text: fmtSpan(c.from, c.to) })].filter(Boolean));
   }
   function draw() {
     const seg = el('span', { class: 'trseg', role: 'group', 'aria-label': '최근 구간' },
