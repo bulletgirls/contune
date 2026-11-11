@@ -12,8 +12,10 @@ import * as auth from './auth.js';
 import * as audit from './audit.js';
 import * as collect from './collect.js';
 import * as exit from './exit.js';
+import * as procs from './procs.js';
+import * as services from './services.js';
 
-const ROUTES = [auth, audit, core, server, ops, editor, biz, alert, collect, exit].flatMap((m) => m.routes);
+const ROUTES = [auth, audit, core, server, ops, editor, biz, alert, collect, exit, procs, services].flatMap((m) => m.routes);
 
 function pageFlags(opts, q) {
   const s = new URLSearchParams(opts.search ?? (typeof location !== 'undefined' ? location.search : ''));

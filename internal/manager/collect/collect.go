@@ -32,6 +32,9 @@ type Deps struct {
 	Wake  func()
 	Now   func() time.Time
 	NewID func() string
+	// Services는 그 호스트(그룹)에 내려 줄 서비스 정의와 그 판이다(06, 카드 P-D). AgentConfig.Services에 싣고
+	// 판은 AgentConfig.Rev에 섞는다(정의가 바뀌면 에이전트가 다시 받음). nil이면 서비스 없음.
+	Services func(host, group string) ([]model.ServiceDef, string)
 }
 
 // 요청 중계·본문 한도.

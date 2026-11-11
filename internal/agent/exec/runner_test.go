@@ -543,3 +543,6 @@ func TestPollRevHandoff(t *testing.T) {
 		t.Errorf("ConfigRev가 없으면 rev를 붙이지 않음: %v", m2.revs)
 	}
 }
+
+func (f *fakeTracker) SetServices(defs []model.ServiceDef, obs Observe) {}
+func (f *fakeTracker) Procs() []model.ProcInfo                          { return nil }

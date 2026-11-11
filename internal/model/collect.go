@@ -17,6 +17,9 @@ type LogSource struct {
 	Path    string      `json:"path" yaml:"path"`
 	Match   []LogMatch  `json:"match" yaml:"match"`
 	Metrics []LogMetric `json:"metrics,omitempty" yaml:"metrics,omitempty"`
+	// Service가 있으면 이 파일의 줄·지표의 주인은 그 서비스 인스턴스(ServiceOwner(Service, host))다(06, 카드 P).
+	// 비면 지금처럼 경로의 {exec_id}가 주인.
+	Service string `json:"service,omitempty" yaml:"service,omitempty"`
 }
 
 // LogMetric은 로그 줄에서 업무 지표를 만드는 규칙이다(05 §18). 에이전트가 주기(tick)마다
@@ -64,6 +67,8 @@ type EffectiveSource struct {
 type AgentConfig struct {
 	Rev  string      `json:"rev"`
 	Logs []LogSource `json:"logs"`
+	// Services는 그 호스트의 그룹에 맞는 서비스 정의다(06, 카드 P). Rev는 이것까지 포함해 바뀐다.
+	Services []ServiceDef `json:"services"`
 }
 
 // 에이전트가 보고하는 적용 상태.

@@ -92,6 +92,10 @@ func Open(path string) (*Store, error) {
 		w.Close()
 		return nil, err
 	}
+	if err := migrateProcs(w); err != nil { // procs.go(카드 P-C)
+		w.Close()
+		return nil, err
+	}
 	r, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		w.Close()

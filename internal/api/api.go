@@ -37,6 +37,14 @@ type LogsBatch struct {
 	Events []model.LogEvent `json:"events"`
 }
 
+// ProcsBatch는 POST /api/v1/agent/procs 본문이다(06, 카드 P). 에이전트가 5초마다 추적하는 프로세스 중
+// 살아 있는 것 전부(EndedAt 0)와 직전 묶음 뒤에 끝난 것(EndedAt 있음)을 보낸다. 매니저는 받은 묶음을 그 서버의 지금 모습으로 본다.
+type ProcsBatch struct {
+	Host  string           `json:"host"`
+	TS    int64            `json:"ts"`
+	Procs []model.ProcInfo `json:"procs"`
+}
+
 // ExitsBatch는 POST /api/v1/agent/exits 본문이다(종료 보고서, 05 §19). 매니저는 각 보고에 ID를 붙여 저장한다.
 type ExitsBatch struct {
 	Host    string             `json:"host"`
@@ -131,6 +139,11 @@ func (c *Client) PostLogs(ctx context.Context, b LogsBatch) error {
 // PostExits는 종료 보고서 묶음을 보낸다.
 func (c *Client) PostExits(ctx context.Context, b ExitsBatch) error {
 	return c.post(ctx, "/api/v1/agent/exits", b)
+}
+
+// PostProcs는 프로세스 묶음을 보낸다(06, 카드 P).
+func (c *Client) PostProcs(ctx context.Context, b ProcsBatch) error {
+	return c.post(ctx, "/api/v1/agent/procs", b)
 }
 
 // PostEvent는 실행 이벤트 하나를 보낸다.

@@ -53,6 +53,7 @@ func TestCatalog(t *testing.T) {
 		"host.proc.count", "host.proc.threads", "host.load1",
 		"job.cpu.pct", "job.cpu.user_pct", "job.cpu.sys_pct", "job.mem.size_mb", "job.rss.mb",
 		"job.mem.vsz_mb", "job.io.char_kbps", "job.threads", "job.procs",
+		"svc.cpu.user_pct", "svc.cpu.sys_pct", "svc.cpu.pct", "svc.rss.mb", "svc.mem.size_mb", "svc.mem.vsz_mb", "svc.io.char_kbps", "svc.threads", "svc.procs",
 		"host.disk.read_mbps", "host.disk.write_mbps", "host.disk.read_iops", "host.disk.write_iops",
 		"host.net.rx_kbps", "host.net.tx_kbps", "host.net.rx_pps", "host.net.tx_pps",
 	}

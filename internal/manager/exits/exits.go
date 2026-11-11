@@ -17,6 +17,7 @@ import (
 	"eum/internal/manager/alert"
 	"eum/internal/manager/exitdiag"
 	"eum/internal/manager/llm"
+	"eum/internal/manager/procs"
 	"eum/internal/manager/store"
 	"eum/internal/model"
 )
@@ -31,6 +32,8 @@ type Deps struct {
 	NewID   func() string // 보고서 ID(nil이면 ULID)
 	Rule    func(model.ExitPack) model.ExitDiagnosis
 	Ask     func(ctx context.Context, l llm.LLM, p model.ExitPack) (model.ExitDiagnosis, error)
+	// Procs는 프로세스 기록(06, 카드 P-C)이다. 보고서를 저장하면 LinkExit로 그 프로세스에 보고서 ID를 붙인다. nil이면 하지 않는다.
+	Procs *procs.Registry
 }
 
 const (

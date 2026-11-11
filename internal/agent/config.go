@@ -46,6 +46,18 @@ type Config struct {
 
 	// Exit는 종료 보고서 설정(05 §19, 카드 T)이다. 적지 않으면 기본값으로 켜진다.
 	Exit ExitConfig `yaml:"exit"`
+
+	// Observe는 이음이 띄우지 않은 프로세스를 서비스로 볼 수 있는 범위다(06 §5, 카드 P-B). 비면 이음이 띄운 것만.
+	// 무엇을 볼지(서비스 규칙)는 매니저, 어디까지 봐도 되는지는 이 YAML(05 §16·§17과 같은 심층 방어).
+	Observe ObserveConfig `yaml:"observe"`
+	// Services는 로컬 서비스 정의다. 원격 설정(매니저 services/)과 합치고 같은 ID면 로컬이 이긴다.
+	Services []model.ServiceDef `yaml:"services"`
+}
+
+// ObserveConfig는 에이전트 YAML의 observe 블록이다(exec.Observe로 넘긴다).
+type ObserveConfig struct {
+	Users    []string `yaml:"users"`     // 사용자 이름 또는 uid
+	ExeRoots []string `yaml:"exe_roots"` // 실행 파일이 이 폴더 아래
 }
 
 // ExitConfig는 에이전트 YAML의 exit 블록이다. 비운 칸은 기본값이다.

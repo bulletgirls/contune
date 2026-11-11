@@ -29,9 +29,9 @@ var version = "dev"
 
 const usage = `사용법: eum <서브커맨드> [플래그]
 
-  manager --config <path> [--listen --data --flows --panels --store]
+  manager --config <path> [--listen --data --flows --panels --services --store]
   agent   --config <path>
-  dev     [--listen --data --store --flows --panels --fleet --push-port --demo-dir --config]
+  dev     [--listen --data --store --flows --panels --services --fleet --push-port --demo-dir --config]
   fleet   --config <path>
   burn    --cpu N --duration 8s
   sql     --data <dir> [--csv] "<SELECT …>"
@@ -122,6 +122,7 @@ func cmdManager(ctx context.Context, args []string, stderr io.Writer) error {
 	data := fs.String("data", "", "데이터 폴더")
 	flows := fs.String("flows", "", "플로우 폴더")
 	panels := fs.String("panels", "", "업무 패널 폴더")
+	services := fs.String("services", "", "서비스 정의 폴더")
 	storeKind := fs.String("store", "", "sqlite | memory")
 	if err := parse(fs, args); err != nil {
 		return err
@@ -141,6 +142,7 @@ func cmdManager(ctx context.Context, args []string, stderr io.Writer) error {
 	override("data", &cfg.Data, *data)
 	override("flows", &cfg.Flows, *flows)
 	override("panels", &cfg.Panels, *panels)
+	override("services", &cfg.Services, *services)
 	override("store", &cfg.Store, *storeKind)
 
 	m, err := manager.New(cfg)

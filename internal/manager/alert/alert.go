@@ -47,6 +47,9 @@ type Deps struct {
 	RiskCrit   float64
 	// Exits는 끝난 시각이 since 이후인 종료 보고서와 그 규칙 진단이다(카드 T3, 계약 8). nil이면 종료 알림 없음.
 	Exits func(ctx context.Context, since int64) []Exit
+	// Services는 서비스 조건(서비스 미기동·선언한 서비스가 뜨지 않음, 06·카드 P-D)이다. nil이면 서비스 알림 없음.
+	// 조건이 목록에 있는 동안 알림(kind service)이 열려 있고, 빠지면 닫힌다.
+	Services func(ctx context.Context, now int64) []ServiceCond
 	Cfg   Config
 	Now   func() time.Time
 }
@@ -248,6 +251,7 @@ func (w *Watcher) step(t time.Time) {
 	w.stepLogs(ctx, now, group)
 	w.stepRuns(ctx, now)
 	w.stepExits(ctx, now, group)
+	w.stepServices(ctx, now, group)
 	w.stepRisk(ctx, now)
 	w.stepIncident(ctx, now, crit)
 }

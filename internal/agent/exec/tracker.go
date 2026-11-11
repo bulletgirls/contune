@@ -13,11 +13,27 @@ import (
 )
 
 // ProcessTracker는 실행이 띄운 프로세스 추적 확장 지점이다(프로세스 그룹 + 실행 ID 표식 → cgroup v2).
+//
+// 주인 규칙(06 §4, 카드 P-A): 프로세스는 주인이 하나다. 서비스 규칙에 맞으면(또는 자동 서비스가 되면) 서비스 인스턴스
+// model.ServiceOwner(서비스, host)가, 아니면 실행(exec_id)이 주인이다. Collect는 실행 주인에게 job.*, 서비스 주인에게 svc.*
+// (같은 이름 뒤쪽: svc.cpu.pct·svc.rss.mb·…·svc.procs)를 그 주인 키로 내고, Targets의 키도 주인 키다.
 type ProcessTracker interface {
 	Track(execID string, pid int, profile bool) error // 실행 직후 등록
-	Collect(emit func(model.Sample))                  // 실행별 job.* (스텝이 끝난 뒤 살아 있는 서비스 포함)
+	Collect(emit func(model.Sample))                  // 주인별 job.*·svc.*
 	Untrack(execID string) model.Usage                // 스텝 종료 시 요약(peak). 남은 프로세스는 계속 추적
-	Targets(minAge time.Duration) map[string][]int    // 프로파일 대상: exec_id → PID 목록
+	Targets(minAge time.Duration) map[string][]int    // 프로파일 대상: 주인 키 → PID 목록
+
+	// SetServices는 서비스 정의와 관측 범위를 바꾼다(원격 설정·로컬 YAML을 합친 것). 이미 본 프로세스도 다음 탐색에서 다시 맞춘다.
+	SetServices(defs []model.ServiceDef, obs Observe)
+	// Procs는 지금 추적하는 프로세스(살아 있는 것)와 직전 Procs 호출 뒤에 끝난 것이다(api.ProcsBatch로 보냄).
+	Procs() []model.ProcInfo
+}
+
+// Observe는 이음이 띄우지 않은 프로세스를 서비스로 볼 수 있는 범위다(에이전트 YAML observe, 06 §5).
+// 둘 다 비면(기본) 이음이 띄운 프로세스(EUM_EXEC_ID 표식)만 본다. 둘 다 있으면 둘 다 맞아야 한다.
+type Observe struct {
+	Users    []string // 사용자 이름 또는 uid
+	ExeRoots []string // 실행 파일 절대 경로가 이 폴더 아래
 }
 
 // TrackerOptions는 추적기 설정이다.
@@ -506,6 +522,8 @@ func (t *tracker) dropMember(r *trackedRun, k procKey) {
 type nopTracker struct{}
 
 func (nopTracker) Track(execID string, pid int, profile bool) error { return nil }
+func (nopTracker) SetServices(defs []model.ServiceDef, obs Observe) {}
+func (nopTracker) Procs() []model.ProcInfo                          { return nil }
 func (nopTracker) Collect(emit func(model.Sample))                  {}
 func (nopTracker) Untrack(execID string) model.Usage                { return model.Usage{} }
 func (nopTracker) Targets(minAge time.Duration) map[string][]int    { return nil }

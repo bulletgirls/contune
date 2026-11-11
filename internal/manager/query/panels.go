@@ -227,6 +227,20 @@ func (b *PanelBook) Reload(now time.Time) (n int, errs []PanelError, err error) 
 	return len(ps), errs, nil
 }
 
+// Panels는 읽은 패널 정의다(정의 순서, 복사본). nil Book이면 nil.
+func (b *PanelBook) Panels() []model.Panel {
+	if b == nil {
+		return nil
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]model.Panel, 0, len(b.panels))
+	for _, bp := range b.panels {
+		out = append(out, bp.p)
+	}
+	return out
+}
+
 // Errors는 읽지 못한 파일이다(늘 배열).
 func (b *PanelBook) Errors() []PanelError {
 	b.mu.Lock()

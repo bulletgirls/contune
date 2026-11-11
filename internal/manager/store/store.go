@@ -52,4 +52,9 @@ type StateStore interface {
 	GetExit(ctx context.Context, id string) (model.ExitRecord, error)              // 없으면 ErrNotFound
 	ListExits(ctx context.Context, f model.ExitFilter) ([]model.ExitRecord, error) // ended_at 내림차순(같으면 id 내림차순), Limit 0이면 200
 	SetExitLLM(ctx context.Context, id string, d model.ExitDiagnosis) error        // 마지막 LLM 초안을 바꿔 둔다. 없으면 ErrNotFound
+
+	// 프로세스 기록(06, 카드 P). (host, pid, started_at)이 키다. 처음 보면 넣고, 있으면 comm·exe·cmdline·user·service·auto·
+	// owner·last_seen·ended_at(0이 아닐 때만)·exit_id(비지 않을 때만)를 바꾼다. exec_id는 처음 값을 지킨다.
+	UpsertProcs(ctx context.Context, ps []model.ProcInfo) error
+	ListProcs(ctx context.Context, f model.ProcFilter) ([]model.ProcInfo, error) // started_at 내림차순
 }

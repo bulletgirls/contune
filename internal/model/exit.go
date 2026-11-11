@@ -30,6 +30,7 @@ type ExitReport struct {
 	ID        string `json:"id"` // 매니저가 붙인다(ULID). 에이전트는 비워 보낸다
 	Host      string `json:"host"`
 	ExecID    string `json:"exec_id"`
+	Service   string `json:"service,omitempty"` // 맞은 서비스 ID(06, 카드 P). 없으면 ""
 	PID       int    `json:"pid"`
 	PPID      int    `json:"ppid,omitempty"`     // 마지막으로 본 부모
 	Comm      string `json:"comm"`               // /proc/<pid>/comm (15자)

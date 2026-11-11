@@ -29,9 +29,11 @@ import (
 	"eum/internal/manager/live"
 	"eum/internal/manager/llm"
 	"eum/internal/manager/notify"
+	"eum/internal/manager/procs"
 	"eum/internal/manager/query"
 	"eum/internal/manager/risk"
 	"eum/internal/manager/sched"
+	"eum/internal/manager/services"
 	"eum/internal/manager/store"
 	"eum/internal/manager/store/memstore"
 	"eum/internal/manager/store/metricsql"
@@ -108,6 +110,12 @@ func New(cfg Config) (*Manager, error) {
 	m.reg = reg
 	panels := query.NewPanelBook(cfg.Panels, loc) // /panels·다시 읽기와 알림 감시자가 함께 쓴다(값 끊김 기억 포함)
 	lv := live.New()
+	// 실행 · 프로세스 · 서비스(06, 카드 P): 프로세스 기록과 서비스
+	pr := procs.New(procs.Deps{State: m.state, Now: now})
+	svc := services.New(services.Deps{
+		Dir: cfg.Services, State: m.state, Live: lv, Procs: pr, Flows: reg.List,
+		Panels: func() []model.Panel { return panels.Panels() }, Hosts: lv.Hosts, Loc: loc, Now: now,
+	})
 
 	// 스케줄러 ↔ 수집 설정 → 편집기 → LLM → 초안 → 위험 엔진 → 알림
 	// 롱폴링은 수집 설정의 판·요청을 묻고(CollectPoll), 수집 설정은 저장·요청 때 롱폴링을 깨운다(Wake). 서로 필요해 클로저로 잇는다.
@@ -115,9 +123,11 @@ func New(cfg Config) (*Manager, error) {
 	m.sched = sched.New(sched.Deps{
 		State: m.state, Live: lv, Flows: reg.List, Now: now, NewID: newID, TZ: loc,
 		CollectPoll: func(host, rev string) (string, []model.CollectRequest) { return col.Poll(host, rev) },
+		Procs:       pr,
 	})
 	if col, err = collect.New(collect.Deps{
 		Cfg: cfg.Collect, State: m.state, Hosts: lv.Hosts, Wake: m.sched.Wake, Now: now, NewID: newID,
+		Services: svc.ForAgent,
 	}); err != nil {
 		return nil, fmt.Errorf("collect: %w", err)
 	}
@@ -145,7 +155,7 @@ func New(cfg Config) (*Manager, error) {
 	alertCfg.MinNotify = cfg.Notify.MinLevel
 	engine := m.engine
 	// 종료 보고서(카드 T3): 수신·근거 묶음·API, 알림 감시자에게 종료 목록을 준다.
-	ex := exits.New(exits.Deps{Metrics: m.metrics, State: m.state, LLM: lm, TZ: loc, Now: now, NewID: newID})
+	ex := exits.New(exits.Deps{Metrics: m.metrics, State: m.state, LLM: lm, TZ: loc, Now: now, NewID: newID, Procs: pr})
 	m.watcher = alert.New(alert.Deps{
 		Metrics: m.metrics, State: m.state, Live: lv, Flows: reg.List,
 		Panels: panels, Thresholds: cfg.HostState, Notifiers: notifiers,
@@ -154,7 +164,7 @@ func New(cfg Config) (*Manager, error) {
 			open, _, accepted, ok := engine.Open()
 			return open, s.Index, accepted, ok
 		},
-		RiskWarn: cfg.Risk.Warn, RiskCrit: cfg.Risk.Crit, Exits: ex.AlertExits, Cfg: alertCfg, Now: now,
+		RiskWarn: cfg.Risk.Warn, RiskCrit: cfg.Risk.Crit, Exits: ex.AlertExits, Services: svc.AlertConds, Cfg: alertCfg, Now: now,
 	})
 
 	// 화면 인증(보안 S1). TLS를 켜면 세션 쿠키에 Secure를 단다.
@@ -169,8 +179,10 @@ func New(cfg Config) (*Manager, error) {
 	ingest.Mount(m.mux, ingest.Deps{Metrics: m.metrics, State: m.state, Live: lv, Now: now})
 	query.Mount(m.mux, query.Deps{
 		Metrics: m.metrics, State: m.state, Live: lv, Panels: panels,
-		Thresholds: cfg.HostState, Catalog: model.Catalog(), Now: now,
+		Thresholds: cfg.HostState, Catalog: model.Catalog(), Procs: pr, Now: now,
 	})
+	pr.Mount(m.mux)
+	svc.Mount(m.mux)
 	m.sched.Mount(m.mux)
 	col.Mount(m.mux)
 	editor.Mount(m.mux, edDeps)

@@ -20,6 +20,7 @@ type MetricDef struct {
 //   - Max: y축 위 끝을 고정한다(% 사용률은 100). 0이면 데이터에 맞춘다. 아래 끝은 늘 0.
 //   - Overview: 개요 탭에도 그린다.
 //   - Scope "job": 서버 전체가 아니라 실행 하나(exec_id)의 차트다. 프로세스 탭에서 실행을 고르면 그린다.
+//   - Scope "svc": 서비스 인스턴스 하나(주인 키 svc:<서비스>@<서버>)의 차트다(06, 카드 P). 프로세스 탭에서 서비스를 고르면 그린다.
 type ChartDef struct {
 	ID       string  `json:"id"`
 	Title    string  `json:"title"`
@@ -109,6 +110,13 @@ func Catalog() []MetricGroup {
 				{ID: "job_io", Title: "I/O", Scope: "job"},
 				{ID: "job_threads", Title: "스레드 수", Scope: "job"},
 				{ID: "job_procs", Title: "프로세스 수", Scope: "job"},
+				// 서비스 인스턴스 자원(06, 카드 P): 주인 키 svc:<서비스>@<서버>. 이름 뒤쪽은 job.*와 같다.
+				{ID: "svc_cpu", Title: "CPU 사용률", Stack: true, Scope: "svc"},
+				{ID: "svc_mem", Title: "메모리", Scope: "svc"},
+				{ID: "svc_vsz", Title: "가상 메모리", Scope: "svc"},
+				{ID: "svc_io", Title: "I/O", Scope: "svc"},
+				{ID: "svc_threads", Title: "스레드 수", Scope: "svc"},
+				{ID: "svc_procs", Title: "프로세스 수", Scope: "svc"},
 			},
 			Metrics: []MetricDef{
 				{Name: "host.proc.count", Title: "프로세스", Unit: "개", Chart: "proc_count", Procfs: true, Desc: "/proc의 숫자 폴더 수"},
@@ -123,6 +131,15 @@ func Catalog() []MetricGroup {
 				{Name: "job.io.char_kbps", Title: "읽기+쓰기", Unit: "KB/s", Chart: "job_io", Procfs: true, Desc: "read·write 호출 바이트(/proc/<pid>/io rchar+wchar). 소켓·파이프 포함"},
 				{Name: "job.threads", Title: "스레드", Unit: "개", Chart: "job_threads", Procfs: true},
 				{Name: "job.procs", Title: "프로세스", Unit: "개", Chart: "job_procs", Procfs: true},
+				{Name: "svc.cpu.user_pct", Title: "사용자", Unit: "%", Chart: "svc_cpu", Procfs: true, Desc: "서비스 프로세스 합. 코어 1개 = 100%"},
+				{Name: "svc.cpu.sys_pct", Title: "시스템", Unit: "%", Chart: "svc_cpu", Procfs: true, Desc: "서비스 프로세스 합. 코어 1개 = 100%"},
+				{Name: "svc.cpu.pct", Title: "CPU 사용률", Unit: "%", Chart: "svc_cpu", Procfs: true, Derived: true, Desc: "사용자 + 시스템"},
+				{Name: "svc.rss.mb", Title: "RSS", Unit: "MB", Chart: "svc_mem", Procfs: true, Desc: "서비스 프로세스 합"},
+				{Name: "svc.mem.size_mb", Title: "데이터", Unit: "MB", Chart: "svc_mem", Procfs: true},
+				{Name: "svc.mem.vsz_mb", Title: "가상", Unit: "MB", Chart: "svc_vsz", Procfs: true},
+				{Name: "svc.io.char_kbps", Title: "읽기+쓰기", Unit: "KB/s", Chart: "svc_io", Procfs: true},
+				{Name: "svc.threads", Title: "스레드", Unit: "개", Chart: "svc_threads", Procfs: true},
+				{Name: "svc.procs", Title: "프로세스", Unit: "개", Chart: "svc_procs", Procfs: true},
 			}},
 	}
 }
