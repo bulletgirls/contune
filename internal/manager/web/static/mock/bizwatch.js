@@ -8,7 +8,7 @@
 import { MIN, SEC, DAY, KST, fmtN, round, clamp, cronDay, sha } from './util.js';
 import { hostsView, groupMatch, flowOf, isDead } from './world.js';
 import { bizAt, logLevelsAt, BIZ_NAMES } from './signal.js';
-import { panelsView, profileShape, QUOTE_SERIES } from './core.js';
+import { panelsView, profileShape, QUOTE_SERIES, FLOW_SERIES } from './core.js';
 import { buildAlerts } from './alert.js';
 import { whoami } from './auth.js';
 
@@ -184,6 +184,7 @@ function bizwatch(c) {
   const metricAt = (name, t) => {
     if (BIZ_NAMES.includes(name)) return bizAt(t, ex)[name];
     if (QUOTE_SERIES[name]) return QUOTE_SERIES[name](t, now);
+    if (FLOW_SERIES[name]) return FLOW_SERIES[name](t, ex);
     if (name === 'log.error.count') return round(logLevelsAt(t, ex).e / 5, 2);
     if (name === 'log.warn.count') return round(logLevelsAt(t, ex).w / 5, 2);
     return null;
@@ -414,8 +415,14 @@ function bizwatch(c) {
 
 // ---- 보기(05 §19.15): mock은 메모리에 둔다(매니저는 보기 폴더의 파일). 규칙 · 권한은 매니저와 같다 ----
 const SECTIONS = ['events', 'due', 'flow', 'batches', 'history'];
+// mock 보기: 공유 '매매 운영'(채널부터 분배까지 이은 흐름, 자리 지정), 공유 '시세 분배'(자동 배치), 개인 '내 배치 마감'(칸 숨김)
 const seedViews = () => new Map([
-  ['trading', { id: 'trading', title: '매매 운영', owner: '', panels: ['matching', 'quote'], flow: [{ from: 'matching', to: 'quote' }], layout: {}, hide: [] }],
+  ['trading', { id: 'trading', title: '매매 운영', owner: '', panels: ['channel', 'matching', 'quote', 'stats', 'index', 'dist'],
+    flow: [{ from: 'channel', to: 'matching' }, { from: 'matching', to: 'quote' }, { from: 'matching', to: 'stats' },
+      { from: 'quote', to: 'index' }, { from: 'quote', to: 'dist' }, { from: 'index', to: 'dist', qty: '지수 송출량' }],
+    layout: { channel: [0, 0], matching: [1, 0], stats: [1, 1], quote: [2, 0], index: [2, 1], dist: [3, 0] }, hide: [] }],
+  ['market-data', { id: 'market-data', title: '시세 분배', owner: '', panels: ['quote', 'index', 'dist'],
+    flow: [{ from: 'quote', to: 'index' }, { from: 'quote', to: 'dist' }, { from: 'index', to: 'dist', qty: '지수 송출량' }], layout: {}, hide: ['batches'] }],
   ['demo-batch', { id: 'demo-batch', title: '내 배치 마감', owner: 'demo', panels: ['matching'], flow: [], layout: {}, hide: ['events', 'flow'] }],
 ]);
 let VIEWS = seedViews();

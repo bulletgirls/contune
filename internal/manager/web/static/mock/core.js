@@ -201,6 +201,7 @@ export function seriesQuery(c, p) {
   }
   for (const name of names) {
     if (QUOTE_SERIES[name]) series = series.concat([{ host: '', name, exec_id: '', points: grid.map((t) => [t, QUOTE_SERIES[name](t, now)]) }]);
+    if (FLOW_SERIES[name]) series = series.concat([{ host: '', name, exec_id: '', points: grid.map((t) => [t, FLOW_SERIES[name](t, { ...c.sig, now })]) }]);
   }
   return { from, to, step, series };
 }
@@ -230,15 +231,20 @@ export function tileValue(c, metric) {
   if (metric === 'log.error.count') return round(logLevelsAt(ts, ex).e / 5, 2);
   if (metric === 'log.warn.count') return round(logLevelsAt(ts, ex).w / 5, 2);
   if (metric === 'agent.profiler.cpu_pct') return 0.6;
+  if (FLOW_SERIES[metric]) return FLOW_SERIES[metric](ts, { ...c.sig, now: ts });
   return null;
 }
 
 export function tileState(t, v) {
   if (v === null || v === undefined) return 'none';
   if (t.crit !== undefined && v >= t.crit) return 'crit';
+  if (t.crit_below !== undefined && v <= t.crit_below) return 'crit';
   if (t.warn !== undefined && v >= t.warn) return 'warn';
+  if (t.warn_below !== undefined && v <= t.warn_below) return 'warn';
   return 'ok';
 }
+// tileReason은 판정을 정한 것(이상 high · 이하 low)이다.
+const tileReason = (t, v, st) => (st === 'warn' || st === 'crit' ? ((t.crit_below !== undefined || t.warn_below !== undefined) && v <= (t.warn_below ?? t.crit_below) ? 'low' : 'high') : '');
 
 // 시세 패널(매매/시세): 하한 위험 · 값 끊김 · 시간 외 · 읽지 못한 파일을 한 화면에서 보인다.
 // 값 규칙: 매니저 판정(계약 1)이 낼 수 있는 모양만 쓴다.
@@ -254,38 +260,86 @@ const QUOTE_PANEL = {
   active: 'mon-fri 08:00-15:30', // 업무 관제 1단계 칸(05 §19.3)
   flows: ['ext-recv-price'],
   main: '1분 시세량',
-  in: '시세 수신량', // 업무 흐름(05 §19.13): out은 단위가 같은 타일이 없어 적지 않는다(쌓임 없음)
+  in: '시세 수신량', // 업무 흐름(05 §19.13)
+  out: '시세 송출량',
   tiles: [
     { title: '1분 시세량', signal: 'traffic', metric: 'biz.quote.count_1m', agg: 'min', unit: '건/분', kpi: true, warn_below: 60000, crit_below: 10000, stale: '30s', active: 'mon-fri 09:00-15:30' },
     { title: '시세 수신량', signal: 'traffic', metric: 'biz.quote.tps', agg: 'sum', unit: '건/초' },
     { title: '호가 갱신', signal: 'traffic', metric: 'biz.quote.depth_1m', agg: 'min', unit: '건/분', kpi: true, warn_below: 3000, crit_below: 500, stale: '30s' },
     { title: '장 마감 정산 건수', signal: 'other', metric: 'biz.quote.close_count', agg: 'sum', unit: '건', warn_below: 100, crit_below: 10, active: 'mon-fri 15:40-16:00' },
+    { title: '시세 송출량', signal: 'traffic', metric: 'biz.quote.out_tps', agg: 'sum', unit: '건/초' },
   ],
   charts: [{ title: '1분 시세량', unit: '건/분', agg: 'min', metrics: ['biz.quote.count_1m'] }],
   log_levels: ['error', 'warn'],
 };
+// 업무 흐름 mock 업무(05 §19.13 · §19.15): 채널 · 매매통계 · 지수산출 · 분배. 실제 panels/에는 없고 mock에서만 흐름을 길게 잇는다.
+// 값은 체결 폭주(bizAt)와 맞물린다: 채널이 넘긴 주문 = 체결의 주문 유입량, 매매통계가 받는 양 = 체결 처리량,
+// 지수산출 · 분배는 시세 송출량을 받는다. ctx = {now, surge, exact}.
+const wave = (t, p, a) => a * Math.sin(t / p);
+export const FLOW_SERIES = {
+  'biz.channel.in_tps': (t, ctx) => Math.round(bizAt(t, { ...ctx, exact: true })['biz.order.in_tps'] * 1.004),
+  'biz.channel.out_tps': (t, ctx) => bizAt(t, { ...ctx, exact: true })['biz.order.in_tps'],
+  'biz.channel.reject_pct': (t) => round(0.4 + wave(t, 70000, 0.05), 2),
+  'biz.channel.latency_p99_ms': (t) => round(8 + wave(t, 50000, 1.5), 1),
+  'biz.quote.out_tps': (t) => Math.round(2350 + wave(t, 60000, 30)),
+  'biz.stat.in_tps': (t, ctx) => bizAt(t, { ...ctx, exact: true })['biz.order.tps'],
+  'biz.stat.out_tps': (t, ctx) => Math.min(5000, bizAt(t, { ...ctx, exact: true })['biz.order.tps']),
+  'biz.stat.lag_sec': (t, ctx) => round(2 + Math.max(0, bizAt(t, { ...ctx, exact: true })['biz.order.tps'] - 5000) / 20, 0),
+  'biz.stat.queue': (t, ctx) => Math.round(Math.max(0, bizAt(t, { ...ctx, exact: true })['biz.order.tps'] - 5000) * 160),
+  'biz.index.in_rate': (t) => Math.round(2350 + wave(t, 60000, 30)),
+  'biz.index.applied': (t) => Math.round(2347 + wave(t, 60000, 30)),
+  'biz.index.out': () => 120,
+  'biz.index.lag_ms': (t) => Math.round(180 + wave(t, 40000, 20)),
+  'biz.dist.in_rate': (t) => Math.round(2470 + wave(t, 60000, 30)),
+  'biz.dist.out_rate': (t) => Math.round(2465 + wave(t, 60000, 30)),
+  'biz.dist.subscribers': () => 48,
+  'biz.dist.latency_p99_ms': (t) => Math.round(60 + wave(t, 45000, 10)),
+};
+const tl = (title, signal, metric, agg, unit, x = {}) => ({ title, signal, metric, agg, unit, ...x });
+export const FLOW_PANELS = [
+  { id: 'channel', title: '채널', group: '매매/주문접수', active: 'mon-fri 08:00-15:40', flows: [], main: '주문 수신량', in: '주문 수신량', out: '주문 전달량',
+    tiles: [tl('주문 수신량', 'traffic', 'biz.channel.in_tps', 'sum', 'TPS'), tl('주문 전달량', 'traffic', 'biz.channel.out_tps', 'sum', 'TPS'),
+      tl('접수 거부율', 'errors', 'biz.channel.reject_pct', 'max', '%', { warn: 1, crit: 5 }), tl('p99 접수 응답 시간', 'latency', 'biz.channel.latency_p99_ms', 'max', 'ms', { warn: 20, crit: 50 })],
+    charts: [{ title: '주문 수신 · 전달', unit: 'TPS', agg: 'sum', metrics: ['biz.channel.in_tps', 'biz.channel.out_tps'] }], log_levels: ['error', 'warn'] },
+  { id: 'stats', title: '매매통계', group: '대외정보/정보계', active: 'mon-fri 08:30-16:30', flows: [], main: '통계 반영량', in: '체결 수신량', out: '통계 반영량',
+    tiles: [tl('체결 수신량', 'traffic', 'biz.stat.in_tps', 'sum', 'TPS'), tl('통계 반영량', 'traffic', 'biz.stat.out_tps', 'sum', 'TPS'),
+      tl('반영 지연', 'latency', 'biz.stat.lag_sec', 'max', '초', { warn: 30, crit: 120 }), tl('통계 대기', 'saturation', 'biz.stat.queue', 'sum', '건', { warn: 100000, crit: 500000 })],
+    charts: [{ title: '체결 수신 · 통계 반영', unit: 'TPS', agg: 'sum', metrics: ['biz.stat.in_tps', 'biz.stat.out_tps'] }], log_levels: ['error', 'warn'] },
+  { id: 'index', title: '지수산출', group: '매매/시세', active: 'mon-fri 09:00-15:30', flows: [], main: '지수 송출량', in: '시세 입력', out: '시세 반영',
+    tiles: [tl('시세 입력', 'traffic', 'biz.index.in_rate', 'sum', '건/초'), tl('시세 반영', 'traffic', 'biz.index.applied', 'sum', '건/초'),
+      tl('지수 송출량', 'traffic', 'biz.index.out', 'sum', '건/초'), tl('산출 지연', 'latency', 'biz.index.lag_ms', 'max', 'ms', { warn: 500, crit: 1000 })],
+    charts: [{ title: '시세 입력 · 반영', unit: '건/초', agg: 'sum', metrics: ['biz.index.in_rate', 'biz.index.applied'] }], log_levels: ['error', 'warn'] },
+  { id: 'dist', title: '분배', group: '대외정보/대외연계', active: 'mon-fri 08:00-16:00', flows: [], main: '분배 완료', in: '분배 요청', out: '분배 완료',
+    tiles: [tl('분배 요청', 'traffic', 'biz.dist.in_rate', 'sum', '건/초'), tl('분배 완료', 'traffic', 'biz.dist.out_rate', 'sum', '건/초'),
+      tl('수신 기관', 'saturation', 'biz.dist.subscribers', 'min', '곳', { warn_below: 40, crit_below: 30 }), tl('p99 분배 지연', 'latency', 'biz.dist.latency_p99_ms', 'max', 'ms', { warn: 100, crit: 300 })],
+    charts: [{ title: '분배 요청 · 완료', unit: '건/초', agg: 'sum', metrics: ['biz.dist.in_rate', 'biz.dist.out_rate'] }], log_levels: ['error', 'warn'] },
+];
+
 let panelErrors = [{ file: '시세-호가.yaml', msg: '타일 "호가 갱신": crit_below는 warn_below보다 작아야 합니다' }];
 
 function quoteView(c) {
   const exec = c.w.startRun.exec_id;
   const mk = (t, f) => ({ ...t, value: null, state: 'none', exec_id: '', ts: c.now, reason: '', off: false, host: '', stale_since: 0, ...f });
-  const [a, b, d, e] = QUOTE_PANEL.tiles;
+  const [a, b, d, e, f] = QUOTE_PANEL.tiles;
   return { ...QUOTE_PANEL, tiles: [
     mk(a, { value: 4200, state: 'crit', reason: 'low', host: 'feed-03', exec_id: exec }),
     mk(b, { value: 2360, state: 'ok', exec_id: exec }),
     mk(d, { value: null, state: 'crit', reason: 'stale', host: 'feed-01', stale_since: c.now - 45000 }),
     mk(e, { value: 0, state: 'ok', off: true }),
+    mk(f, { value: FLOW_SERIES['biz.quote.out_tps'](c.now), state: 'ok', exec_id: exec }),
   ] };
 }
 
 export function panelsView(c) {
-  return PANELS.map((p) => ({
+  const view = (p, exec) => ({
     ...p,
     tiles: p.tiles.map((t) => {
       const value = tileValue(c, t.metric);
-      return { ...t, value, state: tileState(t, value), exec_id: value === null ? '' : c.w.startRun.exec_id, ts: c.now, reason: '', off: false, host: '', stale_since: 0 };
+      const state = tileState(t, value);
+      return { ...t, value, state, exec_id: value === null ? '' : exec, ts: c.now, reason: tileReason(t, value, state), off: false, host: '', stale_since: 0 };
     }),
-  })).concat([quoteView(c)]);
+  });
+  return PANELS.map((p) => view(p, c.w.startRun.exec_id)).concat([quoteView(c)], FLOW_PANELS.map((p) => view(p, '')));
 }
 
 function panels(c) {

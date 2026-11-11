@@ -60,7 +60,7 @@ export function span(from, to, win) {
   return [l, Math.max(0, pos(to, win) - l)];
 }
 // 업무 흐름 배치(순수): 보기 layout의 [열, 줄], 없으면 열 = 화살표를 거슬러 간 가장 긴 길이, 줄 = 그 열의 빈 자리.
-export const FN = { w: 232, h: 100, gx: 156, gy: 18, pad: 8, top: 8 };
+export const FN = { w: 200, h: 100, gx: 100, gy: 40, pad: 8, top: 8 };
 export function flowLayout(f, layout) {
   const ids = f.nodes.map((n) => n.id);
   const cells = placeNodes(ids, f.edges, layout);
@@ -73,6 +73,20 @@ export function flowLayout(f, layout) {
   }
   const ncol = ids.length ? maxC + 1 : 0, nrow = maxR + 1;
   return { pos, width: FN.pad * 2 + ncol * FN.w + Math.max(0, ncol - 1) * FN.gx, height: FN.top + nrow * FN.h + (nrow - 1) * FN.gy + FN.pad };
+}
+// edgeRoute는 화살표 길(순수)이다. 다음 업무가 오른쪽 열이면 가로(앞 업무 오른쪽 → 다음 업무 왼쪽),
+// 같은 열이거나 왼쪽이면 세로(앞 업무 아래 → 다음 업무 위, 위에 있으면 반대). a · b는 flowLayout의 자리.
+export function edgeRoute(a, b, n = FN) {
+  if (b.col > a.col) {
+    const x1 = a.x + n.w, y1 = a.y + n.h / 2, x2 = b.x - 2, y2 = b.y + n.h / 2, dx = Math.max(30, (x2 - x1) / 2);
+    return { vertical: false, d: `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2 - 7},${y2}`,
+      head: `${x2 - 8},${y2 - 5} ${x2},${y2} ${x2 - 8},${y2 + 5}`, lx: x1 + Math.min(n.gx / 2, (x2 - x1) / 2), ly: y1 + (y2 - y1) * 0.12 - 6 };
+  }
+  const down = b.row >= a.row, s = down ? 1 : -1;
+  const x1 = a.x + n.w / 2, y1 = down ? a.y + n.h : a.y, x2 = b.x + n.w / 2, y2 = down ? b.y - 2 : b.y + n.h + 2;
+  const dy = Math.max(16, Math.abs(y2 - y1) / 2) * s;
+  return { vertical: true, d: `M${x1},${y1} C${x1},${y1 + dy} ${x2},${y2 - dy} ${x2},${y2 - 7 * s}`,
+    head: `${x2 - 5},${y2 - 8 * s} ${x2},${y2} ${x2 + 5},${y2 - 8 * s}`, lx: (x1 + x2) / 2 + 8, ly: (y1 + y2) / 2 };
 }
 // 상태 이력 칸 → 그 구간(앞뒤 10분)의 업무 탭
 export function cellHref(row, i, h) {
@@ -267,18 +281,17 @@ function flowSec(d, hide) {
     const a = L.pos.get(e.from), b = L.pos.get(e.to);
     if (!a || !b) continue;
     const st = e.qty ? e.qty.state : 'none';
-    const x1 = a.x + FN.w, y1 = a.y + FN.h / 2, x2 = b.x - 2, y2 = b.y + FN.h / 2, dx = Math.max(30, (x2 - x1) / 2);
+    const r = edgeRoute(a, b);
     const g = document.createElementNS(NS, 'g');
     g.setAttribute('class', `bw-fe ${st}`);
     const path = document.createElementNS(NS, 'path');
-    path.setAttribute('d', `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2 - 7},${y2}`);
+    path.setAttribute('d', r.d);
     const head = document.createElementNS(NS, 'polygon');
-    head.setAttribute('points', `${x2 - 8},${y2 - 5} ${x2},${y2} ${x2 - 8},${y2 + 5}`);
+    head.setAttribute('points', r.head);
     g.append(path, head);
     svg.append(g);
-    // 화살표 글자: 앞 업무 out의 이름과 값(가까운 쪽 = 앞 업무 끝에 붙여 화살표가 여럿이어도 겹치지 않게)
-    const lx = x1 + Math.min(FN.gx / 2, (x2 - x1) / 2), ly = y1 + (y2 - y1) * 0.12 - 6;
-    box.append(el('div', { class: 'bw-fl', 'data-s': st, style: `left:${lx}px;top:${ly}px`, title: e.qty ? `${e.qty.name} ${e.qty.text}` : 'out 없음(패널 out 확인)' },
+    // 화살표 글자: 앞 업무 out의 이름과 값(가로 화살표는 앞 업무 쪽 위, 세로 화살표는 가운데 오른쪽)
+    box.append(el('div', { class: `bw-fl${r.vertical ? ' v' : ''}`, 'data-s': st, style: `left:${r.lx}px;top:${r.ly}px`, title: e.qty ? `${e.qty.name} ${e.qty.text}` : 'out 없음(패널 out 확인)' },
       el('span', { text: e.qty ? e.qty.name : 'out 없음' }), el('b', { text: e.qty ? e.qty.text : DASH })));
   }
   box.prepend(svg);

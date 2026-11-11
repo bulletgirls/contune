@@ -47,8 +47,8 @@ export function foldable(sec, key) {
 
 // ---- 노드 자리(순수) ----
 // placeNodes는 노드 자리 [열, 줄]이다. 보기 layout에 있으면 그 자리, 없으면 열 = 화살표를 거슬러 간 가장 긴 길이,
-// 줄 = 그 열의 빈 자리(나온 순서).
-export function placeNodes(ids, edges, layout) {
+// 줄 = 그 열의 빈 자리(나온 순서). 화살표가 하나도 없는 업무는 그 아래 줄부터 한 줄에 perRow개씩 놓는다.
+export function placeNodes(ids, edges, layout, perRow = 4) {
   const set = new Set(ids);
   const prev = new Map(ids.map((id) => [id, []]));
   for (const e of edges || []) if (set.has(e.from) && set.has(e.to)) prev.get(e.to).push(e.from);
@@ -67,13 +67,24 @@ export function placeNodes(ids, edges, layout) {
     const p = L[id];
     if (Array.isArray(p) && !taken.has(`${p[0]},${p[1]}`)) { pos.set(id, [p[0], p[1]]); taken.add(`${p[0]},${p[1]}`); }
   }
+  const linked = new Set();
+  for (const e of edges || []) if (set.has(e.from) && set.has(e.to)) { linked.add(e.from); linked.add(e.to); }
   for (const id of ids) {
-    if (pos.has(id)) continue;
+    if (pos.has(id) || !linked.has(id)) continue;
     const c = dep(id, new Set());
     let r = 0;
     while (taken.has(`${c},${r}`)) r++;
     pos.set(id, [c, r]);
     taken.add(`${c},${r}`);
+  }
+  let row = pos.size ? Math.max(...[...pos.values()].map((p) => p[1])) + 1 : 0, col = 0;
+  for (const id of ids) {
+    if (pos.has(id)) continue;
+    while (taken.has(`${col},${row}`)) { col++; if (col >= perRow) { col = 0; row++; } }
+    pos.set(id, [col, row]);
+    taken.add(`${col},${row}`);
+    col++;
+    if (col >= perRow) { col = 0; row++; }
   }
   return pos;
 }
@@ -120,6 +131,7 @@ export async function openViewEditor(opts) {
     flow: (src.flow || []).map((e) => ({ ...e })),
     layout: { ...(src.layout || {}) },
     hide: new Set(src.hide || []),
+    q: '', // 업무 찾기
   };
   const byId = new Map(panels.map((p) => [p.id, p]));
   const sha = isNew ? '' : src.sha || '';
@@ -152,8 +164,23 @@ export async function openViewEditor(opts) {
       kind.append(el('label', { title: tip, class: can ? '' : 'off' }, r, label));
     }
 
-    // 2. 고를 업무 · 순서
+    // 2. 고를 업무 · 순서(찾기 칸은 목록만 거른다: 다시 그리지 않아 글자를 치는 동안 칸을 놓치지 않는다)
     const pick = el('div', { class: 'bw-ve-list' });
+    const found = el('span', { class: 'bw-dim', 'aria-live': 'polite' });
+    const nothing = el('p', { class: 'bw-none bw-ve-nothing', text: '찾는 업무 없음', hidden: true });
+    const applyFind = () => {
+      const q = st.q.trim().toLowerCase();
+      let n = 0;
+      for (const row of pick.querySelectorAll('.bw-ve-row')) {
+        const hit = !q || row.dataset.find.includes(q);
+        row.hidden = !hit;
+        if (hit) n++;
+      }
+      nothing.hidden = n > 0;
+      found.textContent = q ? `${panels.length}개 중 ${n}개` : `업무 ${panels.length}개 · 고른 업무 ${st.panels.length}개`;
+    };
+    const find = el('input', { type: 'search', id: 'bw-ve-find', value: st.q, placeholder: '업무 찾기(이름 · id · 그룹)', 'aria-label': '업무 찾기',
+      oninput: (e) => { st.q = e.target.value; applyFind(); } });
     const order = [...st.panels.filter((id) => byId.has(id)), ...st.panels.filter((id) => !byId.has(id)), ...panels.map((p) => p.id).filter((id) => !st.panels.includes(id))];
     order.forEach((id) => {
       const on = st.panels.includes(id), i = st.panels.indexOf(id), p = byId.get(id);
@@ -163,12 +190,16 @@ export async function openViewEditor(opts) {
         touch(); draw();
       } });
       const move = (d) => { const j = i + d; [st.panels[i], st.panels[j]] = [st.panels[j], st.panels[i]]; touch(); draw(); };
-      pick.append(el('div', { class: `bw-ve-row${on ? '' : ' dim'}` },
+      const row = el('div', { class: `bw-ve-row${on ? '' : ' dim'}` },
         el('label', { for: `bw-ve-p-${id}` }, cb, el('b', { text: p ? p.title : id }), el('span', { class: 'bw-dim', text: p ? p.group : '패널 없음' })),
         el('span', { class: 'grow' }),
         el('button', { type: 'button', class: 'bw-ve-mv', text: '↑', title: '앞으로', 'aria-label': `${title(id)} 앞으로`, disabled: !on || i === 0, onclick: () => move(-1) }),
-        el('button', { type: 'button', class: 'bw-ve-mv', text: '↓', title: '뒤로', 'aria-label': `${title(id)} 뒤로`, disabled: !on || i === st.panels.length - 1, onclick: () => move(1) })));
+        el('button', { type: 'button', class: 'bw-ve-mv', text: '↓', title: '뒤로', 'aria-label': `${title(id)} 뒤로`, disabled: !on || i === st.panels.length - 1, onclick: () => move(1) }));
+      row.dataset.find = [id, p ? p.title : '', p ? p.group : ''].join(' ').toLowerCase();
+      pick.append(row);
     });
+    pick.append(nothing);
+    applyFind();
 
     // 3. 칸 보이기
     const secs = el('div', { class: 'bw-ve-secs' });
@@ -223,7 +254,8 @@ export async function openViewEditor(opts) {
     body.replaceChildren(
       field('이름', name),
       field('종류', kind),
-      field('고를 업무 · 순서', el('div', {}, pick, el('p', { class: 'bw-ve-hint', text: '하나도 안 고르면 전체 업무(새 패널도 자동으로). ↑ ↓로 카드 · 이력 줄 순서' }))),
+      field('고를 업무 · 순서', el('div', {}, el('div', { class: 'bw-ve-row bw-ve-findr' }, find, found), pick,
+        el('p', { class: 'bw-ve-hint', text: '하나도 안 고르면 전체 업무(새 패널도 자동으로). ↑ ↓로 카드 · 이력 줄 순서' }))),
       field('칸 보이기', secs),
       field('업무 흐름', el('div', {}, flow, addEdge)),
       field('노드 자리', el('div', {}, canvas, el('div', { class: 'bw-ve-row' },
@@ -253,10 +285,13 @@ export async function openViewEditor(opts) {
     svg.setAttribute('height', String(H));
     for (const f of st.flow) {
       if (!pos.has(f.from) || !pos.has(f.to)) continue;
-      const [ax, ay] = xy(pos.get(f.from)), [bx, by] = xy(pos.get(f.to));
+      const pa = pos.get(f.from), pb = pos.get(f.to);
+      const [ax, ay] = xy(pa), [bx, by] = xy(pb);
       const line = document.createElementNS(NS, 'line');
-      line.setAttribute('x1', String(ax + CW)); line.setAttribute('y1', String(ay + CH / 2));
-      line.setAttribute('x2', String(bx)); line.setAttribute('y2', String(by + CH / 2));
+      const side = pb[0] > pa[0]; // 오른쪽 열이면 옆으로, 아니면 위아래로(업무 흐름 칸과 같은 길)
+      const down = pb[1] >= pa[1];
+      line.setAttribute('x1', String(side ? ax + CW : ax + CW / 2)); line.setAttribute('y1', String(side ? ay + CH / 2 : down ? ay + CH : ay));
+      line.setAttribute('x2', String(side ? bx : bx + CW / 2)); line.setAttribute('y2', String(side ? by + CH / 2 : down ? by : by + CH));
       line.setAttribute('class', 'bw-ve-line');
       svg.append(line);
     }
