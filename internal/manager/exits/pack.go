@@ -397,15 +397,31 @@ type stackN struct {
 }
 
 // evProfile은 직전 60초 프로파일이다. 그 실행의 스택 중 이 프로세스(comm)의 것이 있으면 그것만 센다.
+// 서비스 프로세스의 표본은 서비스 주인 키(svc:<서비스>@<서버>)로 쌓이므로 그것을 먼저 보고(06 §12),
+// 비었으면 실행 ID로 본다(서비스로 잡히기 전 표본, 서비스가 아닌 프로세스).
 func (s *Service) evProfile(ctx context.Context, r model.ExitReport) *model.Evidence {
 	if s.d.Metrics == nil {
 		return nil
 	}
 	E := r.EndedAt
-	prof, err := s.d.Metrics.QueryProfile(ctx, r.ExecID, E-profBefore, E)
-	if err != nil {
-		slog.Warn("근거 묶음: 프로파일 조회 실패", "exec_id", r.ExecID, "err", err)
-		return nil
+	var owners []string
+	if r.Service != "" {
+		owners = append(owners, model.ServiceOwner(r.Service, r.Host))
+	}
+	if r.ExecID != "" {
+		owners = append(owners, r.ExecID)
+	}
+	var prof model.Profile
+	for _, owner := range owners {
+		p, err := s.d.Metrics.QueryProfile(ctx, owner, E-profBefore, E)
+		if err != nil {
+			slog.Warn("근거 묶음: 프로파일 조회 실패", "owner", owner, "err", err)
+			return nil
+		}
+		if len(p.Stacks) > 0 {
+			prof = p
+			break
+		}
 	}
 	mine := false
 	for st := range prof.Stacks {
@@ -482,12 +498,27 @@ func (s *Service) evLogs(ctx context.Context, r model.ExitReport) *model.Evidenc
 	if len(evs) == 0 {
 		return nil
 	}
-	var nE, nW int
+	// 자기 줄: 이 프로세스의 실행 ID나 서비스 주인 키로 쌓인 줄. 같은 서버의 다른 실행 줄과 구별해야
+	// 규칙이 남의 (E) 줄을 원인으로 쓰지 않는다(own_errors·own_warns).
+	ownKey := ""
+	if r.Service != "" {
+		ownKey = model.ServiceOwner(r.Service, r.Host)
+	}
+	own := func(ev model.LogEvent) bool {
+		return ev.ExecID != "" && (ev.ExecID == r.ExecID || ev.ExecID == ownKey)
+	}
+	var nE, nW, oE, oW int
 	for _, ev := range evs {
 		if ev.Level == "error" {
 			nE++
+			if own(ev) {
+				oE++
+			}
 		} else {
 			nW++
+			if own(ev) {
+				oW++
+			}
 		}
 	}
 	near := append([]model.LogEvent(nil), evs...)
@@ -511,7 +542,7 @@ func (s *Service) evLogs(ctx context.Context, r model.ExitReport) *model.Evidenc
 		return near[i].ID < near[j].ID
 	})
 	e := &model.Evidence{ID: model.EvLogs, TS: near[len(near)-1].TS,
-		Facts: map[string]float64{"errors": float64(nE), "warns": float64(nW)}}
+		Facts: map[string]float64{"errors": float64(nE), "warns": float64(nW), "own_errors": float64(oE), "own_warns": float64(oW)}}
 	switch {
 	case nE > 0 && nW > 0:
 		e.Title = fmt.Sprintf("오류 로그 %d줄 · 경고 %d줄", nE, nW)

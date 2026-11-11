@@ -138,12 +138,14 @@ cmd_run() {
   [ "$code" = 201 ] || die "market-open 실행 실패(HTTP $code)"
 }
 
+# 6000은 60초: 위험도는 최근 60초 특징으로 매기므로 6000이 20초뿐이면 0 그대로다(11-11 리허설: 약 50초 유지해야 오름).
 cmd_surge() {
-  say surge "접수율 3000 -> 4500 -> 6000 -> 1500, 20초 간격 (장면 5)"
-  for r in 3000 4500 6000 1500; do
+  say surge "접수율 3000(20초) -> 4500(20초) -> 6000(60초) -> 1500 (장면 5)"
+  for step in 3000:20 4500:20 6000:60 1500:0; do
+    r=${step%:*}
     set_rate "$r"
     echo "  $(date +%H:%M:%S) 접수율 $r"
-    [ "$r" = 1500 ] || sleep 20
+    sleep "${step#*:}"
   done
 }
 
@@ -233,15 +235,23 @@ cmd_sql() {
   done
 }
 
+# export <주인>: 실행 ID 또는 서비스 주인 키. 체결·시세 서비스의 지표·프로파일·로그는 서비스 주인 키로 쌓인다(06 §12):
+#   deploy/demo.sh export svc:matching@match-01
 cmd_export() {
-  [ $# -ge 1 ] || die "사용법: demo.sh export <exec_id>"
+  [ $# -ge 1 ] || die "사용법: demo.sh export <exec_id | svc:<서비스>@<서버>>  (체결은 svc:matching@match-01)"
   id="$1"
+  enc=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$id")
+  name=$(printf '%s' "$id" | tr ':@*/' '____')   # 파일 이름에 쓸 수 없는 글자(Windows의 :) 빼기
   mkdir -p out
-  say export "exec_id=$id 의 원자료를 ./out/ 에 내려받습니다 (장면 7)"
-  acurl -fsS "$API/export/samples?exec_id=$id" -o "out/samples-$id.csv"
-  acurl -fsS "$API/export/profile?exec_id=$id" -o "out/profile-$id.folded"
-  acurl -fsS "$API/export/logs?exec_id=$id" -o "out/logs-$id.csv"
-  ls -l "out/samples-$id.csv" "out/profile-$id.folded" "out/logs-$id.csv"
+  say export "$id 의 원자료를 ./out/ 에 내려받습니다 (장면 7)"
+  acurl -fsS "$API/export/samples?exec_id=$enc" -o "out/samples-$name.csv"
+  acurl -fsS "$API/export/profile?exec_id=$enc" -o "out/profile-$name.folded"
+  acurl -fsS "$API/export/logs?exec_id=$enc" -o "out/logs-$name.csv"
+  ls -l "out/samples-$name.csv" "out/profile-$name.folded" "out/logs-$name.csv"
+  [ -s "out/profile-$name.folded" ] || case "$id" in
+    svc:*) ;;
+    *) echo "  프로파일이 비었습니다. 서비스로 옮겨 간 프로세스면 서비스 주인 키로: demo.sh export svc:<서비스>@<서버>" ;;
+  esac
 }
 
 cmd_status() {

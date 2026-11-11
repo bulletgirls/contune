@@ -5,7 +5,7 @@
 import { api, poll } from '../api.js';
 import { lineChart, fmtTime } from '../chart.js';
 import { renderFlame, compareLeaf, verdict } from '../flame.js';
-import { el, esc, badgeHTML, fmtDuration, fmtClock, fmtNum, numUnit, info, shortExec, toast, parseOwner, DASH, LEVEL_TEXT } from '../ui.js';
+import { el, esc, badgeHTML, fmtDuration, fmtClock, fmtNum, numUnit, info, shortExec, toast, parseOwner, svcOwner, DASH, LEVEL_TEXT } from '../ui.js';
 import { TRIGGER_TEXT, hashOfBoard, hashOfFlow } from './batch.js';
 import { splitPrefix } from './biz.js';
 import { can } from '../auth.js';
@@ -66,6 +66,21 @@ export function movedToService(procs) {
     if (!by.get(k).comms.includes(p.comm)) by.get(k).comms.push(p.comm);
   }
   return [...by.values()];
+}
+// 프로파일을 부를 주인: 이 실행 + 이 실행이 띄워 서비스로 옮겨 간 프로세스의 서비스 주인 키(06 §12).
+// 서비스 프로세스의 표본은 서비스 주인 키로 쌓이므로 실행 ID만 부르면 상주 프로세스의 표본이 빠진다.
+export function profileOwners(id, procs) {
+  return [id, ...movedToService(procs).map((o) => svcOwner(o.service, o.host))];
+}
+// 같은 스택(frames)의 표본을 더한다. 응답 모양은 /profile과 같다({stacks, samples}).
+export function mergeProfiles(ps) {
+  const by = new Map();
+  let samples = 0;
+  for (const p of ps) {
+    samples += p.samples || 0;
+    for (const s of p.stacks || []) by.set(s.frames, (by.get(s.frames) || 0) + s.samples);
+  }
+  return { samples, stacks: [...by].map(([frames, n]) => ({ frames, samples: n })).sort((a, b) => b.samples - a.samples) };
 }
 // 고정 구간: A = 앞 30초, B = 마지막 30초
 export function fixedAB(view) {
@@ -372,9 +387,11 @@ export async function render(host, params) {
     vEl.innerHTML = '';
     cmpEl.replaceChildren();
     const got = {};
+    const owners = profileOwners(id, detail.procs);
     for (const [name, title, r, cls] of ranges) {
-      let p = { stacks: [], samples: 0 };
-      try { p = await api(`/profile?exec_id=${q(id)}&from=${Math.round(r.from)}&to=${Math.round(r.to)}`); } catch (e) { /* 빈 그래프 */ }
+      const ps = await Promise.all(owners.map((o) =>
+        api(`/profile?exec_id=${q(o)}&from=${Math.round(r.from)}&to=${Math.round(r.to)}`).catch(() => null))); // 실패한 주인은 빈 그래프
+      const p = mergeProfiles(ps.filter(Boolean));
       got[name] = p;
       renderFlame(flames.querySelector('.' + cls), { stacks: p.stacks || [], title, highlight: st.hl, subtitle: rangeText(r, p.samples) });
     }

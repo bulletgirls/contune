@@ -4,6 +4,8 @@
 /pipeline/logs/
 # 워커의 수동 확인용 폴더
 .run/
+# demo.sh export 결과
+/out/
 __pycache__/
 # 이전 실습(Gemini 프로토타입)의 산출물
 /eum

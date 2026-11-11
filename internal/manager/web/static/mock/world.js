@@ -452,7 +452,7 @@ export const PANELS = [
       { title: '오류 로그 발생률', signal: 'errors', metric: 'log.error.count', agg: 'sum', unit: '건/초', warn: 1, crit: 5 },
       { title: '대기 큐', signal: 'saturation', metric: 'biz.order.queue', agg: 'sum', unit: '건', warn: 500, crit: 2000, kpi: true },
       { title: '히스토리 버퍼 사용률', signal: 'saturation', metric: 'biz.order.histbuf_pct', agg: 'max', unit: '%', warn: 70, crit: 90 },
-      { title: '프로파일링 오버헤드', metric: 'agent.profiler.cpu_pct', agg: 'max', unit: '%', warn: 1 },
+      { title: '프로파일링 오버헤드', metric: 'agent.profiler.cpu_pct', agg: 'max', unit: '%', warn: 5 },
     ],
     charts: [
       { title: '처리량', unit: 'TPS', agg: 'sum', metrics: ['biz.order.in_tps', 'biz.order.tps'] },
@@ -477,7 +477,7 @@ export const PANELS = [
       { title: '스냅샷 복구', signal: 'errors', metric: 'biz.quote.recover', agg: 'sum', unit: '회/초', warn: 1 },
       { title: '오류 로그 발생률', signal: 'errors', metric: 'log.error.count', agg: 'sum', unit: '건/초', warn: 1, crit: 5 },
       { title: '수신 대기', signal: 'saturation', metric: 'biz.quote.backlog', agg: 'sum', unit: '건', warn: 1000, crit: 3000 },
-      { title: '프로파일링 오버헤드', metric: 'agent.profiler.cpu_pct', agg: 'max', unit: '%', warn: 1 },
+      { title: '프로파일링 오버헤드', metric: 'agent.profiler.cpu_pct', agg: 'max', unit: '%', warn: 5 },
     ],
     charts: [
       { title: '시세 처리량', unit: '건/초', agg: 'sum', metrics: ['biz.quote.recv_tps', 'biz.quote.sent_tps'] },

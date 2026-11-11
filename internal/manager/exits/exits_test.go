@@ -416,7 +416,7 @@ func TestPack(t *testing.T) {
 	}
 
 	logs := evOf(t, p, model.EvLogs)
-	checkFacts(t, logs, map[string]float64{"errors": 2, "warns": 0})
+	checkFacts(t, logs, map[string]float64{"errors": 2, "warns": 0, "own_errors": 2, "own_warns": 0})
 	if logs.Title != "오류 로그 2줄" || len(logs.Lines) != 2 || strings.Join(logs.Refs, ",") != "e1" ||
 		logs.Lines[0] != "07:59:30 (E) matching: 주문 거부 password=***" || logs.Lines[1] != "07:59:50 (E) matching: book 오류" {
 		t.Errorf("logs %q %q", logs.Title, logs.Lines)
@@ -475,6 +475,24 @@ func TestPackEmptyEvidence(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(p.Evidence[0].Lines, "\n"), "끝난 방식: 모름 · 출처 없음") {
 		t.Errorf("exit 줄 %v", p.Evidence[0].Lines)
+	}
+}
+
+// 서비스 프로세스의 표본은 서비스 주인 키로 쌓인다(06 §12): 근거는 그것을 먼저 보고, 없으면 실행 ID로 본다.
+func TestEvProfileServiceOwner(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t, nil)
+	e.mt.WriteProfiles(ctx, []model.Profile{
+		{ExecID: model.ServiceOwner("matching", "h1"), TS: E - 30_000, DurMS: 10_000, Stacks: map[string]int64{"svc;main;book_insert": 70, "svc;main;b": 30}},
+		{ExecID: "e1", TS: E - 30_000, DurMS: 10_000, Stacks: map[string]int64{"svc;main;early": 5}},
+	})
+	ev := e.s.evProfile(ctx, model.ExitReport{ExecID: "e1", Service: "matching", Host: "h1", Comm: "svc", EndedAt: E})
+	if ev == nil || ev.Facts["samples"] != 100 || ev.Lines[0] != "70.0% main;book_insert" {
+		t.Fatalf("서비스 주인 키 표본을 써야 함: %+v", ev)
+	}
+	ev = e.s.evProfile(ctx, model.ExitReport{ExecID: "e1", Service: "quote", Host: "h1", Comm: "svc", EndedAt: E})
+	if ev == nil || ev.Facts["samples"] != 5 {
+		t.Fatalf("주인 키가 비면 실행 ID로: %+v", ev)
 	}
 }
 

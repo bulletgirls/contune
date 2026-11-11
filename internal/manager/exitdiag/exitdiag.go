@@ -203,6 +203,20 @@ func (v *view) lines(id string) []string {
 	return nil
 }
 
+// ownLogs는 업무 로그 근거를 (이 프로세스의 줄로 쓸 수 있는 것, 아닌 것)으로 나눈다. 줄마다 주인이 없으므로
+// 근거의 셈(errors·warns와 own_errors·own_warns)이 같을 때만 모든 줄을 자기 줄로 본다.
+func (v *view) ownLogs() (own, other []string) {
+	e := v.ev[model.EvLogs]
+	if e == nil {
+		return nil, nil
+	}
+	f := e.Facts
+	if f["errors"]+f["warns"] > 0 && f["own_errors"] == f["errors"] && f["own_warns"] == f["warns"] {
+		return e.Lines, nil
+	}
+	return nil, e.Lines
+}
+
 func (v *view) output() []string {
 	if len(v.r.OutputTail) > 0 {
 		return v.r.OutputTail
@@ -660,7 +674,9 @@ func ruleExitError(v *view) (diag, bool) {
 		return diag{}, false
 	}
 	code := *v.r.ExitCode
-	logs := v.lines(model.EvLogs)
+	// 업무 로그 근거는 같은 서버의 줄을 모두 모은다. 원인으로 쓰는 것은 줄이 모두 이 프로세스의 것일 때뿐이다
+	// (다른 실행의 (E) 줄을 이 프로세스의 원인으로 적지 않게). 섞여 있으면 같은 서버의 줄로만 알린다.
+	logs, other := v.ownLogs()
 	line, from := errLine(v.output()), model.EvOutput
 	if line == "" {
 		line, from = errLine(logs), model.EvLogs
@@ -673,6 +689,11 @@ func ruleExitError(v *view) (diag, bool) {
 	}
 	d := diag{cat: model.ExitError, conf: "high", title: fmt.Sprintf("종료 코드 %d", code)}
 	d.say("스스로 종료 코드 %s 끝났습니다.", ro(strconv.Itoa(code)))
+	if line == "" {
+		if l := errLine(other); l != "" {
+			d.say("같은 서버의 업무 로그(다른 실행의 줄일 수 있음): %s", cut(l, 160))
+		}
+	}
 	if line != "" {
 		d.title += " — " + cut(line, 120)
 		d.cite(from)
