@@ -33,14 +33,14 @@ type SeedOptions struct {
 
 const (
 	bizHost     = "match-01"
-	bizGroup    = "매매/체결"
+	bizGroup    = "매매체결"
 	quoteHost   = "feed-01"
 	seedSource  = "seed"
 	incidentCnt = 6
 )
 
 var hostGroups = map[string]string{
-	"match-01": "매매/체결", "gw-01": "매매/주문접수", "batch-01": "사후처리/배치",
+	"match-01": "매매체결", "gw-01": "채널", "batch-01": "청산결제",
 }
 
 type incidentSpan struct{ start, end time.Time }

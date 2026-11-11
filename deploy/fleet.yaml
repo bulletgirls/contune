@@ -1,4 +1,4 @@
-# 모의 서버 39대. 실제 컨테이너 4대(match-01·gw-01·batch-01·feed-01)와 같은 매니저에 붙는다(02 §13, 05 §2).
+# 모의 서버 42대. 실제 컨테이너 4대(match-01·gw-01·batch-01·feed-01)와 같은 매니저에 붙는다(02 §13, 05 §2).
 manager: http://manager:8080
 token: ${EUM_TOKEN}
 interval: 5s
@@ -10,14 +10,22 @@ allow:                         # 모의 서버도 명령을 실제로 실행하�
   - '^echo( |$)'
   - '^sh -c echo "\(E\) [^"$`\\]*"; exit [0-9]+$'
 hosts:
-  - { group: 매매/주문접수,     prefix: gw,     from: 2, to: 6 }
-  - { group: 매매/체결,         prefix: match,  from: 2, to: 8 }
-  - { group: 매매/시세,         prefix: feed,   from: 2, to: 6 }   # feed-01은 실제 에이전트(시세 서비스)
-  - { group: 사후처리/청산정산, prefix: settle, from: 1, to: 4 }
-  - { group: 사후처리/배치,     prefix: batch,  from: 2, to: 4 }
-  - { group: 대외정보/대외연계, prefix: ext,    from: 1, to: 6 }
-  - { group: 대외정보/정보계,   prefix: dw,     from: 1, to: 5 }
-  - { group: 공통/관리,         prefix: ops,    from: 1, to: 4 }
+  - { group: 채널,     prefix: gw,     from: 2, to: 6 }
+  - { group: 채널,     prefix: ext,    from: 1, to: 6 }
+  - { group: 매매체결, prefix: match,  from: 2, to: 8 }
+  - { group: 매매통계, prefix: dw,     from: 1, to: 5 }
+  - { group: 정보분배, prefix: feed,   from: 2, to: 6 }   # feed-01은 실제 에이전트(시세 서비스)
+  - { group: 지수산출, prefix: idx,    from: 1, to: 3 }
+  - { group: 청산결제, prefix: settle, from: 1, to: 4 }
+  - { group: 청산결제, prefix: batch,  from: 2, to: 4 }
+  - { group: rds,      prefix: rds,    from: 1, to: 4 }
+# 업무 시뮬레이터(카드 U): 모의 서버가 앞 업무의 실제 값을 받아 처리량·대기·지연을 낸다(biz.<name>.*)
+stages:
+  - { host: gw-02,     name: channel,  from: [biz.order.in_tps], gain: 1.004, loss: 0.004, cap: 20000, lat_ms: 3 }
+  - { host: dw-01,     name: stats,    from: [biz.order.tps], cap: 9000,  lat_ms: 40 }
+  - { host: idx-01,    name: index,    from: [biz.order.tps], cap: 12000, ratio: 0.05, lat_ms: 15 }
+  - { host: settle-01, name: clearing, from: [biz.order.tps], cap: 7000,  lat_ms: 60 }
+  - { host: rds-01,    name: rds,      from: [biz.stats.out_tps, biz.clearing.out_tps], cap: 30000, lat_ms: 4 }
 faults:
   - { host: ext-04, kind: silent, after: 20s }
   - { host: dw-02,  kind: mem, value: 93 }

@@ -104,7 +104,7 @@ func TestSeedIncidents(t *testing.T) {
 		}
 	}
 	for _, in := range ins {
-		if in.Source != "seed" || in.Scope != "매매/체결" || in.Title != "체결 지연(시연 이력)" {
+		if in.Source != "seed" || in.Scope != "매매체결" || in.Title != "체결 지연(시연 이력)" {
 			t.Errorf("장애 필드: %+v", in)
 		}
 		if in.Start < lo || in.End > hi {

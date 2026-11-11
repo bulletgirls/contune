@@ -3,9 +3,9 @@ id: weekly-ops-01
 schedule: "0 2 * * 6"
 steps:
   - id: step-1
-    host: ops-01
+    host: rds-01
     command: [eum, burn, --cpu, "1", --duration, 3s]
   - id: step-2
-    host: ops-01
+    host: rds-01
     command: [eum, burn, --cpu, "1", --duration, 5s]
     depends: [step-1]

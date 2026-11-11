@@ -4,7 +4,7 @@ id: trading
 title: 매매 현황
 desc: 체결·시세 핵심 타일, 처리량·시세 지연, 서버·서비스 자원, 체결 로그
 range: 1h
-group: 매매
+group: 매매체결
 widgets:
   # 첫 줄: 체결·시세 패널 타일(3칸씩)
   - { id: queue,  type: stat, ref: { panel: matching, tile: 대기 큐 } }
@@ -38,7 +38,7 @@ widgets:
     title: 서버별 CPU
     w: 4
     h: 2
-    scope: { group: 매매 }
+    scope: { group: 매매체결 }
     queries:
       - { metric: host.cpu.pct, by: host }
     unit: "%"
@@ -67,4 +67,4 @@ widgets:
     title: 매매 서비스
     w: 4
     h: 2
-    scope: { group: 매매 }
+    scope: { group: 매매체결 }

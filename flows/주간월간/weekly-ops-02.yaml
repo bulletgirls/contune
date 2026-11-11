@@ -3,5 +3,5 @@ id: weekly-ops-02
 schedule: "30 2 * * 6"
 steps:
   - id: step-1
-    host: ops-02
+    host: rds-02
     command: [eum, burn, --cpu, "1", --duration, 4s]

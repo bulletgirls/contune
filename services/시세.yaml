@@ -1,7 +1,7 @@
 # 시세 서비스: feed-01의 quote_svc.
 id: quote
 title: 시세
-group: 매매/시세
+group: 정보분배
 match:
   - comm: quote_svc
 profile: true
