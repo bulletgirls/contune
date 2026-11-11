@@ -78,6 +78,7 @@ type devHost struct {
 	host, group string
 	seed        int
 	push        string                        // 업무 프로세스 push 수신 포트 플래그("" = 없음)
+	service     string                        // push 수신구의 서비스 ID(06). 수신 지표의 주인이 서비스 인스턴스가 된다
 	logs        func() []logtail.SourceConfig // 업무 프로세스 로그 출처(nil = 없음)
 	profile     bool                          // perf가 있으면 함수 추적
 }
@@ -85,10 +86,10 @@ type devHost struct {
 // devHosts는 실제 에이전트 4대다. 업무 프로세스 둘은 서버·push 포트·로그·실행 ID를 따로 쓴다:
 // match-01의 체결 서비스(matching_svc, market-open), feed-01의 시세 서비스(quote_svc, quote-open).
 var devHosts = []devHost{
-	{host: "match-01", group: "매매/체결", seed: 1, push: "push-port", logs: matchingLogs, profile: true},
+	{host: "match-01", group: "매매/체결", seed: 1, push: "push-port", service: "matching", logs: matchingLogs, profile: true},
 	{host: "gw-01", group: "매매/주문접수", seed: 2},
 	{host: "batch-01", group: "사후처리/배치", seed: 3, profile: true},
-	{host: "feed-01", group: "매매/시세", seed: 4, push: "quote-push-port", logs: quoteLogs, profile: true},
+	{host: "feed-01", group: "매매/시세", seed: 4, push: "quote-push-port", service: "quote", logs: quoteLogs, profile: true},
 }
 
 // parseDev는 dev 플래그를 해석해 매니저·에이전트 설정을 만든다(파일은 --config만 읽는다).
@@ -207,7 +208,7 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 			Remote: agent.RemoteConfig{Enabled: true},
 		}
 		if h.push != "" {
-			a.Probes = append(a.Probes, map[string]any{"type": "push", "listen": push})
+			a.Probes = append(a.Probes, map[string]any{"type": "push", "listen": push, "service": h.service})
 		}
 		if h.logs != nil {
 			a.Logs = h.logs()

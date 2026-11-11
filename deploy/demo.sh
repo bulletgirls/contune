@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 시연 진행 스크립트: deploy/demo.sh <setup|up|down|warmup|run|surge|crash|quote|quote-surge|quote-rate|settle|train|sql|export|status>
+# 시연 진행 스크립트: deploy/demo.sh <setup|up|down|warmup|run|surge|crash|quote|quote-surge|quote-rate|batch|svr-crash|settle|train|sql|export|status>
 # 업무 프로세스 둘: 체결(match-01 matching_svc, run·surge), 시세(feed-01 quote_svc, quote·quote-surge·quote-rate)
 # 환경변수: EUM_URL(기본 http://localhost:8080) EUM_MODE(dev|compose, 기본 dev) EUM_DATA(기본 ./data-dev)
 #          EUM_COMPOSE(compose 파일, 기본 deploy/docker-compose.yml) EUM_DEV_FLAGS(eum dev에 더 넘길 플래그)
@@ -178,6 +178,25 @@ cmd_quote_rate() {
   say quote-rate "시세 수신율 $1건/초"
 }
 
+# BATCH_JOB: batch-01에 서버 프로세스 셋(svr_a·svr_b·svr_c)을 띄운다(수동 실행, 자동 서비스로 잡힌다).
+cmd_batch() {
+  say batch "batch-job을 실행해 batch-01에 svr_a·svr_b·svr_c를 띄웁니다"
+  code=$(post "flows/batch-job/run")
+  echo "  batch-job -> HTTP $code"
+  [ "$code" = 201 ] || die "batch-job 실행 실패(HTTP $code)"
+}
+
+# svr-crash: svr_b만 SIGSEGV로 죽인다(종료 보고서 장면). 다시 띄우려면 demo.sh batch.
+cmd_svr_crash() {
+  say svr-crash "svr_b를 SIGSEGV로 죽입니다"
+  if [ "$EUM_MODE" = compose ]; then
+    compose exec -T batch-01 pkill -SEGV -x svr_b
+  else
+    pkill -SEGV -x svr_b || die "svr_b가 떠 있지 않습니다(demo.sh batch 먼저)"
+  fi
+  echo "  몇 초 안에 종료 보고서가 생깁니다(#exit)"
+}
+
 cmd_settle() {
   say settle "daily-settle 실행(게이트 장면)"
   code=$(post "flows/daily-settle/run")
@@ -236,11 +255,11 @@ for f in json.load(sys.stdin)["flows"]:
   echo "firing 알림: $(jget 'alerts?state=firing' 'len(d.get("alerts") or [])' 2>/dev/null || echo -)건"
 }
 
-[ $# -ge 1 ] || die "사용법: demo.sh <setup|up|down|warmup|run|surge|crash|quote|quote-surge|quote-rate|settle|train|sql|export|status>"
+[ $# -ge 1 ] || die "사용법: demo.sh <setup|up|down|warmup|run|surge|crash|quote|quote-surge|quote-rate|batch|svr-crash|settle|train|sql|export|status>"
 c="$1"; shift
 case "$c" in
-  warmup|run|quote|settle|train|export|status) need_login; "cmd_$c" "$@" ;;
+  warmup|run|quote|batch|settle|train|export|status) need_login; "cmd_$c" "$@" ;;
   setup|up|down|surge|crash|sql) "cmd_$c" "$@" ;;
-  quote-surge|quote-rate) "cmd_$(echo "$c" | tr - _)" "$@" ;;
+  quote-surge|quote-rate|svr-crash) "cmd_$(echo "$c" | tr - _)" "$@" ;;
   *) die "모르는 명령 '$c'" ;;
 esac

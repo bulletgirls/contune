@@ -3,6 +3,7 @@ listen: 127.0.0.1:8080
 data: ./.run/data
 flows: ./flows
 panels: ./panels
+services: ./services
 token: demo-token
 tz: Asia/Seoul
 web_auth:                      # 화면 로그인(보안 S1). 시연 계정 admin/eum-admin · operator/eum-operator · viewer/eum-viewer

@@ -16,6 +16,7 @@ probes:
     seed: 4
   - type: push                 # 시세 서비스(quote_svc)가 1초마다 biz.quote.*를 보낸다
     listen: 127.0.0.1:9102
+    service: quote
 profiler:
   type: perf
   hz: 49
@@ -40,6 +41,7 @@ vars:
   PUSH: 127.0.0.1:9102
 logs:
   - name: quote
+    service: quote
     path: "{log_dir}/quote_svc.{exec_id}.log"
     match:
       - { re: '^\(E\)', level: error }

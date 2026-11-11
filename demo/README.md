@@ -80,3 +80,12 @@ CPU 속도에 따라 절대값은 달라진다. `--stats`로 6000건에서 대�
 
 비용은 반복 횟수가 아니라 **ns**다(`COST_DECODE_NS`, `COST_DEPTH_NS`, `COST_TRADE_NS`, `COST_ENCODE_NS`, `COST_SNAPSHOT_NS`, `COST_REQUEST_NS`, `COST_REBUILD_NS`). 시작할 때 CPU 속도를 재서(`START … cpu=<반복/ns>`) 반복 횟수로 바꾸므로 PC가 달라도 처리 한계가 약 6,000건/초로 비슷하다. 그 밖에 `NSYM`(종목 2,000), `NSESS`(세션 8), `RCVBUF_CAP`(수신 버퍼 4,096), 경고·위험 기준.
 복구 한 번(약 0.4초) 동안 들어오는 시세(8000 × 0.4 = 3,200건)가 수신 버퍼보다 작아야 복구가 끝난 뒤 다시 처리한다. 복구 비용이나 폭주 수신율을 올릴 때는 이 관계를 지킨다.
+
+## BATCH_JOB (서버 프로세스 셋)
+
+`flows/장중/batch-job.yaml`(플로우 id는 소문자만 되어 `batch-job`)은 수동 플로우다. 스텝 `start`가 batch-01에서
+`deploy/scripts/start_job.sh`를 돌려, `eum` 바이너리에 심볼릭 링크 `svr_a`·`svr_b`·`svr_c`를 걸고 `eum burn`으로 셋을 띄운다
+(이름이 comm이 되고, 서비스 정의 없이 자동 서비스로 잡힌다). `eum burn --cpu`가 정수라 svr_c만 코어 둘을 쓴다.
+
+- 실행: `deploy/demo.sh batch` — 스텝 `start`는 곧 끝나고 셋은 계속 돈다(12시간)
+- 하나만 죽이기: `deploy/demo.sh svr-crash` — svr_b에 SIGSEGV, 종료 보고서가 생긴다

@@ -10,12 +10,16 @@ allow:                         # 에이전트 허용 목록(editor.allow와 같�
   - '^echo( |$)'
   - '^sh -c echo "\(E\) [^"$`\\]*"; exit [0-9]+$'
 interval: 1s
+# observe:                     # 이음 밖 프로세스는 기본으로 보지 않는다. 보려면 범위를 좁혀 연다(서비스 규칙에 맞는 것만 잡힌다, 06)
+#   users: [trade]             # 이 사용자의 프로세스만
+#   exe_roots: [/app/bin]      # 이 폴더 아래 실행 파일만
 probes:
   - type: sim
     profile: host
     seed: 1
   - type: push
     listen: 127.0.0.1:9101
+    service: matching
 profiler:
   type: perf
   hz: 49
@@ -40,6 +44,7 @@ vars:
   PUSH: 127.0.0.1:9101
 logs:
   - name: matching
+    service: matching
     path: "{log_dir}/matching_svc.{exec_id}.log"
     match:
       - { re: '^\(E\)', level: error }
