@@ -1,0 +1,70 @@
+# 매매 현황(07 §3의 모양을 넓힘). 패널 타일 ref는 업무 패널(panels/)의 타일 그대로 보인다(판정·알림도 패널 것).
+# 위젯 기준(warn·crit)은 색과 기준선만 바꾸고 알림을 내지 않는다.
+id: trading
+title: 매매 현황
+desc: 체결·시세 핵심 타일, 처리량·시세 지연, 서버·서비스 자원, 체결 로그
+range: 1h
+group: 매매
+widgets:
+  # 첫 줄: 체결·시세 패널 타일(3칸씩)
+  - { id: queue,  type: stat, ref: { panel: matching, tile: 대기 큐 } }
+  - { id: p99,    type: stat, ref: { panel: matching, tile: p99 응답 시간 } }
+  - { id: qdelay, type: stat, ref: { panel: quote, tile: 시세 지연 p99 } }
+  - { id: qlost,  type: stat, ref: { panel: quote, tile: 시세 누락 } }
+  # 둘째 줄: 서비스 범위 시계열
+  - id: tps
+    type: timeseries
+    title: 처리량
+    w: 6
+    h: 2
+    scope: { service: matching }
+    unit: TPS
+    queries:
+      - { metric: biz.order.in_tps, agg: sum, label: 유입 }
+      - { metric: biz.order.tps,    agg: sum, label: 체결 }
+  - id: delay
+    type: timeseries
+    title: 시세 지연
+    w: 6
+    h: 2
+    scope: { service: quote }
+    unit: ms
+    queries:
+      - { metric: biz.quote.delay_avg_ms, agg: max, label: 평균 }
+      - { metric: biz.quote.delay_p99_ms, agg: max, label: p99 }
+  # 셋째 줄: 서버별 CPU 막대, 서비스 인스턴스 자원 표
+  - id: cpu
+    type: bar
+    title: 서버별 CPU
+    w: 4
+    h: 2
+    scope: { group: 매매 }
+    queries:
+      - { metric: host.cpu.pct, by: host }
+    unit: "%"
+    warn: 70
+    crit: 90
+    top: 10
+  - id: svc
+    type: table
+    title: 서비스 자원
+    w: 8
+    h: 2
+    queries:
+      - { metric: svc.cpu.pct, by: owner, label: CPU }
+      - { metric: svc.rss.mb,  by: owner, label: 메모리 }
+    top: 10
+  # 넷째 줄: 체결 업무 로그, 서비스 인스턴스 상태
+  - id: log
+    type: logs
+    title: 체결 로그
+    w: 8
+    h: 2
+    scope: { service: matching }
+    levels: [error, warn]
+  - id: services
+    type: services
+    title: 매매 서비스
+    w: 4
+    h: 2
+    scope: { group: 매매 }

@@ -1,0 +1,31 @@
+# 정산: 사후처리 그룹의 배치와 서버. 배치판은 플로우 board 정산(접두사).
+id: settle
+title: 정산
+desc: 금일 정산 배치, 시간대별 배치, 서버 자원, 이벤트, 담당
+range: 12h
+group: 사후처리
+widgets:
+  - { id: batch, type: batch, title: 금일 정산 배치,  w: 3, h: 2, scope: { board: 정산 } }
+  - { id: hours, type: hours, title: 시간대별 정산 배치, w: 9, h: 2, scope: { board: 정산 } }
+  - id: res
+    type: table
+    title: 서버별 CPU·메모리
+    w: 6
+    h: 2
+    queries:
+      - { metric: host.cpu.pct,      by: host, label: CPU }
+      - { metric: host.mem.used_pct, by: host, label: 메모리 }
+    unit: "%"
+    warn: 80
+    crit: 95
+    top: 10
+  - { id: events, type: events, w: 3, h: 2, limit: 20 }
+  - id: contact
+    type: text
+    title: 담당·연락처
+    w: 3
+    h: 2
+    text: |-
+      정산 배치 담당: 사후처리팀 (예시)
+      주간: 내선 1234 · 야간 당직: 010-0000-0000
+      장애 시 정산 플로우를 먼저 멈추고 연락합니다.
