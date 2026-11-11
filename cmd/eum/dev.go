@@ -227,10 +227,10 @@ func matchingLogs() []logtail.SourceConfig { return serviceLogs("matching", "mat
 // quoteLogs는 feed-01의 로그 출처다(시세 서비스 로그 + 스텝 실행 로그).
 func quoteLogs() []logtail.SourceConfig { return serviceLogs("quote", "quote_svc") }
 
-// serviceLogs는 업무 프로세스 로그((E)·(W) 줄)와 스텝 실행 로그((E) 줄)다. deploy/agent-*.yaml의 logs와 같다.
+// serviceLogs는 업무 프로세스 로그((E)·(W) 줄, 주인은 서비스 name — 06·카드 P)와 스텝 실행 로그((E) 줄)다. deploy/agent-*.yaml의 logs와 같다.
 func serviceLogs(name, bin string) []logtail.SourceConfig {
 	return []logtail.SourceConfig{
-		{Name: name, Path: "{log_dir}/" + bin + ".{exec_id}.log", Match: []logtail.MatchRule{
+		{Name: name, Service: name, Path: "{log_dir}/" + bin + ".{exec_id}.log", Match: []logtail.MatchRule{
 			{Re: `^\(E\)`, Level: "error"},
 			{Re: `^\(W\)`, Level: "warn"},
 		}},
