@@ -117,6 +117,7 @@ export function alertTarget(a, panels) {
     case 'host': return a.host ? `#host/${encodeURIComponent(a.host)}/overview` : '#hosts';
     case 'run': return `#run/${encodeURIComponent(a.exec_id)}`;
     case 'risk': return '#risk';
+    case 'exit': return `#exit/${encodeURIComponent(String(a.dedup_key || '').replace(/^exit:/, ''))}`;
     default: {
       const p = (panels || []).find((x) => x.group === a.group) || (panels || []).find((x) => inGroup(a.group, x.group));
       return p ? `#biz/${encodeURIComponent(p.id)}` : '#biz';
