@@ -37,6 +37,12 @@ type LogsBatch struct {
 	Events []model.LogEvent `json:"events"`
 }
 
+// ExitsBatch는 POST /api/v1/agent/exits 본문이다(종료 보고서, 05 §19). 매니저는 각 보고에 ID를 붙여 저장한다.
+type ExitsBatch struct {
+	Host    string             `json:"host"`
+	Reports []model.ExitReport `json:"reports"`
+}
+
 // EventReport는 POST /api/v1/agent/events 본문이다. Type: started | finished.
 // Seq는 에이전트 쪽 전송 순서일 뿐이다(run_events.seq와 무관).
 type EventReport struct {
@@ -120,6 +126,11 @@ func (c *Client) PostProfiles(ctx context.Context, b ProfilesBatch) error {
 // PostLogs는 로그 묶음을 보낸다.
 func (c *Client) PostLogs(ctx context.Context, b LogsBatch) error {
 	return c.post(ctx, "/api/v1/agent/logs", b)
+}
+
+// PostExits는 종료 보고서 묶음을 보낸다.
+func (c *Client) PostExits(ctx context.Context, b ExitsBatch) error {
+	return c.post(ctx, "/api/v1/agent/exits", b)
 }
 
 // PostEvent는 실행 이벤트 하나를 보낸다.
