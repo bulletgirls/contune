@@ -16,6 +16,7 @@
 //   own     fetch 결과 · edit  편집 중이면 true(보기 화면이 링크 이동을 막는다) · go(hash) · setRange(from, to)
 import * as M from './metric.js';
 import * as D from './domain.js';
+import * as F from './flow.js';
 import { servicesOf } from '../pages/dashboard.js';
 
 export const WIDGETS = {
@@ -25,6 +26,7 @@ export const WIDGETS = {
   table:      { title: '표', kind: 'metric', w: 6, h: 2, fields: ['queries', 'by', 'scope.group', 'scope.service', 'unit', 'reduce', 'limits', 'top'], render: M.table },
   text:       { title: '글', kind: 'text', w: 3, h: 1, fields: ['text'], render: M.text },
   kpi:        { title: '업무 지표', kind: 'domain', w: 3, h: 2, fields: ['scope.group', 'scope.panel'], needs: ['panels'], render: D.kpi },
+  bizflow:    { title: '업무 흐름', kind: 'domain', w: 12, h: 4, fields: ['nodes'], needs: ['panels', 'services'], render: F.bizflow },
   events:     { title: '실시간 이벤트', kind: 'domain', w: 4, h: 4, fields: ['scope.group', 'limit'], needs: ['alerts', 'panels', 'hosts', 'flows'], render: D.events },
   servers:    { title: '서버', kind: 'domain', w: 3, h: 2, fields: ['scope.group'], needs: ['hosts', 'alerts'], render: D.servers },
   servermap:  { title: '서버 맵', kind: 'domain', w: 8, h: 3, fields: ['scope.group'], needs: ['hosts'], render: D.servermap },
@@ -34,7 +36,7 @@ export const WIDGETS = {
   logs:       { title: '로그', kind: 'domain', w: 6, h: 2, fields: ['scope.group', 'scope.service', 'levels', 'limit'], fetch: D.fetchLogs, render: D.logs },
   services:   { title: '서비스', kind: 'domain', w: 4, h: 2, fields: ['scope.group', 'scope.service', 'limit'], needs: ['services', 'hosts'], render: D.services },
 };
-export const TYPE_ORDER = ['stat', 'timeseries', 'bar', 'table', 'text', 'kpi', 'events', 'servers', 'servermap', 'batch', 'hours', 'risk', 'logs', 'services'];
+export const TYPE_ORDER = ['stat', 'timeseries', 'bar', 'table', 'text', 'kpi', 'bizflow', 'events', 'servers', 'servermap', 'batch', 'hours', 'risk', 'logs', 'services'];
 export const KIND_TEXT = { metric: '지표', domain: '운영', text: '기타' };
 
 // 편집기 폼 칸(카드 W-E). 값은 위젯 정의(model.Widget, json 이름)에 그대로 쓴다.
@@ -43,8 +45,9 @@ export const KIND_TEXT = { metric: '지표', domain: '운영', text: '기타' };
 //   by       모든 쿼리의 by(bar·table은 host | owner 필수)
 //   unit · reduce(last|avg|max|min) · limits(warn·crit·warn_below·crit_below) · max · stack · top(1~50)
 //   scope.group · scope.service · scope.board · scope.panel · levels(error|warn|info) · limit(1~200) · text(2000자)
+//   nodes    bizflow: 상자 1~20개 [{panel, title?, in?, out?, stock?, edge?, from?, at?}] (model.FlowNode, 카드 U3)
 export const FIELDS = ['ref', 'query', 'queries', 'by', 'unit', 'reduce', 'limits', 'max', 'stack', 'top',
-  'scope.group', 'scope.service', 'scope.board', 'scope.panel', 'levels', 'limit', 'text'];
+  'scope.group', 'scope.service', 'scope.board', 'scope.panel', 'levels', 'limit', 'text', 'nodes'];
 export const AGGS = ['avg', 'sum', 'max', 'min'];
 export const BYS = [['', '하나로'], ['host', '서버마다'], ['owner', '주인마다(실행·서비스)']];
 export const REDUCES = [['last', '마지막 값'], ['avg', '평균'], ['max', '최대'], ['min', '최소']];

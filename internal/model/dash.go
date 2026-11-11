@@ -24,12 +24,13 @@ const (
 	WidgetRisk      = "risk"      // 장애 위험도
 	WidgetLogs      = "logs"      // 업무 로그 목록
 	WidgetServices  = "services"  // 서비스 인스턴스 상태 목록
+	WidgetBizflow   = "bizflow"   // 업무 흐름: 업무 패널 하나 = 상자 하나, 앞 업무 → 뒤 업무 화살표(카드 U). /panels·/services로 그린다
 )
 
 // WidgetTypes는 알려진 위젯 종류다(편집기의 고르기 순서).
 var WidgetTypes = []string{
 	WidgetStat, WidgetTimeseries, WidgetBar, WidgetTable, WidgetText,
-	WidgetKPI, WidgetEvents, WidgetServers, WidgetServerMap, WidgetBatch, WidgetHours, WidgetRisk, WidgetLogs, WidgetServices,
+	WidgetKPI, WidgetBizflow, WidgetEvents, WidgetServers, WidgetServerMap, WidgetBatch, WidgetHours, WidgetRisk, WidgetLogs, WidgetServices,
 }
 
 // IsMetricWidget은 매니저가 /data에서 값을 계산하는 위젯 종류인가(stat·timeseries·bar·table).
@@ -45,7 +46,7 @@ func IsMetricWidget(t string) bool {
 var widgetSize = map[string][2]int{
 	WidgetStat: {3, 1}, WidgetTimeseries: {6, 2}, WidgetBar: {4, 2}, WidgetTable: {6, 2}, WidgetText: {3, 1},
 	WidgetKPI: {3, 2}, WidgetEvents: {4, 4}, WidgetServers: {3, 2}, WidgetServerMap: {8, 3}, WidgetBatch: {3, 2},
-	WidgetHours: {8, 2}, WidgetRisk: {3, 2}, WidgetLogs: {6, 2}, WidgetServices: {4, 2},
+	WidgetHours: {8, 2}, WidgetRisk: {3, 2}, WidgetLogs: {6, 2}, WidgetServices: {4, 2}, WidgetBizflow: {12, 4},
 }
 
 // WidgetDefaultSize는 종류의 기본 폭(1~12칸)과 높이(1~8줄)다. 모르는 종류는 (4, 2).
@@ -64,6 +65,9 @@ const (
 	WidgetMaxLimit   = 200
 	WidgetMaxText    = 2000 // 글자(rune)
 	DashMaxTitle     = 80   // 보드·위젯 제목 글자(rune)
+	FlowMaxNodes     = 20   // 업무 흐름 위젯의 상자 수
+	FlowMaxCols      = 12   // 업무 흐름 At 열(0~11)
+	FlowMaxRows      = 8    // 업무 흐름 At 줄(0~7)
 )
 
 // Dash는 사용자 보드다.
@@ -109,6 +113,25 @@ type Widget struct {
 	Levels []string `json:"levels,omitempty" yaml:"levels,omitempty"` // logs: error|warn|info 중(비면 error, warn)
 	Limit  int      `json:"limit,omitempty" yaml:"limit,omitempty"`   // events·logs·services 줄 수(0이면 종류 기본, 최대 200)
 	Text   string   `json:"text,omitempty" yaml:"text,omitempty"`     // text: 글(줄바꿈 유지, HTML 아님)
+
+	// 업무 흐름(bizflow): 상자 = 업무 패널, 화살표 = From(앞 업무) → 이 상자. 규칙은 docs/cards/U-bizflow.md U1·U2 절
+	Nodes []FlowNode `json:"nodes,omitempty" yaml:"nodes,omitempty"`
+}
+
+// FlowStockNone은 FlowNode.Stock의 "쌓임 줄 없음"이다.
+const FlowStockNone = "none"
+
+// FlowNode는 업무 흐름 위젯의 상자 하나 = 업무 패널 하나다(카드 U). 값·판정·시간 외는 그 패널 타일(GET /panels)과
+// 그 패널을 가리키는 서비스(GET /services의 panel)에서 온다. In·Out·Stock·Edge는 그 패널의 타일 제목이다.
+type FlowNode struct {
+	Panel string   `json:"panel" yaml:"panel"`                     // 업무 패널 ID. 상자 ID로도 쓴다(위젯 안에서 유일)
+	Title string   `json:"title,omitempty" yaml:"title,omitempty"` // 상자 이름. 비면 패널 제목
+	In    string   `json:"in,omitempty" yaml:"in,omitempty"`       // in 줄의 타일 제목(비면 줄 없음)
+	Out   string   `json:"out,omitempty" yaml:"out,omitempty"`     // out 줄의 타일 제목(비면 줄 없음). 나가는 화살표의 기본 값
+	Stock string   `json:"stock,omitempty" yaml:"stock,omitempty"` // 쌓임 줄: ""(In − Out, 둘 다 있을 때만) | "none"(줄 없음) | 타일 제목(예 대기 큐)
+	Edge  string   `json:"edge,omitempty" yaml:"edge,omitempty"`   // 이 상자에서 나가는 화살표에 붙일 타일 제목. 비면 Out
+	From  []string `json:"from,omitempty" yaml:"from,omitempty"`   // 앞 업무: 같은 위젯의 다른 상자 Panel. 순환 금지
+	At    []int    `json:"at,omitempty" yaml:"at,omitempty"`       // [열, 줄](0부터). 비면 자동: 열 = 앞 업무 열 중 가장 큰 것 + 1, 줄 = 그 열의 빈 첫 줄(정의 순서)
 }
 
 // WidgetQuery는 지표 위젯의 쿼리 하나다: 지표 · 같은 시각 계열 합치기 · 나눠 보기. 범위는 위젯 Scope(> 보드 Group > 트리).
