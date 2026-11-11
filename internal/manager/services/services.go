@@ -47,6 +47,8 @@ type Deps struct {
 	// 비면 Procs.List·Procs.Live를 쓴다.
 	ListProcs func(ctx context.Context, f model.ProcFilter) ([]model.ProcInfo, error)
 	LiveProcs func(host string) []model.ProcInfo
+	// Wake는 다시 읽은 뒤 부른다(에이전트 롱폴링을 깨워 바뀐 정의를 바로 받게). nil이면 다음 폴링 때 받는다.
+	Wake func()
 }
 
 // DefError는 읽지 못한 정의 파일 하나다(GET /services의 errors, 다시 읽기 응답). 모양은 패널의 것과 같다.

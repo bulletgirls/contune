@@ -115,6 +115,7 @@ func New(cfg Config) (*Manager, error) {
 	svc := services.New(services.Deps{
 		Dir: cfg.Services, State: m.state, Live: lv, Procs: pr, Flows: reg.List,
 		Panels: func() []model.Panel { return panels.Panels() }, Hosts: lv.Hosts, Loc: loc, Now: now,
+		Wake: func() { m.sched.Wake() }, // sched는 아래에서 만든다(다시 읽기는 시작 뒤에만 불린다)
 	})
 
 	// 스케줄러 ↔ 수집 설정 → 편집기 → LLM → 초안 → 위험 엔진 → 알림

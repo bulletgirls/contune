@@ -82,6 +82,9 @@ func (b *Book) handleReload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	audit.Record(r, b.d.State, b.d.Now, "services.reload", "services", fmt.Sprintf("서비스 %d개, 읽지 못한 파일 %d개", n, len(errs)))
+	if b.d.Wake != nil {
+		b.d.Wake()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"services": n, "errors": errs})
 }
 
