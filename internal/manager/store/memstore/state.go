@@ -26,6 +26,12 @@ type stateStore struct {
 	holds     []model.RiskHold
 	alerts    []model.Alert
 	audit     []model.AuditEntry
+	biz       map[bizKey]model.BizState
+}
+
+type bizKey struct {
+	panel string
+	ts    int64
 }
 
 func copyRun(r *model.Run) model.Run {
@@ -342,4 +348,32 @@ func (s *stateStore) AuditStats(ctx context.Context, from, to int64) (model.Audi
 		st.Actors[e.Actor]++
 	}
 	return st, nil
+}
+
+func (s *stateStore) PutBizState(ctx context.Context, b model.BizState) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.biz == nil {
+		s.biz = map[bizKey]model.BizState{}
+	}
+	s.biz[bizKey{b.Panel, b.TS}] = b
+	return nil
+}
+
+func (s *stateStore) ListBizState(ctx context.Context, from, to int64) ([]model.BizState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []model.BizState
+	for _, b := range s.biz {
+		if b.TS >= from && b.TS < to {
+			out = append(out, b)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].TS != out[j].TS {
+			return out[i].TS < out[j].TS
+		}
+		return out[i].Panel < out[j].Panel
+	})
+	return out, nil
 }

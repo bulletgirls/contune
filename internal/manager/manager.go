@@ -21,6 +21,7 @@ import (
 
 	"eum/internal/manager/alert"
 	"eum/internal/manager/assist"
+	"eum/internal/manager/bizwatch"
 	"eum/internal/manager/collect"
 	"eum/internal/manager/editor"
 	"eum/internal/manager/flowdef"
@@ -52,6 +53,7 @@ type Manager struct {
 	sched   *sched.Scheduler
 	engine  *risk.Engine
 	watcher *alert.Watcher
+	biz     *bizwatch.Watch
 	auth    *webauth.Auth
 
 	mu   sync.Mutex
@@ -105,7 +107,8 @@ func New(cfg Config) (*Manager, error) {
 		return nil, fmt.Errorf("flows: %w", err)
 	}
 	m.reg = reg
-	panels := query.NewPanelBook(cfg.Panels, loc) // /panels·다시 읽기와 알림 감시자가 함께 쓴다(값 끊김 기억 포함)
+	// /panels·다시 읽기·알림 감시자·업무 관제가 함께 쓴다(값 끊김 기억 포함). 패널 flows는 레지스트리로 확인한다.
+	panels := query.NewPanelBookWith(cfg.Panels, loc, func(id string) bool { _, ok := reg.Get(id); return ok })
 	lv := live.New()
 
 	// 스케줄러 ↔ 수집 설정 → 편집기 → LLM → 초안 → 위험 엔진 → 알림
@@ -154,6 +157,12 @@ func New(cfg Config) (*Manager, error) {
 		RiskWarn: cfg.Risk.Warn, RiskCrit: cfg.Risk.Crit, Cfg: alertCfg, Now: now,
 	})
 
+	// 업무 관제(05 §19): 이미 있는 판정(패널 타일 · 서버 · 플로우 실행 · 알림)을 패널의 연결로 묶는다.
+	m.biz = bizwatch.New(bizwatch.Deps{
+		Panels: panels, Metrics: m.metrics, State: m.state, Live: lv, Flows: reg.List,
+		Thresholds: cfg.HostState, Loc: loc, Now: now,
+	})
+
 	// 화면 인증(보안 S1). TLS를 켜면 세션 쿠키에 Secure를 단다.
 	webCfg := cfg.WebAuth
 	webCfg.Secure = cfg.TLS.Cert != "" && cfg.TLS.Key != ""
@@ -175,6 +184,7 @@ func New(cfg Config) (*Manager, error) {
 	m.engine.Mount(m.mux)
 	audit.New(audit.Deps{State: m.state, Now: now, TZ: loc}).Mount(m.mux)
 	m.watcher.Mount(m.mux)
+	m.biz.Mount(m.mux)
 	web.Mount(m.mux)
 
 	ok = true
@@ -229,6 +239,7 @@ func (m *Manager) Run(ctx context.Context) error {
 	start("sched", m.sched.Run)
 	start("risk", m.engine.Run)
 	start("alert", m.watcher.Run)
+	start("bizwatch", m.biz.Run)
 
 	srv := &http.Server{Handler: m.Handler(), ReadHeaderTimeout: 10 * time.Second, TLSConfig: tlsCfg}
 	serveErr := make(chan error, 1)

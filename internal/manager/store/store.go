@@ -46,4 +46,7 @@ type StateStore interface {
 	AddAudit(ctx context.Context, e model.AuditEntry) error
 	ListAudit(ctx context.Context, q model.AuditQuery) ([]model.AuditEntry, error) // id 내림차순
 	AuditStats(ctx context.Context, from, to int64) (model.AuditStats, error)      // ts [from,to) 안의 action·actor별 건수
+	// 업무 관제 5분 칸(05 §19.5). (panel, ts)가 같으면 바꿔 쓴다.
+	PutBizState(ctx context.Context, b model.BizState) error
+	ListBizState(ctx context.Context, from, to int64) ([]model.BizState, error) // ts [from,to), ts 오름차순(같으면 panel 순)
 }

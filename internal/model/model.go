@@ -204,14 +204,48 @@ type Command struct {
 	Profile    bool     `json:"profile,omitempty"`
 }
 
-// Panel은 업무 패널 정의(panels/*.yaml)다(02 §12.1, 05 §14.5).
+// Panel은 업무 패널 정의(panels/*.yaml)다(02 §12.1, 05 §14.5). 패널 하나가 업무 관제의 업무 하나다(05 §19).
+// Active는 업무 감시 시간이자 active가 없는 타일의 기본값, Flows는 이 업무가 기대는 배치(플로우 ID),
+// Main은 대표 지표(타일 제목. 비면 첫 kpi 타일, 그것도 없으면 첫 타일)다(05 §19.3).
 type Panel struct {
 	ID        string   `json:"id" yaml:"id"`
 	Title     string   `json:"title" yaml:"title"`
 	Group     string   `json:"group" yaml:"group"`
+	Active    string   `json:"active,omitempty" yaml:"active,omitempty"`
+	Flows     []string `json:"flows,omitempty" yaml:"flows,omitempty"`
+	Main      string   `json:"main,omitempty" yaml:"main,omitempty"`
 	Tiles     []Tile   `json:"tiles" yaml:"tiles"`
 	Charts    []Chart  `json:"charts" yaml:"charts,omitempty"`
 	LogLevels []string `json:"log_levels" yaml:"log_levels,omitempty"`
+}
+
+// MainTile은 대표 지표 타일의 위치다(Main → 첫 kpi → 0). 타일이 없으면 -1.
+func (p Panel) MainTile() int {
+	if len(p.Tiles) == 0 {
+		return -1
+	}
+	if p.Main != "" {
+		for i, t := range p.Tiles {
+			if t.Title == p.Main {
+				return i
+			}
+		}
+	}
+	for i, t := range p.Tiles {
+		if t.KPI {
+			return i
+		}
+	}
+	return 0
+}
+
+// BizState는 업무 관제의 5분 칸 하나의 업무 등급이다(05 §19.5). TS는 칸 시작(unix ms),
+// Level은 ok | warn | crit, Why는 그 등급을 만든 것(타일 제목 · 서버 · 플로우, " · "로 이음).
+type BizState struct {
+	Panel string `json:"panel"`
+	TS    int64  `json:"ts"`
+	Level string `json:"level"`
+	Why   string `json:"why"`
 }
 
 // Tile은 패널 타일이다. Agg: sum | max | avg | min(05 §18, 그룹 서버 중 가장 낮은 값). KPI면 관제 화면에도 올림.

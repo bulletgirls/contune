@@ -55,6 +55,10 @@ CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL,
   target TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS ix_audit_ts ON audit(ts);
+CREATE TABLE IF NOT EXISTS biz_state (
+  panel TEXT NOT NULL, ts INTEGER NOT NULL, level TEXT NOT NULL, why TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (panel, ts));
+CREATE INDEX IF NOT EXISTS ix_biz_state_ts ON biz_state(ts);
 `
 
 // Store는 state.db다. 쓰기 연결은 1개, 읽기는 별도 풀이다.
@@ -590,4 +594,27 @@ func (s *Store) AuditStats(ctx context.Context, from, to int64) (model.AuditStat
 		rows.Close()
 	}
 	return st, nil
+}
+
+func (s *Store) PutBizState(ctx context.Context, b model.BizState) error {
+	_, err := s.w.ExecContext(ctx, `INSERT INTO biz_state(panel,ts,level,why) VALUES(?,?,?,?)
+ON CONFLICT(panel,ts) DO UPDATE SET level=excluded.level, why=excluded.why`, b.Panel, b.TS, b.Level, b.Why)
+	return err
+}
+
+func (s *Store) ListBizState(ctx context.Context, from, to int64) ([]model.BizState, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT panel,ts,level,why FROM biz_state WHERE ts>=? AND ts<? ORDER BY ts, panel`, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.BizState
+	for rows.Next() {
+		var b model.BizState
+		if err := rows.Scan(&b.Panel, &b.TS, &b.Level, &b.Why); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
 }

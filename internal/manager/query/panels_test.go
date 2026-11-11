@@ -482,3 +482,73 @@ func TestSeriesAggMin(t *testing.T) {
 		t.Fatal("/series agg=min")
 	}
 }
+
+// 업무 관제 칸(05 §19.3): active · flows · main을 읽고 검사한다. 패널 active는 active가 없는 타일의 기본값이다.
+func TestPanelBizwatchFields(t *testing.T) {
+	ok := "id: m\ntitle: 체결\ngroup: 매매/체결\nactive: mon-fri 08:30-15:30\nflows: [market-open]\nmain: 처리량\n" +
+		"tiles:\n  - {title: 유입량, metric: a, agg: sum, kpi: true}\n  - {title: 처리량, metric: b, agg: sum}\n"
+	known := func(id string) bool { return id == "market-open" }
+	dir := t.TempDir()
+	writePanel(t, dir, "m.yaml", ok)
+	ps, errs, err := LoadPanelsWith(dir, known)
+	if err != nil || len(errs) != 0 || len(ps) != 1 {
+		t.Fatalf("%v %v %v", ps, errs, err)
+	}
+	if p := ps[0]; p.Active != "mon-fri 08:30-15:30" || len(p.Flows) != 1 || p.Flows[0] != "market-open" || p.Main != "처리량" || p.MainTile() != 1 {
+		t.Fatalf("칸: %+v main %d", p, p.MainTile())
+	}
+	for name, c := range map[string]struct{ body, msg string }{
+		"main":    {strings.Replace(ok, "main: 처리량", "main: 없는타일", 1), `main "없는타일": 이 패널에 그 제목의 타일이 없습니다`},
+		"active":  {strings.Replace(ok, "08:30-15:30", "8-15", 1), `패널 active는 "mon-fri 09:00-15:30"처럼 [요일] 시작-끝입니다`},
+		"flow":    {strings.Replace(ok, "[market-open]", "[nope]", 1), `flows: 플로우 "nope"가 없습니다(flows 폴더의 플로우 id 확인)`},
+		"flowdup": {strings.Replace(ok, "[market-open]", "[market-open, market-open]", 1), `flows: 빈 플로우 ID이거나 "market-open"가 두 번 있습니다`},
+		"typo칸":   {strings.Replace(ok, "flows:", "flow:", 1), `5번째 줄의 flow는 모르는 칸입니다(오타인지 확인)`},
+	} {
+		d := t.TempDir()
+		writePanel(t, d, "bad.yaml", c.body)
+		_, errs, err := LoadPanelsWith(d, known)
+		if err != nil || len(errs) != 1 || errs[0].Msg != c.msg {
+			t.Errorf("%s: %+v %v", name, errs, err)
+		}
+	}
+	// flowOK가 없으면 플로우가 있는지 보지 않는다(LoadPanels).
+	d := t.TempDir()
+	writePanel(t, d, "m.yaml", strings.Replace(ok, "[market-open]", "[nope]", 1))
+	if ps, errs, _ := LoadPanels(d); len(ps) != 1 || len(errs) != 0 {
+		t.Errorf("확인 없음: %v %v", ps, errs)
+	}
+	// main이 없으면 첫 kpi, 그것도 없으면 첫 타일.
+	p := model.Panel{Tiles: []model.Tile{{Title: "a"}, {Title: "b", KPI: true}}}
+	if p.MainTile() != 1 {
+		t.Errorf("kpi: %d", p.MainTile())
+	}
+	p.Tiles[1].KPI = false
+	if p.MainTile() != 0 || (model.Panel{}).MainTile() != -1 {
+		t.Errorf("첫 타일: %d", p.MainTile())
+	}
+}
+
+func TestPanelActiveIsTileDefault(t *testing.T) {
+	p := quotePanel(model.Tile{Crit: fp(5)})
+	p.Active = "mon-fri 09:00-15:30"
+	b := PanelsOf(kst, p)
+	lv := live.New()
+	for _, c := range []struct {
+		at  time.Time
+		off bool
+	}{{kt(9, 10, 0, 0), false}, {kt(9, 16, 0, 0), true}, {kt(8, 10, 0, 0), true}} { // 8일은 일요일
+		putAt(lv, c.at, "feed-01", "biz.quote.count_1m", 9, "")
+		g := evalOne(t, b, c.at, lv)
+		if g.Off != c.off || (!c.off && g.State != "crit") {
+			t.Errorf("%s: %+v", c.at, g)
+		}
+	}
+	// 타일에 active가 있으면 그것이 이긴다.
+	p2 := quotePanel(model.Tile{Crit: fp(5), Active: "mon-fri 15:00-17:00"})
+	p2.Active = "mon-fri 09:00-15:30"
+	lv2 := live.New()
+	putAt(lv2, kt(9, 16, 0, 0), "feed-01", "biz.quote.count_1m", 9, "")
+	if g := evalOne(t, PanelsOf(kst, p2), kt(9, 16, 0, 0), lv2); g.Off || g.State != "crit" {
+		t.Errorf("타일 active: %+v", g)
+	}
+}

@@ -29,7 +29,14 @@ type PanelError struct {
 
 // LoadPanels는 dir의 *.yaml을 이름 순으로 읽는다. 틀린 파일과 앞 파일과 id가 겹치는 파일은 건너뛰고 errs에 담는다.
 // dir이 비거나 폴더가 없으면 패널 없음이고, 폴더를 읽지 못하면 err다. 지표 이름이 실제로 있는지는 보지 않는다.
+// flows의 플로우가 있는지는 보지 않는다(LoadPanelsWith).
 func LoadPanels(dir string) (panels []model.Panel, errs []PanelError, err error) {
+	return LoadPanelsWith(dir, nil)
+}
+
+// LoadPanelsWith는 LoadPanels에 더해 패널 flows의 플로우 ID를 flowOK로 확인한다(nil이면 보지 않음).
+// 없는 플로우를 적은 파일은 읽지 못한 파일이다(05 §19.3).
+func LoadPanelsWith(dir string, flowOK func(id string) bool) (panels []model.Panel, errs []PanelError, err error) {
 	if dir == "" {
 		return nil, nil, nil
 	}
@@ -64,7 +71,7 @@ func LoadPanels(dir string) (panels []model.Panel, errs []PanelError, err error)
 			bad(panelYAMLError(err))
 			continue
 		}
-		if err := validatePanel(p); err != nil {
+		if err := validatePanel(p, flowOK); err != nil {
 			bad(err.Error())
 			continue
 		}
@@ -78,9 +85,32 @@ func LoadPanels(dir string) (panels []model.Panel, errs []PanelError, err error)
 	return panels, errs, nil
 }
 
-func validatePanel(p model.Panel) error {
+func validatePanel(p model.Panel, flowOK func(string) bool) error {
 	if p.ID == "" || p.Title == "" || p.Group == "" || len(p.Tiles) == 0 {
 		return fmt.Errorf("id, title, group, tiles는 필수입니다")
+	}
+	// 업무 관제 칸(05 §19.3)
+	if _, err := model.ParseActive(p.Active); err != nil {
+		return fmt.Errorf("패널 %v", err)
+	}
+	if p.Main != "" {
+		found := false
+		for _, t := range p.Tiles {
+			found = found || t.Title == p.Main
+		}
+		if !found {
+			return fmt.Errorf("main %q: 이 패널에 그 제목의 타일이 없습니다", p.Main)
+		}
+	}
+	seenFlow := map[string]bool{}
+	for _, id := range p.Flows {
+		if id == "" || seenFlow[id] {
+			return fmt.Errorf("flows: 빈 플로우 ID이거나 %q가 두 번 있습니다", id)
+		}
+		seenFlow[id] = true
+		if flowOK != nil && !flowOK(id) {
+			return fmt.Errorf("flows: 플로우 %q가 없습니다(flows 폴더의 플로우 id 확인)", id)
+		}
 	}
 	for _, t := range p.Tiles {
 		if t.Title == "" || t.Metric == "" || !validAgg(t.Agg) {
@@ -158,8 +188,9 @@ type tileKey struct {
 // live가 10분 뒤 키를 지워도 남는다. 다시 읽기(그때보다 오래된 live 값은 다시 배우지 않음)와 매니저 재시작 때 지우고,
 // 그룹에서 빠진 서버는 Eval 때 잊는다.
 type PanelBook struct {
-	dir string
-	loc *time.Location
+	dir    string
+	loc    *time.Location
+	flowOK func(string) bool // 패널 flows 확인(nil이면 보지 않음)
 
 	mu     sync.Mutex
 	panels []bookPanel
@@ -171,7 +202,12 @@ type PanelBook struct {
 // NewPanelBook은 dir(비면 패널 없음)을 읽은 PanelBook이다. loc은 감시 시간을 보는 매니저 tz(nil이면 time.Local).
 // 폴더를 읽지 못하면 로그만 남기고 패널 없이 시작한다.
 func NewPanelBook(dir string, loc *time.Location) *PanelBook {
-	b := &PanelBook{dir: dir, loc: loc}
+	return NewPanelBookWith(dir, loc, nil)
+}
+
+// NewPanelBookWith는 NewPanelBook에 더해 패널 flows를 flowOK로 확인한다(읽을 때와 다시 읽을 때).
+func NewPanelBookWith(dir string, loc *time.Location, flowOK func(id string) bool) *PanelBook {
+	b := &PanelBook{dir: dir, loc: loc, flowOK: flowOK}
 	if b.loc == nil {
 		b.loc = time.Local
 	}
@@ -195,9 +231,13 @@ func (b *PanelBook) set(ps []model.Panel, errs []PanelError, since int64) {
 	bp := make([]bookPanel, 0, len(ps))
 	for _, p := range ps {
 		x := bookPanel{p: p, rules: make([]tileRule, len(p.Tiles))}
+		panelActive, _ := model.ParseActive(p.Active) // 읽을 때 검사했다
 		for i, t := range p.Tiles {
-			x.rules[i].stale, _ = model.ParseTileStale(t.Stale) // 읽을 때 검사했다
+			x.rules[i].stale, _ = model.ParseTileStale(t.Stale)
 			x.rules[i].active, _ = model.ParseActive(t.Active)
+			if !x.rules[i].active.Set {
+				x.rules[i].active = panelActive // 타일 active가 없으면 패널 감시 시간(05 §19.3)
+			}
 		}
 		bp = append(bp, x)
 	}
@@ -207,7 +247,7 @@ func (b *PanelBook) set(ps []model.Panel, errs []PanelError, since int64) {
 // Reload는 폴더를 다시 읽어 통째로 바꿔 끼우고 값 끊김 기억을 지운다(now보다 오래된 live 값은 다시 배우지 않는다).
 // 폴더를 읽지 못하면 err이고 이전 패널을 그대로 쓴다.
 func (b *PanelBook) Reload(now time.Time) (n int, errs []PanelError, err error) {
-	ps, errs, err := LoadPanels(b.dir)
+	ps, errs, err := LoadPanelsWith(b.dir, b.flowOK)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -393,6 +433,9 @@ type panelOut struct {
 	ID        string        `json:"id"`
 	Title     string        `json:"title"`
 	Group     string        `json:"group"`
+	Active    string        `json:"active,omitempty"`
+	Flows     []string      `json:"flows,omitempty"`
+	Main      string        `json:"main,omitempty"`
 	Tiles     []tileOut     `json:"tiles"`
 	Charts    []model.Chart `json:"charts"`
 	LogLevels []string      `json:"log_levels"`
@@ -409,7 +452,8 @@ func handlePanels(w http.ResponseWriter, r *http.Request, d Deps) {
 	out := make([]panelOut, 0, len(states))
 	for _, ps := range states {
 		p := ps.Panel
-		po := panelOut{ID: p.ID, Title: p.Title, Group: p.Group, Charts: p.Charts, LogLevels: p.LogLevels, Tiles: make([]tileOut, 0, len(p.Tiles))}
+		po := panelOut{ID: p.ID, Title: p.Title, Group: p.Group, Active: p.Active, Flows: p.Flows, Main: p.Main,
+			Charts: p.Charts, LogLevels: p.LogLevels, Tiles: make([]tileOut, 0, len(p.Tiles))}
 		if po.Charts == nil {
 			po.Charts = []model.Chart{}
 		}

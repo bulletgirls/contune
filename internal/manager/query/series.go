@@ -127,6 +127,9 @@ func autoStep(from, to int64) int {
 
 func validAgg(a string) bool { return a == "sum" || a == "max" || a == "avg" || a == "min" }
 
+// Aggregate는 aggregateSeries다(업무 관제의 평소 대비가 /series와 같은 집계를 쓴다).
+func Aggregate(ss []model.Series, agg string) []model.Series { return aggregateSeries(ss, agg) }
+
 // aggregateSeries는 같은 (name, exec_id)의 서버별 계열을 시각마다 하나로 묶는다(host "").
 func aggregateSeries(ss []model.Series, agg string) []model.Series {
 	type key struct{ name, exec string }

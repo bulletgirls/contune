@@ -86,6 +86,7 @@ a.bw-hn:hover { color:var(--accent); }
 .bw-cells i.ok { background:color-mix(in srgb, var(--ok) 32%, var(--surface)); }
 .bw-cells i.warn { background:var(--warn); } .bw-cells i.crit { background:var(--crit); }
 .bw-cells i.off { background:var(--bg); cursor:default; }
+.bw-cells i.none { background:repeating-linear-gradient(135deg, var(--line) 0 2px, transparent 2px 4px); }
 .bw-cells i.future { background:none; cursor:default; }
 .bw-cells i:not(.off):not(.future):hover { outline:2px solid var(--accent); outline-offset:-1px; }
 .bw-nowline { position:absolute; top:-3px; bottom:-3px; width:2px; margin-left:-1px; background:var(--accent); pointer-events:none; }
@@ -97,10 +98,7 @@ a.bw-hn:hover { color:var(--accent); }
 .bw-hlg i { display:inline-block; width:10px; height:10px; border-radius:2px; }
 .bw-hlg i.ok { background:color-mix(in srgb, var(--ok) 32%, var(--surface)); } .bw-hlg i.warn { background:var(--warn); }
 .bw-hlg i.crit { background:var(--crit); } .bw-hlg i.off { background:var(--bg); border:1px solid var(--line); }
-
-/* 실제 API 모드 안내 */
-.bw-only h1 { margin:0 0 6px; font-size:18px; }
-.bw-only p { margin:0 0 6px; color:var(--t2); }
+.bw-hlg i.none { background:repeating-linear-gradient(135deg, var(--line) 0 2px, transparent 2px 4px); border:1px solid var(--line); }
 
 @media (max-width:700px) {
   .bw-hr { margin-left:0; }

@@ -1,7 +1,7 @@
 // 업무 관제(#bizwatch) 1단계(05 §19): 업무 상태 카드 · 업무 이벤트 · 오늘 업무 상태 이력.
 // 업무 = 패널 하나. 관제(#dashboard)가 IT 자원 관점이라면 여기는 업무 관점이고, 숫자 상세와 로그는 업무 탭(#biz/<panel>)이 맡는다.
 // 카드는 대표 지표 하나와 근거(등급을 정한 증상) · 원인(그룹 서버 · 관련 배치 · 함수) · 일정(감시 시간)만 싣는다.
-// 지금은 mock(/bizwatch)만 있다(?mock=1). 매니저 API(05 §19.7)가 생기면 같은 응답 모양을 쓴다.
+// 매니저 GET /api/v1/bizwatch(05 §19.7)를 읽는다. mock(?mock=1)도 같은 응답 모양이다.
 // 주소: #bizwatch[?g=<그룹>&cmp=day|week&at=HH:MM] (at: mock 전용, 감시 시간 판단 시각 KST)
 import { api, poll, isMock } from '../api.js';
 import { el, esc, fmtNum, relTime, info, DASH } from '../ui.js';
@@ -43,6 +43,8 @@ export function cmpText(k, label) {
   }
   return s;
 }
+// 상태 이력 칸 글자: none은 그 칸을 기록하지 못한 것(매니저가 꺼져 있던 때 등)
+export const cellLabel = (lv) => (lv === 'none' ? '기록 없음' : (LV[lv] || ['', lv])[1]);
 // 상태 이력 칸 → 그 구간(앞뒤 10분)의 업무 탭
 export function cellHref(row, i, h) {
   const from = h.t0 + (i * h.slot - 10) * 60000, to = from + (h.slot + 20) * 60000;
@@ -169,7 +171,7 @@ function historySec(d) {
   const h = d.history;
   const sec = el('section', { class: 'bw-card bw-hist' });
   const lg = el('span', { class: 'bw-hlg' });
-  for (const k of ['ok', 'warn', 'crit', 'off']) lg.append(el('span', {}, el('i', { class: k }), LV[k][1]));
+  for (const k of ['ok', 'warn', 'crit', 'off', 'none']) lg.append(el('span', {}, el('i', { class: k }), cellLabel(k)));
   sec.append(el('div', { class: 'bw-h' }, el('h2', { text: '오늘 업무 상태 이력' }), el('span', { class: 'bw-dim', text: `${h.slot}분 단위 · 칸을 누르면 그 구간` }),
     el('span', { class: 'grow' }), lg));
   const win = { from: h.from, to: h.to };
@@ -180,7 +182,7 @@ function historySec(d) {
     const cells = el('div', { class: 'bw-cells', style: `grid-template-columns:repeat(${r.cells.length},minmax(0,1fr))` });
     r.cells.forEach((lv, i) => {
       const m0 = hm(h.from) + i * h.slot;
-      const tip = lv === 'future' ? null : `${r.title} ${clockOf(m0)}–${clockOf(m0 + h.slot)} · ${LV[lv][1]}${r.tips[i] ? ' · ' + r.tips[i] : ''}`;
+      const tip = lv === 'future' ? null : `${r.title} ${clockOf(m0)}–${clockOf(m0 + h.slot)} · ${cellLabel(lv)}${r.tips[i] ? ' · ' + r.tips[i] : ''}`;
       cells.append(el('i', { class: lv, title: tip, 'data-i': String(i) }));
     });
     cells.append(el('span', { class: 'bw-nowline', style: `left:${nowPct.toFixed(2)}%` }));
@@ -202,16 +204,10 @@ function historySec(d) {
 export function render(root, params, query) {
   query = query || {};
   root.replaceChildren();
-  if (!isMock()) {
-    root.append(el('div', { class: 'bw-card bw-only' },
-      el('h1', { text: '업무 관제' }),
-      el('p', { text: '아직 mock 화면만 있습니다. 주소에 ?mock=1을 붙여 열어 보세요.' }),
-      el('a', { href: `${location.pathname}?mock=1#bizwatch`, text: `${location.pathname}?mock=1#bizwatch` })));
-    return;
-  }
   const cmpLabel = CMP[query.cmp] || CMP.day;
   const q = new URLSearchParams();
-  for (const k of ['g', 'cmp', 'at']) if (query[k]) q.set(k, query[k]);
+  for (const k of ['g', 'cmp']) if (query[k]) q.set(k, query[k]);
+  if (isMock() && query.at) q.set('at', query.at);
   const path = '/bizwatch' + (q.toString() ? '?' + q : '');
 
   const wrap = el('div', { class: 'bw' });

@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 
+	"eum/internal/manager/live"
+	"eum/internal/manager/store"
 	"eum/internal/model"
 )
 
@@ -45,6 +47,14 @@ func mergedHosts(ctx context.Context, d Deps) []model.Host {
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
+
+// MergedHosts는 저장소 호스트와 live 호스트를 합친 목록이다(id 순). 업무 관제가 /hosts와 같은 서버를 본다.
+func MergedHosts(ctx context.Context, st store.StateStore, lv *live.Cache) []model.Host {
+	return mergedHosts(ctx, Deps{State: st, Live: lv})
+}
+
+// InGroup은 서버 그룹 hg가 g이거나 g의 하위('g/…')인지다.
+func InGroup(hg, g string) bool { return inGroup(hg, g) }
 
 // groupHosts는 그룹(하위 포함)에 속한 서버 id 목록이다.
 func groupHosts(ctx context.Context, d Deps, group string) []string {

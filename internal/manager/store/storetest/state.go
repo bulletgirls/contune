@@ -485,4 +485,29 @@ func RunState(t *testing.T, open func(t *testing.T) store.StateStore) {
 			t.Errorf("stats %+v", st)
 		}
 	})
+	sub("BizState", func(t *testing.T, s store.StateStore) {
+		ctx := context.Background()
+		for _, b := range []model.BizState{
+			{Panel: "quote", TS: 300, Level: "ok"},
+			{Panel: "matching", TS: 300, Level: "warn", Why: "match-01"},
+			{Panel: "matching", TS: 0, Level: "ok"},
+			{Panel: "matching", TS: 600, Level: "ok"},
+			{Panel: "matching", TS: 300, Level: "crit", Why: "대기 큐 · match-01"}, // 같은 칸은 바꿔 씀
+		} {
+			if err := s.PutBizState(ctx, b); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got, err := s.ListBizState(ctx, 300, 600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []model.BizState{{Panel: "matching", TS: 300, Level: "crit", Why: "대기 큐 · match-01"}, {Panel: "quote", TS: 300, Level: "ok"}}
+		if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+			t.Errorf("got %+v", got)
+		}
+		if got, _ := s.ListBizState(ctx, 1000, 2000); len(got) != 0 {
+			t.Errorf("빈 구간 %+v", got)
+		}
+	})
 }
