@@ -23,6 +23,7 @@ import (
 	"eum/internal/manager/assist"
 	"eum/internal/manager/collect"
 	"eum/internal/manager/editor"
+	"eum/internal/manager/exits"
 	"eum/internal/manager/flowdef"
 	"eum/internal/manager/ingest"
 	"eum/internal/manager/live"
@@ -143,6 +144,8 @@ func New(cfg Config) (*Manager, error) {
 	alertCfg := cfg.Alerts
 	alertCfg.MinNotify = cfg.Notify.MinLevel
 	engine := m.engine
+	// 종료 보고서(카드 T3): 수신·근거 묶음·API, 알림 감시자에게 종료 목록을 준다.
+	ex := exits.New(exits.Deps{Metrics: m.metrics, State: m.state, LLM: lm, TZ: loc, Now: now, NewID: newID})
 	m.watcher = alert.New(alert.Deps{
 		Metrics: m.metrics, State: m.state, Live: lv, Flows: reg.List,
 		Panels: panels, Thresholds: cfg.HostState, Notifiers: notifiers,
@@ -151,7 +154,7 @@ func New(cfg Config) (*Manager, error) {
 			open, _, accepted, ok := engine.Open()
 			return open, s.Index, accepted, ok
 		},
-		RiskWarn: cfg.Risk.Warn, RiskCrit: cfg.Risk.Crit, Cfg: alertCfg, Now: now,
+		RiskWarn: cfg.Risk.Warn, RiskCrit: cfg.Risk.Crit, Exits: ex.AlertExits, Cfg: alertCfg, Now: now,
 	})
 
 	// 화면 인증(보안 S1). TLS를 켜면 세션 쿠키에 Secure를 단다.
@@ -175,6 +178,7 @@ func New(cfg Config) (*Manager, error) {
 	m.engine.Mount(m.mux)
 	audit.New(audit.Deps{State: m.state, Now: now, TZ: loc}).Mount(m.mux)
 	m.watcher.Mount(m.mux)
+	ex.Mount(m.mux)
 	web.Mount(m.mux)
 
 	ok = true
