@@ -28,6 +28,13 @@
 - `--stats`: 1초마다 stderr에 `in tps queue avg p99 hist depth`.
 - push 지표: `biz.order.in_tps`, `biz.order.tps`, `biz.order.queue`, `biz.order.latency_avg_ms`, `biz.order.latency_p99_ms`, `biz.order.histbuf_pct`.
 
+### 버그 스위치 (종료 보고서 시연)
+
+접수율 파일에 `crash`(또는 음수)를 쓰면 다음 읽기(1초 안)부터 `book_insert`가 NULL 호가 줄 머리를 따라가
+**SIGSEGV(SEGV_MAPERR, 결함 주소 0x8)** 로 죽는다. 접수율은 평시 값 그대로라 그 전까지 동작·성능은 같다.
+`ulimit -c unlimited`에서 `gdb -batch -ex bt <바이너리> <core>`의 0번 칸이 `book_insert`. `deploy/demo.sh crash`로 쓰고,
+`deploy/demo.sh run`이 접수율을 1500으로 되돌려 다시 띄우면 정상이다.
+
 ### 로그 (stdout)
 
     (<I|W|E>) <YYYY-MM-DD HH:MM:SS> <분류> <내용>
