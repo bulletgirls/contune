@@ -66,4 +66,5 @@ export function sized(w) {
   const t = WIDGETS[w.type] || { w: 4, h: 2 };
   return { ...w, w: w.w || t.w, h: w.h || t.h };
 }
-export const widgetTitle = (w) => w.title || (WIDGETS[w.type] ? WIDGETS[w.type].title : w.type);
+// 제목: 위젯 title > (Ref 값이면) 타일 제목 > 종류 이름.
+export const widgetTitle = (w) => w.title || (w.ref && w.ref.tile) || (WIDGETS[w.type] ? WIDGETS[w.type].title : w.type);
