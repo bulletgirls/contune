@@ -29,13 +29,17 @@ const (
 	saveEvery  = 60 * time.Second   // 바뀐 것이 없어도 이만큼마다 last_seen을 남긴다
 	keepEnded  = 7 * 24 * time.Hour // 끝난 기록을 지우기까지
 	pruneEvery = time.Hour          // 정리 주기
-	linkSlack  = int64(2000)        // LinkExit: 시작 시각 차이(ms)
-	pendingFor = 10 * time.Minute   // 기록보다 먼저 온 종료 보고서를 기다리는 시간
-	pendingMax = 1000               // 기다리는 종료 보고서 수
-	maxBody    = 4 << 20            // POST 본문
-	listMax    = 5000               // GET /api/v1/procs limit 상한
-	maxCmdline = 512                // ProcInfo.Cmdline 계약
-	maxField   = 4096               // 그 밖의 글 칸
+	// lostAfter: 열린 기록(ended_at 0)이 그 서버의 묶음에 이만큼 넘게 안 보이면 마지막으로 본 시각에 끝난 것으로 닫는다.
+	// 에이전트가 꺼진 사이에 끝난 프로세스(끝남 보고가 없음)가 "실행 중"으로 남지 않게. 에이전트가 다시 뜬 직후
+	// 탐색(5초) 전 묶음에 잠깐 빠지는 것은 이 시간 안이라 닫히지 않는다.
+	lostAfter  = 60 * time.Second
+	linkSlack  = int64(2000)      // LinkExit: 시작 시각 차이(ms)
+	pendingFor = 10 * time.Minute // 기록보다 먼저 온 종료 보고서를 기다리는 시간
+	pendingMax = 1000             // 기다리는 종료 보고서 수
+	maxBody    = 4 << 20          // POST 본문
+	listMax    = 5000             // GET /api/v1/procs limit 상한
+	maxCmdline = 512              // ProcInfo.Cmdline 계약
+	maxField   = 4096             // 그 밖의 글 칸
 	liveForMS  = int64(liveFor / time.Millisecond)
 )
 
@@ -60,6 +64,7 @@ type hostState struct {
 	at    int64                     // 마지막 묶음을 받은 시각(매니저 시계, ms)
 	live  map[string]model.ProcInfo // ProcKey → 살아 있는 프로세스(직전 측정 값)
 	saved map[string]savedMark      // ProcKey → 마지막으로 state.db에 남긴 것(살아 있는 것만)
+	lost  int64                     // 마지막으로 잃은 기록을 닫아 본 시각(lostAfter마다 한 번)
 }
 
 type savedMark struct {
@@ -122,6 +127,10 @@ func (r *Registry) Put(ctx context.Context, b api.ProcsBatch) error {
 		}
 	}
 	hs.at, hs.live, hs.saved = now, live, saved
+	checkLost := now-hs.lost >= lostAfter.Milliseconds()
+	if checkLost {
+		hs.lost = now
+	}
 	prune := now-r.pruned >= pruneEvery.Milliseconds()
 	if prune {
 		r.pruned = now
@@ -145,6 +154,9 @@ func (r *Registry) Put(ctx context.Context, b api.ProcsBatch) error {
 			return fmt.Errorf("프로세스 기록 저장: %w", err)
 		}
 	}
+	if checkLost {
+		r.closeLost(ctx, b.Host, live, now)
+	}
 	if prune {
 		before := now - keepEnded.Milliseconds()
 		if n, err := r.d.State.PruneProcs(context.WithoutCancel(ctx), before); err != nil {
@@ -154,6 +166,35 @@ func (r *Registry) Put(ctx context.Context, b api.ProcsBatch) error {
 		}
 	}
 	return nil
+}
+
+// closeLost는 host의 열린 기록 중 지금 묶음에 없고 lostAfter 넘게 보지 못한 것을 마지막으로 본 시각에 끝난 것으로 닫는다.
+func (r *Registry) closeLost(ctx context.Context, host string, live map[string]model.ProcInfo, now int64) {
+	open, err := r.d.State.ListProcs(ctx, model.ProcFilter{Host: host, Alive: true, Limit: 5000})
+	if err != nil {
+		slog.Warn("열린 프로세스 기록 조회 실패", "host", host, "err", err)
+		return
+	}
+	var lost []model.ProcInfo
+	for _, p := range open {
+		if _, ok := live[p.ProcKey()]; ok || p.EndedAt != 0 {
+			continue
+		}
+		seen := max(p.LastSeen, p.StartedAt)
+		if now-seen < lostAfter.Milliseconds() {
+			continue
+		}
+		p.EndedAt = seen // 끝난 시각은 모른다: 마지막으로 본 때
+		lost = append(lost, p)
+	}
+	if len(lost) == 0 {
+		return
+	}
+	if err := r.d.State.UpsertProcs(ctx, lost); err != nil {
+		slog.Warn("잃은 프로세스 기록을 닫지 못함", "host", host, "err", err)
+		return
+	}
+	slog.Info("묶음에 없는 프로세스 기록을 닫음(에이전트가 꺼진 사이 끝남)", "host", host, "n", len(lost))
 }
 
 // takePendingLocked는 p에 맞는 기다리던 종료 보고서 ID를 꺼낸다(없으면 ""). r.mu를 잡고 부른다.

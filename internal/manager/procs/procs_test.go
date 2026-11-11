@@ -350,3 +350,36 @@ func TestHTTP(t *testing.T) {
 		}
 	}
 }
+
+// 에이전트가 꺼진 사이 끝난 프로세스(끝남 보고 없음)는 묶음에 1분 넘게 안 보이면 마지막으로 본 시각에 닫힌다.
+// 다시 뜬 직후 탐색 전 묶음에 잠깐 빠지는 것은 닫지 않는다.
+func TestCloseLost(t *testing.T) {
+	r, st, ck := newReg(t)
+	ctx := context.Background()
+	a, b := svrA, redis
+	a.StartedAt, b.StartedAt = ck.ms()-10_000, ck.ms()-10_000
+	if err := r.Put(ctx, api.ProcsBatch{Host: "h1", TS: ck.ms(), Procs: []model.ProcInfo{a, b}}); err != nil {
+		t.Fatal(err)
+	}
+	seen := ck.ms()
+	// 에이전트가 다시 떠서 b만 보낸다(a는 꺼진 사이 끝남). 30초 뒤에는 아직 닫지 않는다.
+	ck.add(30 * time.Second)
+	r.Put(ctx, api.ProcsBatch{Host: "h1", TS: ck.ms(), Procs: []model.ProcInfo{b}})
+	open := func() map[string]int64 {
+		ps, _ := st.ListProcs(ctx, model.ProcFilter{Host: "h1"})
+		m := map[string]int64{}
+		for _, p := range ps {
+			m[p.Comm] = p.EndedAt
+		}
+		return m
+	}
+	if got := open(); got["svr_a"] != 0 {
+		t.Fatalf("30초 뒤 닫힘: %v", got)
+	}
+	ck.add(45 * time.Second)
+	r.Put(ctx, api.ProcsBatch{Host: "h1", TS: ck.ms(), Procs: []model.ProcInfo{b}})
+	got := open()
+	if got["svr_a"] != seen || got["redis-server"] != 0 {
+		t.Fatalf("75초 뒤: svr_a는 마지막으로 본 %d에 닫히고 redis-server는 열려 있어야 함: %v", seen, got)
+	}
+}
