@@ -11,8 +11,9 @@ import * as alert from './alert.js';
 import * as auth from './auth.js';
 import * as audit from './audit.js';
 import * as collect from './collect.js';
+import * as bizwatch from './bizwatch.js';
 
-const ROUTES = [auth, audit, core, server, ops, editor, biz, alert, collect].flatMap((m) => m.routes);
+const ROUTES = [auth, audit, core, server, ops, editor, biz, alert, collect, bizwatch].flatMap((m) => m.routes);
 
 function pageFlags(opts, q) {
   const s = new URLSearchParams(opts.search ?? (typeof location !== 'undefined' ? location.search : ''));

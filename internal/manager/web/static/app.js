@@ -5,7 +5,7 @@ import { fmtClock, toast } from './ui.js';
 import { loadMe, logout, showLogin, drawUser, roleName } from './auth.js';
 
 const PAGES = {
-  dashboard: './pages/dashboard.js',
+  dashboard: './pages/dashboard.js', bizwatch: './pages/bizwatch.js',
   hosts: './pages/server.js', host: './pages/server.js',
   board: './pages/batch.js', runs: './pages/runs.js',
   edit: './pages/editor.js', biz: './pages/biz.js',
@@ -13,7 +13,7 @@ const PAGES = {
   run: './pages/tm.js', alerts: './pages/alerts.js', risk: './pages/risk.js',
   'dev/flame': './pages/devflame.js',
 };
-const MENU = { dashboard: 'dashboard', hosts: 'hosts', host: 'hosts', collect: 'hosts', board: 'board', edit: 'board', biz: 'biz', runs: 'runs', run: 'runs' };
+const MENU = { dashboard: 'dashboard', bizwatch: 'bizwatch', hosts: 'hosts', host: 'hosts', collect: 'hosts', board: 'board', edit: 'board', biz: 'biz', runs: 'runs', run: 'runs' };
 
 let boards = new Set();
 let current = null;

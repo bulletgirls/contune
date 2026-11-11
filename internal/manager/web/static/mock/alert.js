@@ -18,8 +18,8 @@ const weights = (arr) => Object.fromEntries(FEATURES.map((f, i) => [f, arr[i]]))
 
 const groupOfHost = (c, id) => (c.w.hosts.find((h) => h.id === id) || { group: '' }).group;
 
-// 지금 조건에서 나오는 알림 전부(firing·resolved). id는 조건마다 고정.
-function buildAlerts(c) {
+// 지금 조건에서 나오는 알림 전부(firing·resolved). id는 조건마다 고정. 업무 관제(bizwatch.js)도 쓴다.
+export function buildAlerts(c) {
   const out = [];
   const { now, w } = c;
   const hv = hostsView(w, c.sig);

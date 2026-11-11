@@ -43,7 +43,7 @@ input, select, textarea { font:inherit; color:var(--t1); background:var(--surfac
 .logo { font-weight:700; font-size:18px; text-decoration:none; letter-spacing:1px; }
 #menu { display:flex; gap:4px; }
 #menu { align-self:stretch; }
-#menu a { display:flex; align-items:center; padding:0 14px; text-decoration:none; color:var(--t2); border-bottom:2px solid transparent; margin-bottom:-1px; }
+#menu a { display:flex; align-items:center; padding:0 14px; text-decoration:none; color:var(--t2); border-bottom:2px solid transparent; margin-bottom:-1px; white-space:nowrap; }
 #menu a:hover { color:var(--t1); }
 #menu a.on { color:var(--accent); border-bottom-color:var(--accent); font-weight:700; }
 #bell { text-decoration:none; color:var(--t1); }

@@ -160,6 +160,13 @@ export function seriesQuery(c, p) {
         range: [r.started_at, runEnd(r, now)],
         at: (ts) => runValues(c, r, ts),
       });
+      // 실행 ID 없이 물으면 체결 서비스가 뜨기 전 구간을 평시 업무 지표로 채운다
+      // (실제 매니저의 seed 7일 이력 자리. 업무 관제의 '어제 같은 시각' 비교가 쓴다).
+      const hist = !p.exec_id && r === c.w.startRun ? nm.filter((n) => BIZ_NAMES.includes(n) || LOG_NAMES.includes(n)) : [];
+      if (hist.length) {
+        const calm = { ...c.sig, surge: false };
+        entities.push({ host: r.host, exec_id: '', names: hist, range: [-Infinity, r.started_at - 1], at: (ts) => ({ ...bizAt(ts, calm), ...logVals(ts, calm) }) });
+      }
     }
   }
   const riskNames = ['risk.index', 'risk.index_open'].filter((n) => names.includes(n));
