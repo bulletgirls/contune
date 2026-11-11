@@ -338,7 +338,7 @@ for (const g of CATALOG.groups) {
   const charts = new Map((g.charts || []).map((ch) => [ch.id, ch]));
   for (const m of g.metrics) {
     const ch = charts.get(m.chart);
-    CAT.set(m.name, { title: ch ? `${ch.title} · ${m.title}` : m.title, unit: m.unit || '', desc: m.desc || '' });
+    CAT.set(m.name, { title: ch && ch.title !== m.title ? `${ch.title} · ${m.title}` : m.title, unit: m.unit || '', desc: m.desc || '' });
   }
 }
 

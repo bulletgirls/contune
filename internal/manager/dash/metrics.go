@@ -54,11 +54,11 @@ func tileInfo(ps []model.Panel) map[string]metricInfo {
 	return out
 }
 
-// joinLabel은 비지 않은 것을 " · "로 잇는다.
+// joinLabel은 비지 않은 것을 " · "로 잇는다. 바로 앞과 같은 것은 한 번만("CPU 사용률 · CPU 사용률" → "CPU 사용률").
 func joinLabel(parts ...string) string {
 	var keep []string
 	for _, p := range parts {
-		if p != "" {
+		if p != "" && (len(keep) == 0 || keep[len(keep)-1] != p) {
 			keep = append(keep, p)
 		}
 	}
