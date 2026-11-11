@@ -75,7 +75,7 @@ export async function render(host, params, query = {}) {
   function drawTable(rows) {
     const t = el('table', { class: 'rn-tbl exl-tbl' });
     t.append(el('colgroup', {}, ['c-at', 'c-host', 'c-proc', 'c-end', 'c-why', 'c-run'].map((c) => el('col', { class: c }))));
-    t.append(el('thead', {}, el('tr', {}, ['끝난 시각', '서버', '프로세스', '끝난 모양', '원인', '실행'].map((h) => el('th', { text: h })))));
+    t.append(el('thead', {}, el('tr', {}, ['종료 시각', '서버', '프로세스', '신호·코드', '원인', '기동한 실행'].map((h) => el('th', { text: h })))));
     const tb = el('tbody');
     if (!rows.length) tb.append(el('tr', {}, el('td', { colspan: 6, class: 'empty', text: items.length ? '조건에 맞는 종료 없음' : '이 구간에 끝난 프로세스 없음' })));
     for (const x of rows) {
@@ -83,7 +83,7 @@ export async function render(host, params, query = {}) {
       const run = x.exec_id
         ? el('a', { href: '#run/' + q(x.exec_id), title: '타임머신에서 이 실행 보기', onclick: (ev) => ev.stopPropagation() },
           x.flow_id ? `${x.flow_id} › ${x.step_id || ''}` : '', el('span', { class: 'dim', text: ` #${shortExec(x.exec_id)}` }))
-        : el('span', { class: 'dim', text: '이음이 띄우지 않음' });
+        : el('span', { class: 'dim', text: '이음 밖 기동' });
       const row = el('tr', { class: 'click' + (lv ? ' lv-' + lv : ''), tabindex: '0' },
         el('td', { class: 'num at', text: fmtDT(x.ended_at) }),
         el('td', { class: 'cut' }, el('a', { href: '#host/' + q(x.host) + '/proc', class: 'hostl', text: x.host || DASH, title: '이 서버의 프로세스 탭', onclick: (ev) => ev.stopPropagation() })),

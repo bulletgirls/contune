@@ -382,11 +382,11 @@ async function drawProc(body, grp, ctx) {
       empty: '이 구간에 끝난 프로세스 없음', rows,
       onRow: (x) => { location.hash = '#exit/' + encodeURIComponent(x.id); },
       columns: [
-        { key: 'ended_at', label: '끝난 시각', render: (x) => el('span', { title: new Date(x.ended_at).toLocaleString(), text: relTime(x.ended_at) }) },
+        { key: 'ended_at', label: '종료 시각', render: (x) => el('span', { title: new Date(x.ended_at).toLocaleString(), text: relTime(x.ended_at) }) },
         { key: 'comm', label: '프로세스', render: (x) => el('span', {}, el('b', { text: x.comm || DASH }), ` · ${x.pid ?? DASH}`) },
-        { key: 'end', label: '끝난 모양', render: (x) => endBadge(x) },
+        { key: 'end', label: '신호·코드', render: (x) => endBadge(x) },
         { key: 'title', label: '원인', render: (x) => el('span', { class: 'srv-why', title: x.title || '' }, el('span', { class: 'ex-cat', text: CATEGORY_TEXT[x.category] || x.category || DASH }), ' ', x.title || '') },
-        { key: 'run', label: '실행', render: (x) => (x.exec_id ? `${x.flow_id || ''} › ${x.step_id || ''}` : '이음이 띄우지 않음') },
+        { key: 'run', label: '기동한 실행', render: (x) => (x.exec_id ? `${x.flow_id || ''} › ${x.step_id || ''}` : '이음 밖 기동') },
       ],
     }));
     if (all.length > ENDED) endedBox.append(el('a', { class: 'srv-more', href: '#exits?host=' + encodeURIComponent(ctx.hostId), text: '더 보기 →' }));

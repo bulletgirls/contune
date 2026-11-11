@@ -95,16 +95,20 @@ function crashRec(w, s, flags) {
     kernel: ['[812345.120331] matching_svc[48213]: segfault at 8 ip 000055d4a3c01237 sp 00007ffd5e1c8a40 error 4 in matching_svc[55d4a3c00000+3000] likely on CPU 2 (core 2, socket 0)'],
   });
   const evidence = [
-    { id: 'exit', title: 'SIGSEGV로 끝남 · core 있음 · 상주 서비스', ts: end, lines: ['pid 48213 matching_svc, 2시간 13분 동안 실행', 'wait4: 신호 11(SIGSEGV), core 덤프'] },
-    { id: 'core', title: `SIGSEGV SEGV_MAPERR · 주소 0x8 · book_insert+0x17 (${builtin ? '내장' : 'gdb'})`, ts: end, lines: frames.slice(0, 4).map((f, i) => `#${i} ${f.func}${f.offset || ''} (${f.module})`) },
-    { id: 'profile', title: '마지막 프로파일 구간(10초): book_insert가 표본의 74%', ts: end - 4 * SEC, facts: { samples: 988, window_s: 10, crash_func_pct: 74 },
-      lines: [`74.1% ${STACK};book_insert`, `11.3% ${STACK};level_find`, '6.2% main;read_orders;parse_order', '4.0% main;read_orders;__libc_recv'] },
-    { id: 'output', title: '출력 끝 줄 5줄 (matching.out)', ts: end, lines: rep.output_tail },
-    { id: 'kernel', title: '커널 로그 1줄: segfault at 8', ts: end, lines: rep.kernel },
-    { id: 'logs', title: '업무 로그 앞뒤 2분: (E) 1줄 · (W) 14줄', ts: end, facts: { errors: 1, warns: 14 },
-      lines: [`${t(-41)} (W) 호가 단계 비어 있음: 005930 매도 10단계`, `${t(-3)} (W) 호가 단계 비어 있음: 005930 매도 10단계`, `${t(-1)} (W) 호가 단계 비어 있음: 005930 매도 10단계`, `${t(1)} (E) 주문 게이트웨이: matching 연결 끊김`] },
-    { id: 'job', title: '프로세스 지표 직전 2분: CPU 99%, 메모리 그대로', ts: end, facts: { rss_first_mb: 46.2, rss_last_mb: 47.9, rss_max_mb: 48.6, cpu_last_pct: 99.2, span_s: 120 } },
-    { id: 'host', title: '서버 지표 직전 2분', ts: end, facts: { mem_used_pct_max: 41.2, cpu_pct_max: 88 } },
+    // 제목·줄 모양은 매니저 근거 묶음(internal/manager/exits/pack.go)과 같다
+    { id: 'exit', title: 'matching_svc(pid 48213) SIGSEGV · core 있음 · 상주 서비스', ts: end,
+      lines: ['끝난 방식: 신호 SIGSEGV(11), core 씀 · 출처 wait4(에이전트가 부모)', `시작 ${hhmmss(start)} · 끝 ${hhmmss(end)} (2시간 13분 동안)`] },
+    { id: 'core', title: `죽은 곳 book_insert+0x17 (matching_svc)`, ts: end, lines: frames.slice(0, 4).map((f, i) => `#${i} ${f.func}${f.offset || ''} (${f.module}) ${f.addr}`) },
+    { id: 'profile', title: '직전 10초 표본 988개', ts: end - 4 * SEC, facts: { samples: 988, window_s: 10, crash_func_pct: 74 },
+      lines: [`74.1% ${STACK};book_insert`, `11.3% ${STACK};level_find`, '6.2% main;read_orders;parse_order', '4.0% main;read_orders;__libc_recv', '죽은 함수 book_insert가 든 표본 74%'] },
+    { id: 'logs', title: '오류 로그 1줄 · 경고 14줄', ts: end, facts: { errors: 1, warns: 14 },
+      lines: [`${t(-41)} (W) matching: 호가 단계 비어 있음: 005930 매도 10단계`, `${t(-3)} (W) matching: 호가 단계 비어 있음: 005930 매도 10단계`, `${t(-1)} (W) matching: 호가 단계 비어 있음: 005930 매도 10단계`, `${t(1)} (E) gateway: 주문 게이트웨이: matching 연결 끊김`] },
+    { id: 'output', title: '출력 끝 5줄', ts: end, lines: rep.output_tail },
+    { id: 'kernel', title: '커널 로그 1줄', ts: end, lines: rep.kernel },
+    { id: 'job', title: 'RSS 46.2 → 47.9MB (최대 48.6)', ts: end, facts: { rss_first_mb: 46.2, rss_last_mb: 47.9, rss_max_mb: 48.6, cpu_last_pct: 99.2, span_s: 120 },
+      lines: ['RSS 처음 46.2MB → 마지막 47.9MB, 최대 48.6MB (점 120개)', 'CPU 마지막 99.2% · 최대 99.6%'] },
+    { id: 'host', title: '서버 메모리 최대 41.2% · CPU 최대 88%', ts: end, facts: { mem_used_pct_max: 41.2, cpu_pct_max: 88 },
+      lines: ['메모리 사용 최대 41.2% · 마지막 40.9%', 'CPU 최대 88% · 마지막 86.4%'] },
   ];
   const rule = {
     category: 'crash.null', title: 'book_insert에서 NULL 역참조(주소 0x8)', confidence: 'high', by: 'rule', at: end + 2 * SEC,
@@ -140,15 +144,18 @@ function oomRec(w, s) {
     notes: ['core 없음: SIGKILL은 core를 남기지 않음'],
   });
   const evidence = [
-    { id: 'exit', title: 'SIGKILL로 끝남 · core 없음 · 상주 서비스', ts: end, lines: ['pid 39120 quote_svc, 3시간 41분 동안 실행', 'wait4: 신호 9(SIGKILL)'] },
-    { id: 'kernel', title: '커널 로그 3줄: OOM killer가 pid 39120을 죽임', ts: end, lines: rep.kernel },
-    { id: 'job', title: '프로세스 지표 직전 2분: RSS 120 → 1,830MB', ts: end, facts: { rss_first_mb: 120.4, rss_last_mb: 1828.7, rss_max_mb: 1830.4, cpu_last_pct: 64, span_s: 120 } },
-    { id: 'host', title: '서버 지표 직전 2분: 메모리 97.6%', ts: end, facts: { mem_used_pct_max: 97.6, cpu_pct_max: 71.3 } },
-    { id: 'profile', title: '마지막 프로파일 구간(10초)', ts: end - 6 * SEC, facts: { samples: 412, window_s: 10 },
+    { id: 'exit', title: 'quote_svc(pid 39120) SIGKILL · 상주 서비스', ts: end,
+      lines: ['끝난 방식: 신호 SIGKILL(9) · 출처 wait4(에이전트가 부모)', `시작 ${hhmmss(start)} · 끝 ${hhmmss(end)} (3시간 41분 동안)`] },
+    { id: 'job', title: 'RSS 120.4 → 1,829MB (최대 1,830)', ts: end, facts: { rss_first_mb: 120.4, rss_last_mb: 1828.7, rss_max_mb: 1830.4, cpu_last_pct: 64, span_s: 120 },
+      lines: ['RSS 처음 120.4MB → 마지막 1,829MB, 최대 1,830MB (점 120개)', 'CPU 마지막 64% · 최대 71%'] },
+    { id: 'host', title: '서버 메모리 최대 97.6% · CPU 최대 71.3%', ts: end, facts: { mem_used_pct_max: 97.6, cpu_pct_max: 71.3 },
+      lines: ['메모리 사용 최대 97.6% · 마지막 97.1%', 'CPU 최대 71.3% · 마지막 64.8%'] },
+    { id: 'profile', title: '직전 10초 표본 412개', ts: end - 6 * SEC, facts: { samples: 412, window_s: 10 },
       lines: ['41.0% main;recv_loop;on_quote;snapshot_append;malloc', '23.5% main;recv_loop;on_quote;snapshot_append;__memmove_avx_unaligned_erms', '12.2% main;send_loop;encode_quote'] },
-    { id: 'logs', title: '업무 로그 앞뒤 2분: (E) 2줄 · (W) 6줄', ts: end, facts: { errors: 2, warns: 6 },
-      lines: [`${t(-95)} (W) 시세 수신 대기 8,200건`, `${t(-40)} (W) 스냅샷 보관 늘림: 12,400건 → 16,000건`, `${t(-12)} (E) 시세 송출 지연 1,820ms`, `${t(2)} (E) 시세 게이트웨이: quote 연결 끊김`] },
-    { id: 'output', title: '출력 끝 줄 4줄 (quote.out)', ts: end, lines: rep.output_tail },
+    { id: 'logs', title: '오류 로그 2줄 · 경고 6줄', ts: end, facts: { errors: 2, warns: 6 },
+      lines: [`${t(-95)} (W) quote: 시세 수신 대기 8,200건`, `${t(-40)} (W) quote: 스냅샷 보관 늘림: 12,400건 → 16,000건`, `${t(-12)} (E) quote: 시세 송출 지연 1,820ms`, `${t(2)} (E) gateway: 시세 게이트웨이: quote 연결 끊김`] },
+    { id: 'output', title: '출력 끝 4줄', ts: end, lines: rep.output_tail },
+    { id: 'kernel', title: '커널 로그 3줄', ts: end, lines: rep.kernel },
   ];
   const rule = {
     category: 'oom', title: '메모리 부족으로 커널이 종료(RSS 1,830MB)', confidence: 'high', by: 'rule', at: end + 2 * SEC,
@@ -173,17 +180,18 @@ function termRec(w, s) {
     notes: ['보낸 PID 모름: SIGTERM은 core를 남기지 않아 siginfo를 읽지 못함'],
   });
   const evidence = [
-    { id: 'exit', title: 'SIGTERM으로 끝남 · core 없음 · 상주 서비스', ts: end, lines: ['pid 47002 matching_svc, 하루 가까이 실행', 'wait4: 신호 15(SIGTERM)'] },
-    { id: 'runs', title: '2초 전 같은 서버에서 다른 실행 시작', ts: other.started_at, facts: { count: 1, nearest_before_s: 2 },
-      lines: [`${hhmmss(other.started_at)} ${other.flow_id}/${other.step_id} 시작 (${other.host}) · 2초 전`], refs: [other.exec_id] },
-    { id: 'audit', title: '앞뒤 2분 운영자 조작 없음', ts: end, facts: { count: 0, kills: 0 } },
-    { id: 'job', title: '프로세스 지표 직전 2분: 한가함', ts: end, facts: { rss_first_mb: 46.9, rss_last_mb: 46.8, rss_max_mb: 47.1, cpu_last_pct: 3.1, span_s: 120 } },
-    { id: 'output', title: '출력 끝 줄 3줄 (matching.out)', ts: end, lines: rep.output_tail },
+    { id: 'exit', title: 'matching_svc(pid 47002) SIGTERM · 상주 서비스', ts: end,
+      lines: ['끝난 방식: 신호 SIGTERM(15) · 출처 wait4(에이전트가 부모)', `시작 ${hhmmss(start)} · 끝 ${hhmmss(end)}`] },
+    { id: 'job', title: 'RSS 46.9 → 46.8MB (최대 47.1)', ts: end, facts: { rss_first_mb: 46.9, rss_last_mb: 46.8, rss_max_mb: 47.1, cpu_last_pct: 3.1, span_s: 120 },
+      lines: ['RSS 처음 46.9MB → 마지막 46.8MB, 최대 47.1MB (점 120개)', 'CPU 마지막 3.1% · 최대 4.2%'] },
+    { id: 'output', title: '출력 끝 3줄', ts: end, lines: rep.output_tail },
+    { id: 'runs', title: `같은 서버의 다른 실행 1건(${other.flow_id}/${other.step_id}, 2초 전 시작)`, ts: other.started_at, facts: { count: 1, nearest_before_s: 2 },
+      lines: [`${hhmmss(other.started_at)} ${other.flow_id}/${other.step_id} RUNNING (exec ${other.exec_id})`], refs: [other.exec_id] },
   ];
   const rule = {
     category: 'killed.run', title: `다른 실행(${other.flow_id}/${other.step_id})이 끝냄`, confidence: 'medium', by: 'rule', at: end + 2 * SEC,
     detail: `matching_svc가 SIGTERM으로 끝났습니다. 2초 전에 같은 서버(${other.host})에서 ${other.flow_id}/${other.step_id} 실행이 시작했고 운영자 조작은 없었습니다. 기동 스크립트가 이전 서비스를 내린 것으로 보입니다.`,
-    evidence_ids: ['exit', 'runs', 'audit'],
+    evidence_ids: ['exit', 'runs'],
     next_checks: ['start_matching.sh가 이전 matching_svc를 내리는지(pkill) 확인', '의도한 교체라면 정상: 이전 서비스가 끝난 뒤 새 서비스를 띄우는지 확인'],
   };
   return { pack: { version: 1, report: rep, flow_id: r.flow_id, step_id: r.step_id, run_status: r.status, evidence }, rule };
