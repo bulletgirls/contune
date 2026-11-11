@@ -41,6 +41,14 @@
 
 쓰는 경로가 겹치지 않으므로 동시에 진행한다. 서로의 결과는 위 계약과 stub 시그니처만 믿는다. 병합·통합 리허설·e2e 고치기는 오케스트레이터.
 
+**결과(11-11):** 일곱 레인을 동시에 진행해 모두 병합했다(리허설 결과와 고친 것은 [06 §12](../06-run-process-service.md)). 카드에 없던 결정:
+- P-A: `TrackerOptions.AutoServiceAge`(기본 10초)·`Passwd`. 주인은 그 주기의 측정이 다 끝난 뒤 바꿔 CPU를 두 번 세지 않는다. 이음 밖 서비스의 core 한도는 건드리지 않는다.
+- P-B: `remote.Options.OnServices`, `logtail.SourceConfig.Service`. 원격 출처의 service 문법이 틀리면 그 출처만 건너뜀(partial). 전송 실패 때는 끝난 것만 다음 묶음에 다시 싣는다(1,000개).
+- P-C: `StateStore.PruneProcs`, `procs.FillRuns`. 기록보다 먼저 온 종료 보고서는 10분 기다렸다 붙인다. (오케스트레이터) 묶음에 1분 넘게 없는 열린 기록은 마지막으로 본 시각에 닫는다.
+- P-D: `services.Deps.ListProcs·LiveProcs`(시험용)·`Wake`, `alert.ExitLevel`. 정의에 없어도 기록에 보이는 서비스는 목록에 넣는다(에이전트 YAML에만 있는 정의 포함).
+- P-E·P-F: 공용 링크 함수는 import 고리를 피하려고 `dashboard.js`에. 서비스 mock은 앞선 mock 처리기를 감싸서 주인 키 질의를 받는다(경로가 바뀌면 조용히 빠진다).
+- P-G: 플로우 ID는 소문자만이라 `batch-job`. `eum burn --cpu`가 정수라 `svr_c`만 코어 둘. `start_job.sh`는 `deploy/scripts/`.
+
 ---
 
 ## P-A. 에이전트 추적기 (레인 A)

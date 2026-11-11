@@ -26,6 +26,7 @@
 | 시연 | Docker Compose: 매니저 1 + 에이전트 4 + 모의 서버 39대, 플로우 40개. 장애 장면은 주문량 폭주로 체결 처리가 밀리는 상황과, **따로 도는 시세 서비스**에 시세가 몰려 수신 버퍼가 넘치고 시세가 늦는 상황(11-11) |
 | 업무 프로세스 분리 (11-11) | 체결(match-01 `matching_svc`, `market-open`)과 시세(feed-01 `quote_svc`, `quote-open`)는 서버·push 포트(9101·9102)·로그·실행 ID·패널(`체결`·`시세`)이 따로다. 밀리는 원인도 함수도 달라 플레임 그래프가 서로 다르다(`book_insert`가 커짐 vs 평시에 없던 `recover_gap → rebuild_book`이 생김). 타임머신의 업무 트랙은 실행이 낸 지표(`biz.order.*`·`biz.quote.*`)를 따른다. [demo/README.md](demo/README.md) |
 | 종료 보고서 (11-11) | 서비스가 **죽은 직접 원인**: 에이전트가 subreaper로 종료 상태(신호·core·종료 코드)를 받고, core를 서버에서 분석해(core는 밖으로 안 나감) 죽은 곳·호출 스택을, 매니저가 같은 시각의 근거(직전 프로파일·RSS·다른 실행·운영자 조작·커널 로그)를 묶어 규칙으로 원인을 가린다. 화면 `#exit/<id>`(호출 스택)과 목록 `#exits`(실행 메뉴, 서버 프로세스 탭·실행 이력에서도 들어감), 근거 묶음 내려받기·LLM 참고 초안. 05 §19, 카드 [T](docs/cards/T-exit-report.md) |
+| 실행 · 프로세스 · 서비스 (11-11) | 관측의 주어를 **서비스(와 그 프로세스)**로, 실행 ID는 "누가 언제 띄웠나"를 답하는 출처로 나눴다. 서비스는 `services/*.yaml` 규칙(env·exe·comm·cmdline)이나 스텝이 끝난 뒤 남은 프로세스의 **자동 서비스**(실행 파일 이름). 서비스 몫의 자원(`svc.*`)·업무 지표·로그·프로파일은 주인 키 `svc:<서비스>@<서버>`로 쌓여 재기동을 넘어 한 화면(서비스 타임머신 `#svc/<id>`)에서 본다. 프로세스는 하나씩(서버 프로세스 탭, 실행의 기동한 프로세스, 플로우 그래프의 `starts` 칩). 이음 밖 프로세스는 에이전트 YAML `observe` 범위 안의 서비스 규칙에 맞는 것만. 서비스 미기동·선언 확인 알림. [06](docs/06-run-process-service.md), 카드 [P](docs/cards/P-service.md) |
 
 ## 문서
 
@@ -36,7 +37,7 @@
 | [docs/03-roadmap.md](docs/03-roadmap.md) | 당일 계획: 시연 시나리오, 개념 완결 기준과 축소 순서, 일정, 저장소 구조, 테스트 전략, 리스크, 심사 예상 질문 |
 | [docs/04-implementation-plan.md](docs/04-implementation-plan.md) | **구현 지시서:** 설계·기획서 리뷰 결과(바뀐 것, 메운 빈틈), **§1.4 카드 정리(11-09)**, 마일스톤 M0~M4, 운영 규칙, 통합 점검표 |
 | [docs/05-supplement.md](docs/05-supplement.md) | **보충 계약(11-09, 02보다 우선):** 지표 카탈로그, 업무 로그, 알림, 장애 위험 지수, 운영자 조작, 편집기, 자연어 초안, API·설정·타입·DDL 추가, 화면 보충, **§16 보안 강화(11-10)** |
-| [docs/06-run-process-service.md](docs/06-run-process-service.md) | **제안(11-11):** 실행 · 프로세스 · 서비스를 나누는 개념 정리. 화면이 배치에 묶인 지점(근거와 파일 위치), `BATCH_JOB → svr_a·b·c` 예, 개체 셋과 관계, 화면별 변화, 단계 P0~P3, 정할 것 |
+| [docs/06-run-process-service.md](docs/06-run-process-service.md) | **실행 · 프로세스 · 서비스(11-11):** 개념 정리와 결과(§12). 화면이 배치에 묶인 지점(근거와 파일 위치), `BATCH_JOB → svr_a·b·c` 예, 개체 셋과 관계, 화면별 변화, 단계 P0~P3, 정할 것 |
 | [docs/cards/](docs/cards/README.md) | **작업카드 원본.** 공통 지시문과 소유 경로(README), 카드 파일 8개(K·A·B·C·R·D·E·X) |
 | [pipeline_plan.md](pipeline_plan.md) | **카드 47장의 등급·우선 세션·선행** (파이프라인의 기준) |
 | [pipeline/ORCHESTRATOR.md](pipeline/ORCHESTRATOR.md) | 자율 오케스트레이터 지시문. 도구: `pipeline/dag.py`(상태), `split_cards.py`(카드 → `specs/<ID>.md`), `setup_worktrees.sh` |
@@ -66,6 +67,8 @@
 **업무 프로세스 분리(11-11, 별도 포트 18095 리허설, 실제 perf):** 서버 43대(실제 4 + 모의 39), 플로우 40개. `quote-open` → feed-01에 `quote_svc`가 떠서 시세 패널 타일이 `start-quote` 실행 ID로, 체결 패널은 `start-matching` 실행 ID로 따로 이어짐. 평시 시세 플레임 그래프 `encode_quote` 51% · `decode_packet` 24% · `update_depth` 12% · `build_snapshot` 6%(체결은 `check_risk`·`price_cross` 중심). `quote-surge`의 8000건/초 구간: 시세 지연 p99 14 → 약 600ms, 시세 누락 초당 수천 건, `(E) GAP`·`(E) DELAY` 로그, 타일 위험 알림(시세 지연 p99·평균 지연·누락·수신 대기)과 해제, 플레임 그래프에 평시에 없던 `rebuild_book` 약 13~20% · `request_snapshot` 약 1~2%. 같은 시각 체결 p99는 최대 0.55ms로 그대로. `quote-rate 0` → 1분 만에 `1분 시세량` 하한 위험(`feed-01`). 타임머신은 실행이 낸 지표로 업무 트랙을 고른다(시세 실행이면 `시세 처리량·수신 대기·시세 지연`, 체결은 지금과 같음). 시세 실행의 A(평시)·B(8000) 비교는 `가장 늘어난 함수 rebuild_book 비중 0% → 13%`. 서비스를 띄우고 바로 끝나는 스텝은 구간을 고르기 전 그래프가 늘 비어 있었는데(스텝 길이 0초), 상주 프로세스가 살아 있으면 지금까지 보여 준다(`실행 전체(상주 프로세스 포함)`). `eum dev`만 다시 띄워도 두 서비스는 같은 실행 ID로 다시 잡힌다.
 
 **종료 보고서(11-11, 별도 포트 18096 리허설, 실제 바이너리·perf·gdb):** `start-matching`이 `setsid nohup`으로 띄운 `matching_svc`의 부모가 eum(subreaper), core 한도 256MiB로 올라감. `demo.sh crash` → 1초 안에 SIGSEGV·core(23MB, 작업 폴더) → 보고서 `crash.null` **`book_insert에서 NULL 역참조(주소 0x8)`**, 호출 스택(gdb) `book_insert+0x153 ← match_order ← handle_order ← main`, 커널 로그 `segfault at 8`, 직전 60초 표본 1,081개의 73%가 `book_insert`, crit 알림. `demo.sh run`을 다시 하면 이전 서비스가 `pkill`(SIGTERM)을 받고 종료 코드 0으로 끝나 `killed.run`(같은 서버의 start-matching 시작 0초 뒤 정상 종료, 알림 없음), `kill -9` → `killed.other`(보낸 쪽 모름, warn). 화면 `#exit/<id>`·타임머신 띠를 Playwright로 찍어 확인(밝음·어두움, 콘솔 오류 0). 서비스가 스텝 뒤에 죽은 실행의 타임머신은 프로파일 기본 구간을 종료 시각까지 본다(`실행 전체(상주 프로세스 포함) 05:14:39–05:15:26 · 샘플 1,081`).
+
+**실행 · 프로세스 · 서비스(11-11, 별도 포트 18097 리허설, 실제 바이너리):** `demo.sh batch`(`batch-job › start` = 06 §2.1의 BATCH_JOB)가 띄운 `svr_a`·`svr_b`·`svr_c`가 실행 화면·실행 이력·플로우 그래프에 기동한 프로세스로 보이고, 스텝이 끝나고 10초 뒤 자동 서비스 셋으로 따로 잰다(`svr_c` 약 190%). `demo.sh svr-crash` → `svr_b` 종료 보고서에 서비스 링크, 근거의 프로세스 지표가 `svr_b` 자신. 체결은 `services/체결.yaml` 규칙으로 처음부터 서비스 `matching`이고 업무 지표·타일·서비스 타임머신이 서비스 기준(시간축에 기동한 실행). `eum dev`를 다시 띄워도 떠 있던 서비스를 다시 잡는다. e2e `TestConcept`는 5단계를 실행 → 자동 서비스 의미로 고쳤다. 남은 것은 06 §12.
 
 **안 되거나 확인 못 한 것:**
 - 종료 보고서: 에이전트가 띄우지 않았거나 에이전트 재시작 전부터 떠 있던 서비스는 부모가 아니라 종료 코드를 모른다(core·커널 로그·정황으로만). 탐색 주기(5초)보다 먼저 죽은 프로세스(예: 뜨자마자 `port in use`로 끝남)는 보고가 없다. systemd-coredump는 이 PC에 없어 가짜 `coredumpctl`로만 시험했다. LLM 진단은 가짜 LLM으로만 시험했다(사내 LLM 연결 전). 이 컨테이너의 `/usr/bin/perf`는 커널과 맞지 않아 리허설은 `linux-tools-6.8`의 perf를 PATH 앞에 두고 했다.
