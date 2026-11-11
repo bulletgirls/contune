@@ -69,7 +69,7 @@ const METRIC_SCOPE = ['group', 'hosts', 'service'];
 export function fieldsOf(type) {
   const t = WIDGETS[type];
   if (!t) return [];
-  return t.kind === 'metric' ? [...t.fields, 'scope.group', 'scope.service'] : [...t.fields];
+  return t.kind === 'metric' ? [...new Set([...t.fields, 'scope.group', 'scope.service'])] : [...t.fields];
 }
 
 // 같은 kind 안에서 종류 바꾸기. 쓸 수 없는 칸은 지우고 쿼리 수·by를 새 종류에 맞춘다.

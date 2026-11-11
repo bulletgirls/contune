@@ -19,10 +19,10 @@ import * as D from './domain.js';
 import { servicesOf } from '../pages/dashboard.js';
 
 export const WIDGETS = {
-  stat:       { title: '값', kind: 'metric', w: 3, h: 1, fields: ['ref', 'query', 'unit', 'reduce', 'limits'], render: M.stat },
-  timeseries: { title: '시계열', kind: 'metric', w: 6, h: 2, fields: ['queries', 'unit', 'limits', 'max', 'stack'], render: M.timeseries },
-  bar:        { title: '막대', kind: 'metric', w: 4, h: 2, fields: ['query', 'by', 'unit', 'reduce', 'limits', 'top'], render: M.bar },
-  table:      { title: '표', kind: 'metric', w: 6, h: 2, fields: ['queries', 'by', 'unit', 'reduce', 'limits', 'top'], render: M.table },
+  stat:       { title: '값', kind: 'metric', w: 3, h: 1, fields: ['ref', 'query', 'scope.group', 'scope.service', 'unit', 'reduce', 'limits'], render: M.stat },
+  timeseries: { title: '시계열', kind: 'metric', w: 6, h: 2, fields: ['queries', 'scope.group', 'scope.service', 'unit', 'limits', 'max', 'stack'], render: M.timeseries },
+  bar:        { title: '막대', kind: 'metric', w: 4, h: 2, fields: ['query', 'by', 'scope.group', 'scope.service', 'unit', 'reduce', 'limits', 'top'], render: M.bar },
+  table:      { title: '표', kind: 'metric', w: 6, h: 2, fields: ['queries', 'by', 'scope.group', 'scope.service', 'unit', 'reduce', 'limits', 'top'], render: M.table },
   text:       { title: '글', kind: 'text', w: 3, h: 1, fields: ['text'], render: M.text },
   kpi:        { title: '업무 지표', kind: 'domain', w: 3, h: 2, fields: ['scope.group', 'scope.panel'], needs: ['panels'], render: D.kpi },
   events:     { title: '실시간 이벤트', kind: 'domain', w: 4, h: 4, fields: ['scope.group', 'limit'], needs: ['alerts', 'panels', 'hosts', 'flows'], render: D.events },
