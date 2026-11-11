@@ -1,1 +1,76 @@
-/* 사용자 보드(07, 카드 W) */
+/* 사용자 보드(07, 카드 W) — 운영 위젯(W-G, widgets/domain.js).
+   감싸개 .dwg는 위젯 몸통(.dw-b)을 채우고 넘치면 안에서 스크롤한다. 관제 렌더러(dashboard.css)는 그대로 쓰고,
+   틀 안에서 겹치는 제목과 카드 테두리·그림자만 .dw-b 아래에서 뺀다. */
+.dwg { height:100%; min-width:0; overflow:auto; container-type:inline-size; }
+.dwg-empty { margin:0; padding:8px 0; }
+
+/* 틀(.dw-h)이 제목을 쓰므로 카드·패널 제목은 숨기고, 테두리·바탕·안쪽 여백은 틀에 맡긴다 */
+.dw-b .dc-t, .dw-b .dp-h > h2.sec { display:none; }
+.dw-b .dcard, .dw-b .dpanel { background:none; border:0; border-radius:0; box-shadow:none; padding:0; min-height:0; }
+.dw-b .dcard { height:100%; }
+
+/* 업무 지표: 폭이 416px 이상이면 200px 열 여럿. 몸통에 다 들어가지 않는 타일은 domain.js가 hidden으로 뺀다. 줄 사이 선은 아래쪽에 */
+.dwg-kpi .kpi[hidden] { display:none; }
+.dwg-kpi .biz { justify-content:flex-start; gap:4px 16px; } /* biz.css의 .biz gap 14px(업무 탭)을 좁힌다 */
+.dwg-kpi .kpi + .kpi { border-top:0; }
+.dwg-kpi .kpi { border-bottom:1px solid var(--line); }
+.dwg-kpi .kpi:last-child { border-bottom:0; }
+@container (min-width:416px) {
+  .dwg-kpi .biz { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); align-content:start; }
+  .dwg-kpi .kpi:last-child { border-bottom:1px solid var(--line); }
+}
+
+/* 실시간 이벤트: 목록이 몸통 높이를 채우고 안에서 스크롤, 아래에 정상 줄 */
+.dw-b .dwatch { height:100%; display:flex; flex-direction:column; }
+.dw-b .dwatch .wl { flex:1 1 0; min-height:0; max-height:none; }
+.dw-b .dwatch .wok { margin-top:6px; flex:none; }
+.dwg-more { display:block; padding:5px 6px; font-size:12px; color:var(--accent); text-decoration:none; }
+.dwg-more:hover { text-decoration:underline; }
+
+/* 서버 맵: 범례만 남은 머리는 오른쪽에 */
+.dw-b .dmap .dp-h { justify-content:flex-end; }
+
+/* 시간대별 배치: 고른 시간의 목록은 몸통 안에서 짧게 */
+.dw-b .dtl .tl-list { max-height:120px; }
+
+/* 로그 · 서비스: 한 줄 = 고정 칸 격자(줄마다 같은 칸이라 열이 맞는다), 메시지·이름은 말줄임 */
+.dwg-logs, .dwg-services { display:flex; flex-direction:column; }
+.dwg-list { flex:1 1 auto; min-height:0; overflow:auto; }
+.dwg-foot { flex:none; padding:4px 6px 0; font-size:11px; color:var(--t3); }
+a.dwg-foot { color:var(--accent); }
+.dwg-lr, .dwg-sr { display:grid; align-items:baseline; column-gap:8px; padding:3px 6px; border-bottom:1px solid var(--line); border-left:3px solid transparent;
+  font-size:12px; color:var(--t2); text-decoration:none; white-space:nowrap; min-width:0; }
+.dwg-lr > *, .dwg-sr > * { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.dwg-lr.go:hover, a.dwg-sr:hover { background:var(--bg); }
+.dwg-lr.go:hover .dwg-msg, a.dwg-sr:hover .dwg-svc { color:var(--accent); text-decoration:underline; }
+
+/* 로그 줄: 시각 · 등급 기호 · 서버 · 메시지 */
+.dwg-lr { grid-template-columns:auto 12px minmax(48px,max-content) minmax(0,1fr); }
+.dwg-lr.lv-error { border-left-color:var(--crit); } .dwg-lr.lv-warn { border-left-color:var(--warn); }
+.dwg-ts, .dwg-up, .dwg-cpu, .dwg-rss { font-variant-numeric:tabular-nums; }
+.dwg-ts { color:var(--t3); }
+.dwg-lm { font-style:normal; font-size:10px; text-align:center; color:var(--t3); }
+.dwg-lm.error { color:var(--crit); } .dwg-lm.warn { color:var(--warn); }
+.dwg-lr .dwg-host { font-weight:600; color:var(--t1); max-width:110px; }
+.dwg-msg { color:var(--t1); }
+.dwg-lr:not(.go) { cursor:default; }
+
+/* 서비스 줄: 상태 · 서비스 · 서버 · 가동 시간 · CPU · RSS. 480px 밑이면 RSS, 380px 밑이면 상태 글자(기호·색은 남김)를 뺀다 */
+.dwg-sr { grid-template-columns:minmax(0,92px) minmax(0,1fr) minmax(0,1fr) 82px 48px 58px; }
+.dwg-sr.down { border-left-color:var(--crit); }
+.dwg-st { display:inline-flex; align-items:baseline; gap:4px; }
+.dwg-st i { font-style:normal; font-size:11px; flex:none; }
+.dwg-sr.up .dwg-st i { color:var(--ok); }
+.dwg-sr.down .dwg-st { color:var(--crit); font-weight:600; } .dwg-sr.down .dwg-st i { color:var(--crit); }
+.dwg-sr.off .dwg-st, .dwg-sr.off .dwg-svc, .dwg-sr.off .dwg-host { color:var(--t3); } .dwg-sr.off .dwg-st i { color:var(--silent); }
+.dwg-st .dwg-stt { overflow:hidden; text-overflow:ellipsis; }
+.dwg-svc { font-weight:600; color:var(--t1); }
+.dwg-up, .dwg-cpu, .dwg-rss { text-align:right; color:var(--t2); }
+@container (max-width:480px) {
+  .dwg-sr { grid-template-columns:minmax(0,92px) minmax(0,1fr) minmax(0,1fr) 82px 48px; }
+  .dwg-rss { display:none; }
+}
+@container (max-width:380px) {
+  .dwg-sr { grid-template-columns:14px minmax(0,1fr) minmax(0,1fr) 82px 44px; }
+  .dwg-st .dwg-stt { display:none; }
+}
