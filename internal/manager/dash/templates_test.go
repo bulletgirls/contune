@@ -64,7 +64,7 @@ func TestTemplateOps(t *testing.T) {
 		w, h int
 	}{
 		{model.WidgetRisk, 3, 2}, {model.WidgetServers, 3, 2}, {model.WidgetBatch, 3, 2}, {model.WidgetKPI, 3, 2},
-		{model.WidgetServerMap, 8, 2}, {model.WidgetEvents, 4, 4}, {model.WidgetHours, 8, 2},
+		{model.WidgetServerMap, 8, 3}, {model.WidgetEvents, 4, 5}, {model.WidgetHours, 8, 2},
 	}
 	if len(d.Widgets) != len(want) {
 		t.Fatalf("ops 위젯 %d개", len(d.Widgets))

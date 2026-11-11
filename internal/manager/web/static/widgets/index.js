@@ -27,7 +27,7 @@ export const WIDGETS = {
   kpi:        { title: '업무 지표', kind: 'domain', w: 3, h: 2, fields: ['scope.group', 'scope.panel'], needs: ['panels'], render: D.kpi },
   events:     { title: '실시간 이벤트', kind: 'domain', w: 4, h: 4, fields: ['scope.group', 'limit'], needs: ['alerts', 'panels', 'hosts', 'flows'], render: D.events },
   servers:    { title: '서버', kind: 'domain', w: 3, h: 2, fields: ['scope.group'], needs: ['hosts', 'alerts'], render: D.servers },
-  servermap:  { title: '서버 맵', kind: 'domain', w: 8, h: 2, fields: ['scope.group'], needs: ['hosts'], render: D.servermap },
+  servermap:  { title: '서버 맵', kind: 'domain', w: 8, h: 3, fields: ['scope.group'], needs: ['hosts'], render: D.servermap },
   batch:      { title: '금일 배치', kind: 'domain', w: 3, h: 2, fields: ['scope.board'], needs: ['flows'], render: D.batch },
   hours:      { title: '시간대별 배치', kind: 'domain', w: 8, h: 2, fields: ['scope.board'], needs: ['hours', 'flows'], render: D.hours },
   risk:       { title: '장애 위험도', kind: 'domain', w: 3, h: 2, fields: [], needs: ['risk', 'hosts', 'panels'], render: D.risk },

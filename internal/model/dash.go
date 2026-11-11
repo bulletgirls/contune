@@ -44,7 +44,7 @@ func IsMetricWidget(t string) bool {
 // widgetSize는 종류별 기본 크기(폭 칸, 높이 줄)다. 화면 등록부(widgets/index.js)와 같다.
 var widgetSize = map[string][2]int{
 	WidgetStat: {3, 1}, WidgetTimeseries: {6, 2}, WidgetBar: {4, 2}, WidgetTable: {6, 2}, WidgetText: {3, 1},
-	WidgetKPI: {3, 2}, WidgetEvents: {4, 4}, WidgetServers: {3, 2}, WidgetServerMap: {8, 2}, WidgetBatch: {3, 2},
+	WidgetKPI: {3, 2}, WidgetEvents: {4, 4}, WidgetServers: {3, 2}, WidgetServerMap: {8, 3}, WidgetBatch: {3, 2},
 	WidgetHours: {8, 2}, WidgetRisk: {3, 2}, WidgetLogs: {6, 2}, WidgetServices: {4, 2},
 }
 

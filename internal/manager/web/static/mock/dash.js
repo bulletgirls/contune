@@ -168,8 +168,8 @@ function opsDash() {
       W({ id: 'servers', type: 'servers', w: 3, h: 2 }),
       W({ id: 'batch', type: 'batch', w: 3, h: 2 }),
       W({ id: 'kpi', type: 'kpi', w: 3, h: 2 }),
-      W({ id: 'servermap', type: 'servermap', w: 8, h: 2 }),
-      W({ id: 'events', type: 'events', w: 4, h: 4 }),
+      W({ id: 'servermap', type: 'servermap', w: 8, h: 3 }),
+      W({ id: 'events', type: 'events', w: 4, h: 5 }),
       W({ id: 'hours', type: 'hours', w: 8, h: 2 }),
     ],
   });

@@ -34,7 +34,7 @@ func opsDash() model.Dash {
 	w := func(typ string, wd, ht int) model.Widget { return model.Widget{ID: typ, Type: typ, W: wd, H: ht} }
 	return model.Dash{Title: "운영 현황", Widgets: []model.Widget{
 		w(model.WidgetRisk, 3, 2), w(model.WidgetServers, 3, 2), w(model.WidgetBatch, 3, 2), w(model.WidgetKPI, 3, 2),
-		w(model.WidgetServerMap, 8, 2), w(model.WidgetEvents, 4, 4), w(model.WidgetHours, 8, 2),
+		w(model.WidgetServerMap, 8, 3), w(model.WidgetEvents, 4, 5), w(model.WidgetHours, 8, 2),
 	}}
 }
 

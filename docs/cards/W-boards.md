@@ -87,7 +87,7 @@
    rev = 파일 바이트 sha256 hex 앞 16자. `Save`: 검증 → id 검사 → (뮤텍스) 지금 파일 rev와 비교(rev `""`인데 있으면 `ErrConflict`, 있는데 다르면 `ErrConflict`) → Owner는 기존 파일 것을 지키고 새 파일이면 actor, UpdatedBy=actor, UpdatedAt=now → YAML(들여쓰기 2)로 같은 폴더 임시 파일 + rename. `Delete`도 rev 비교. 폴더가 없으면 Save가 만든다(MkdirAll).
 3. **CRUD**(`crud.go`): 계약 API 표대로. 본문 1MB 제한, PUT 경로 id ≠ 본문 `dash.id`면 400(본문 id가 비면 경로 id로). 편집 꺼짐(`!Editable()`)은 403 `{"error":"보드 편집이 꺼져 있습니다(설정 dashboards_readonly 또는 dashboards 폴더)"}`.
    감사: `dash.save`(대상 id, 내용 `새 보드|바꿈 · 위젯 n개 · rev a→b`), `dash.delete`. actor 문자열은 감사 기록과 같은 것(`actor` 패키지).
-4. **템플릿**(`templates.go`): `blank`(빈 보드, 제목 "새 보드") · `ops`(관제와 같은 구성: `risk`·`servers`·`batch`·`kpi` 각 w3 h2, `servermap` w8 h2, `events` w4 h4, `hours` w8 h2 — 이 순서면 격자가 관제 모양이 된다) ·
+4. **템플릿**(`templates.go`): `blank`(빈 보드, 제목 "새 보드") · `ops`(관제와 같은 구성: `risk`·`servers`·`batch`·`kpi` 각 w3 h2, `servermap` w8 h3, `events` w4 h5, `hours` w8 h2 — 이 순서면 격자가 관제 모양이 된다) ·
    패널마다 `panel:<id>`(제목 `<패널 제목> 보드`, 보드 group = 패널 group, 타일마다 stat `ref`(w3 h1), 차트마다 timeseries(w6 h2, queries = 차트 metrics, agg = 차트 agg, unit, `scope.service` = 패널 service), 로그 w12 h2(levels = 패널 log_levels, `scope.service`)). 위젯 ID는 `t1`·`c1`·`log` 식. 모든 템플릿이 `ValidateDash`를 통과해야 한다(id만 빔 → 검사 때 임시 id).
 5. **예시 보드** `dashboards/`: `ops-wall.yaml`(제목 `운영 벽면`, ops 템플릿 그대로), `trading.yaml`(07 §3의 모양을 넓혀: 체결 타일 ref 2개·시세 타일 ref 2개, 처리량·시세 지연 시계열(서비스 범위), 서버별 CPU 막대(group 매매, warn 70 crit 90), 서비스 자원 표(`svc.cpu.pct`·`svc.rss.mb`, by owner), 로그(service matching), 서비스(group 매매)), `settle.yaml`(제목 `정산`, group `사후처리`: 금일 배치·시간대별 배치(board 정산), 서버별 CPU·메모리 표(by host), 이벤트, 글 위젯(담당·연락처 예시)). 패널 타일 제목은 `panels/*.yaml`의 실제 제목을 쓴다.
 
