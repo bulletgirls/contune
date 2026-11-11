@@ -37,6 +37,7 @@ type rawStep struct {
 	Profile     bool             `yaml:"profile"`
 	Gate        []model.GateCond `yaml:"gate"`
 	GateMaxWait string           `yaml:"gate_max_wait"`
+	Starts      []string         `yaml:"starts"`
 }
 
 type rawFlow struct {
@@ -92,7 +93,12 @@ func Parse(data []byte, file, board string) (model.Flow, error) {
 
 	seen := map[string]bool{}
 	for _, rs := range raw.Steps {
-		s := model.Step{ID: rs.ID, Host: rs.Host, Command: rs.Command, Depends: rs.Depends, Profile: rs.Profile, Gate: rs.Gate}
+		s := model.Step{ID: rs.ID, Host: rs.Host, Command: rs.Command, Depends: rs.Depends, Profile: rs.Profile, Gate: rs.Gate, Starts: rs.Starts}
+		for _, sv := range rs.Starts {
+			if !model.ServiceIDOK(sv) {
+				add(rs.ID, "starts의 서비스 ID %q가 규칙에 맞지 않습니다", sv)
+			}
+		}
 		if rs.ID == "" {
 			add("", "스텝 id가 없습니다")
 		} else if seen[rs.ID] {
@@ -340,6 +346,7 @@ type outStep struct {
 	Profile     bool             `yaml:"profile,omitempty"`
 	Gate        []model.GateCond `yaml:"gate,omitempty"`
 	GateMaxWait string           `yaml:"gate_max_wait,omitempty"`
+	Starts      []string         `yaml:"starts,omitempty"`
 }
 
 type outFlow struct {
@@ -371,7 +378,7 @@ func Marshal(f model.Flow) ([]byte, error) {
 	}
 	for _, s := range f.Steps {
 		st := outStep{ID: s.ID, Host: s.Host, Command: s.Command, Depends: s.Depends,
-			Profile: s.Profile, Gate: s.Gate, GateMaxWait: shortDur(s.GateMaxWait)}
+			Profile: s.Profile, Gate: s.Gate, GateMaxWait: shortDur(s.GateMaxWait), Starts: s.Starts}
 		if s.Timeout != defaultTimeout && s.Timeout != 0 {
 			st.Timeout = shortDur(s.Timeout)
 		}

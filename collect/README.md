@@ -15,4 +15,5 @@ logs:
     match:
       - { re: '^\(E\)', level: error }
       - { re: '^\(W\)', level: warn }
+    service: matching   # 비우면 경로의 {exec_id}가 주인, 있으면 그 서비스 인스턴스(svc:matching@호스트)가 주인(06)
 ```

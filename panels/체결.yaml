@@ -1,6 +1,7 @@
 id: matching
 title: 체결
 group: 매매/체결
+service: matching
 # signal: 골든 시그널 묶음(traffic 트래픽 · latency 지연 시간 · errors 오류 · saturation 포화도). 없으면 기타(05 §14.10).
 tiles:
   - { title: 주문 유입량,          signal: traffic,    metric: biz.order.in_tps,         agg: sum, unit: TPS, kpi: true }

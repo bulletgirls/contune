@@ -1,0 +1,3 @@
+id: x
+steps:
+  - {id: a, host: h, command: [x], starts: [ok_svc, "Bad Svc"]}

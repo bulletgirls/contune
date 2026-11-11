@@ -34,6 +34,7 @@ type SeedOptions struct {
 const (
 	bizHost     = "match-01"
 	bizGroup    = "매매/체결"
+	quoteHost   = "feed-01"
 	seedSource  = "seed"
 	incidentCnt = 6
 )
@@ -146,6 +147,9 @@ func Seed(ctx context.Context, o SeedOptions) error {
 
 	runCnt, err := g.writeRuns(ctx, ss, begin, end)
 	if err != nil {
+		return err
+	}
+	if err := g.writeProcs(ctx, ss, begin, end); err != nil {
 		return err
 	}
 	for _, in := range incs {
@@ -308,6 +312,7 @@ func (g *gen) minute(t time.Time) ([]model.Sample, []model.LogEvent) {
 	var out []model.Sample
 	var logs []model.LogEvent
 	exec := g.execAt(t)
+	matchOwner := model.ServiceOwner("matching", bizHost)
 	for _, h := range g.hosts {
 		base := 10 + 25*w
 		switch h {
@@ -368,11 +373,35 @@ func (g *gen) minute(t time.Time) ([]model.Sample, []model.LogEvent) {
 	}
 	sort.Strings(names)
 	for _, k := range names {
-		out = append(out, model.Sample{TS: ts, Host: bizHost, Name: k, Value: biz[k], ExecID: exec})
+		out = append(out, model.Sample{TS: ts, Host: bizHost, Name: k, Value: biz[k], ExecID: matchOwner})
+	}
+	// 서비스 프로세스 몫의 자원(svc.*): 스텝 실행의 job.*와 따로 서비스 인스턴스가 주인이다.
+	svcCPU := clampf(14+30*w+45*s+g.walk("svc.cpu", 2), 1, 99)
+	for _, m := range []struct {
+		name string
+		v    float64
+	}{
+		{"svc.cpu.pct", svcCPU}, {"svc.cpu.user_pct", svcCPU * 0.75}, {"svc.cpu.sys_pct", svcCPU * 0.25},
+		{"svc.rss.mb", 1800 + 300*w + 400*s}, {"svc.mem.size_mb", 2100 + 300*w + 400*s},
+		{"svc.threads", 48}, {"svc.procs", 1},
+	} {
+		out = append(out, model.Sample{TS: ts, Host: bizHost, Name: m.name, Value: m.v, ExecID: matchOwner})
+	}
+	if contains(g.hosts, quoteHost) {
+		qcpu := clampf(10+18*w+g.walk("quote.cpu", 1.5), 1, 99)
+		for _, m := range []struct {
+			name string
+			v    float64
+		}{
+			{"svc.cpu.pct", qcpu}, {"svc.cpu.user_pct", qcpu * 0.7}, {"svc.cpu.sys_pct", qcpu * 0.3},
+			{"svc.rss.mb", 900 + 150*w}, {"svc.threads", 24}, {"svc.procs", 1},
+		} {
+			out = append(out, model.Sample{TS: ts, Host: quoteHost, Name: m.name, Value: m.v, ExecID: model.ServiceOwner("quote", quoteHost)})
+		}
 	}
 	for i := 0; i < int(errs); i++ {
 		logs = append(logs, model.LogEvent{
-			TS: ts + int64(i)*1000, Host: bizHost, Source: "matching", ExecID: exec, Level: "error",
+			TS: ts + int64(i)*1000, Host: bizHost, Source: "matching", ExecID: matchOwner, Level: "error",
 			Message: fmt.Sprintf("(E) %s QUEUE 대기 큐 %s건 (위험 2,000)", t.In(g.o.Loc).Format("15:04:05"), commas(int(queue))),
 		})
 	}

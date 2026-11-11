@@ -23,6 +23,7 @@ steps:
     command: ["${DEMO}/scripts/start_matching.sh"]
     depends: [load-equity, load-deriv]
     profile: true
+    starts: [matching]
 
   - id: check-ready
     host: match-01

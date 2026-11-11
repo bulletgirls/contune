@@ -1,0 +1,9 @@
+# BATCH_JOB(수동 실행): batch-01에 서버 프로세스 셋(svr_a·svr_b·svr_c)을 띄운다.
+# 플로우 id는 소문자만 허용해 batch-job으로 쓴다. 서비스 정의 없이 자동 서비스(svr_a·b·c)로 잡힌다.
+id: batch-job
+steps:
+  - id: start
+    host: batch-01
+    command: ["${DEMO}/scripts/start_job.sh"]
+    profile: true
+    starts: [svr_a, svr_b, svr_c]
