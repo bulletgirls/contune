@@ -12,16 +12,26 @@ const PAGES = {
   audit: './pages/audit.js', collect: './pages/collect.js',
   run: './pages/tm.js', alerts: './pages/alerts.js', risk: './pages/risk.js',
   'dev/flame': './pages/devflame.js',
+  exit: './pages/exit.js',
 };
-const MENU = { dashboard: 'dashboard', hosts: 'hosts', host: 'hosts', collect: 'hosts', board: 'board', edit: 'board', biz: 'biz', runs: 'runs', run: 'runs' };
+const MENU = { dashboard: 'dashboard', hosts: 'hosts', host: 'hosts', collect: 'hosts', board: 'board', edit: 'board', biz: 'biz', runs: 'runs', run: 'runs', exit: 'runs' };
 
 let boards = new Set();
 let current = null;
 let seq = 0;
 
+// 종료 보고서 #exit/<id>는 트리의 경로 해석(parseRoute) 밖이라 여기서 먼저 본다.
+function routeOf(hash) {
+  const m = /^#exit\/([^/?]*)(?:\?(.*))?$/.exec(String(hash || ''));
+  if (!m) return parseRoute(hash, boards);
+  let id = m[1];
+  try { id = decodeURIComponent(id); } catch (e) { /* 그대로 */ }
+  return { name: 'exit', params: { id }, query: Object.fromEntries(new URLSearchParams(m[2] || '')) };
+}
+
 async function route() {
   const my = ++seq;
-  const r = parseRoute(location.hash, boards);
+  const r = routeOf(location.hash);
   if (current && current.dispose) { try { current.dispose(); } catch (e) { console.error(e); } }
   current = null;
   stopScope();

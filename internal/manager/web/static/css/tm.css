@@ -95,3 +95,13 @@
 .tm-evs .et { color:var(--t2); width:160px; flex:none; }
 .tm-evs .es { display:inline-flex; align-items:center; gap:4px; }
 .tm-evs .er { color:var(--t2); }
+
+/* 프로세스 종료 띠(카드 T5): 이 실행의 종료 보고서로 */
+.tm-exit { display:flex; align-items:center; gap:8px; padding:7px 12px; border-radius:6px; border:1px solid var(--line); background:var(--surface); text-decoration:none; color:var(--t1); font-size:13px; min-width:0; }
+.tm-exit.crit { border-color:var(--crit); background:color-mix(in srgb, var(--crit) 8%, var(--surface)); }
+.tm-exit.warn { border-color:var(--warn); background:color-mix(in srgb, var(--warn) 8%, var(--surface)); }
+.tm-exit .mk { flex:none; color:var(--t3); } .tm-exit.crit .mk { color:var(--crit); } .tm-exit.warn .mk { color:var(--warn); }
+.tm-exit .tx { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tm-exit .go { flex:none; color:var(--accent); font-weight:600; }
+.tm-exit:hover { border-color:var(--accent); } .tm-exit:hover .tx { text-decoration:underline; }
+@media (max-width:700px) { .tm-exit .tx { white-space:normal; } }

@@ -9,6 +9,7 @@ import { el, esc, badgeHTML, fmtDuration, fmtClock, fmtNum, info, shortExec, toa
 import { TRIGGER_TEXT, hashOfBoard, hashOfFlow } from './batch.js';
 import { splitPrefix } from './biz.js';
 import { can } from '../auth.js';
+import { exitStrip } from './exit.js';
 
 const PAD_MIN = 30000, PAD_MAX = 5 * 60000;
 const FIXED = 30000;
@@ -153,7 +154,10 @@ export async function render(host, params) {
   const tabsEl = el('div', { class: 'tm-tabs', role: 'tablist' });
   const pane = el('div', { class: 'tm-pane' });
   const logCard = el('section', { class: 'tm-card tm-logcard' }, tabsEl, pane);
-  host.append(head, kpis, metricCard, profCard, logCard);
+  // 이 실행의 프로세스 종료 보고가 있으면 맨 위 띠(종료 보고서로 가는 링크)
+  const exitBar = el('div', { hidden: true });
+  api('/exits?exec_id=' + q(id)).then((r) => { const s = exitStrip((r && r.exits) || []); if (s) exitBar.replaceWith(s); }).catch(() => { /* 종료 보고 없이 */ });
+  host.append(exitBar, head, kpis, metricCard, profCard, logCard);
 
   function drawHead() {
     const r = st.run;
