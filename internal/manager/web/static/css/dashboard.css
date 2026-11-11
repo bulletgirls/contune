@@ -98,6 +98,15 @@
 .wt { font-weight:600; flex:none; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .wr { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .we { color:var(--t3); font-size:12px; flex:none; font-variant-numeric:tabular-nums; }
+/* 확인한 알림: 조건이 풀릴 때까지 남기되 글자만 흐리게(등급 막대·기호는 그대로) */
+.wrow.acked .wt, .wrow.acked .wr { color:var(--t3); }
+.wrow.acked .wt { font-weight:500; }
+.wa { color:var(--t3); font-size:12px; flex:none; max-width:72px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dp-acked { display:inline-flex; opacity:.6; }
+/* 등급 배지가 '(미확인 n)'로 길어지면 제목을 접지 않고 배지를 다음 줄 오른쪽으로 */
+.dwatch .dp-h { flex-wrap:wrap; row-gap:4px; }
+.dwatch .dp-h .sec { white-space:nowrap; }
+.dwatch .dp-c { margin-left:auto; flex-wrap:wrap; justify-content:flex-end; }
 .wok { margin-top:8px; color:var(--ok); font-size:13px; }
 
 /* 배치 시간대 */

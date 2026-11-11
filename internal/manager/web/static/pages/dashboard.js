@@ -76,14 +76,35 @@ export function hourBuckets(flows, now) {
 }
 export const bucketCount = (b) => b.done + b.running + b.failed + b.gated + b.plan;
 
+// 실시간 이벤트의 firing 알림. 확인(ack)해도 조건이 풀릴 때까지 firing이라 목록에 남는다(05 §5).
+// 확인한 줄은 지우지 않고 흐리게 그리고, 같은 등급 안에서 확인 안 한 줄 아래로 보낸다.
+// 등급을 먼저 보는 까닭: 확인한 위험이 확인 안 한 경고 아래로 가라앉지 않게.
 const LEVEL_RANK = { crit: 0, warn: 1 };
+export const isAcked = (a) => !!a.acked_at;
 export function sortAlerts(alerts) {
-  return [...alerts].sort((a, b) => (LEVEL_RANK[a.level] ?? 2) - (LEVEL_RANK[b.level] ?? 2) || b.ts - a.ts);
+  return [...alerts].sort((a, b) => (LEVEL_RANK[a.level] ?? 2) - (LEVEL_RANK[b.level] ?? 2) ||
+    Number(isAcked(a)) - Number(isAcked(b)) || b.ts - a.ts);
 }
+// 등급별 수와 그중 확인 안 한 수: {crit: 2, warn: 1, open: {crit: 1, warn: 1}}
 export function countLevels(alerts) {
-  const c = { crit: 0, warn: 0 };
-  for (const a of alerts) if (a.level in c) c[a.level]++;
+  const c = { crit: 0, warn: 0, open: { crit: 0, warn: 0 } };
+  for (const a of alerts) {
+    if (!(a.level in c.open)) continue;
+    c[a.level]++;
+    if (!isAcked(a)) c.open[a.level]++;
+  }
   return c;
+}
+// 머리 등급 배지 글자: '위험 2' · '위험 2 (미확인 1)' · '위험 2 (모두 확인)'
+export function levelCountText(level, n, open) {
+  const base = `${LEVEL_TEXT[level] || level} ${n}`;
+  if (open >= n) return base;
+  return `${base} (${open ? `미확인 ${open}` : '모두 확인'})`;
+}
+// 확인한 줄 끝의 표시: '✓ operator', 말풍선 'operator 확인 · 10:42:31'
+export function ackText(a) {
+  const who = String(a.acked_by || '').replace(/^user:/, '');
+  return { text: `✓ ${who || '확인'}`, title: `${who ? who + ' ' : ''}확인 · ${fmtClock(a.acked_at)}` };
 }
 export function alertTarget(a, panels) {
   switch (a.kind) {
@@ -333,14 +354,22 @@ function serverMap(hs) {
 function eventList(alerts, panels, hs, flows) {
   const c = countLevels(alerts);
   const counts = el('span', { class: 'dp-c' });
-  counts.innerHTML = [['crit', c.crit], ['warn', c.warn]].filter(([, n]) => n).map(([k, n]) => badgeHTML(k, `${LEVEL_TEXT[k]} ${n}`)).join('');
+  // 그 등급을 모두 확인했으면 배지도 흐리게(수는 그대로: 아직 진행 중이다)
+  counts.innerHTML = ['crit', 'warn'].filter((k) => c[k]).map((k) => {
+    const b = badgeHTML(k, levelCountText(k, c[k], c.open[k]));
+    return c.open[k] ? b : `<span class="dp-acked">${b}</span>`;
+  }).join('');
   const box = el('section', { class: 'dpanel dwatch' }, el('div', { class: 'dp-h' }, el('h2', { class: 'sec', text: '실시간 이벤트' }), counts));
   const list = el('div', { class: 'wl' });
   const now = Date.now();
   for (const a of sortAlerts(alerts)) {
-    const row = el('a', { class: `wrow ${a.level}`, href: alertTarget(a, panels) });
+    const acked = isAcked(a);
+    const row = el('a', { class: `wrow ${a.level}${acked ? ' acked' : ''}`, href: alertTarget(a, panels) });
+    const ack = acked ? ackText(a) : null;
     row.innerHTML = `<span class="wm ${esc(a.level)}" title="${esc(LEVEL_TEXT[a.level] || a.level)}">${ALERT_MARK[a.level] || '•'}</span><span class="wt">${esc(alertName(a))}</span>` +
-      `<span class="wr">${esc(alertReason(a))}</span><span class="we">${esc(relTime(a.ts, now))}</span>`;
+      `<span class="wr">${esc(alertReason(a))}</span>` +
+      (ack ? `<span class="wa" title="${esc(ack.title)}">${esc(ack.text)}</span>` : '') +
+      `<span class="we">${esc(relTime(a.ts, now))}</span>`;
     list.append(row);
   }
   if (!alerts.length) list.append(el('p', { class: 'empty', text: DASH }));
