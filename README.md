@@ -38,7 +38,7 @@
 | [docs/03-roadmap.md](docs/03-roadmap.md) | 당일 계획: 시연 시나리오, 개념 완결 기준과 축소 순서, 일정, 저장소 구조, 테스트 전략, 리스크, 심사 예상 질문 |
 | [docs/04-implementation-plan.md](docs/04-implementation-plan.md) | **구현 지시서:** 설계·기획서 리뷰 결과(바뀐 것, 메운 빈틈), **§1.4 카드 정리(11-09)**, 마일스톤 M0~M4, 운영 규칙, 통합 점검표 |
 | [docs/05-supplement.md](docs/05-supplement.md) | **보충 계약(11-09, 02보다 우선):** 지표 카탈로그, 업무 로그, 알림, 장애 위험 지수, 운영자 조작, 편집기, 자연어 초안, API·설정·타입·DDL 추가, 화면 보충, **§16 보안 강화(11-10)** |
-| [docs/07-boards.md](docs/07-boards.md) | **사용자 보드(11-11):** 왜 관제를 대체하지 않고 옆에 두는가(다른 제품 사례), 결정 10개, 보드 YAML 모양, 결과(§4) |
+| [docs/07-boards.md](docs/07-boards.md) | **사용자 보드(11-11):** 왜 관제를 대체하지 않고 옆에 두는가(다른 제품 사례), 결정 11개(11: 목록 대신 고르기 칸), 보드 YAML 모양, 결과(§4) |
 | [docs/06-run-process-service.md](docs/06-run-process-service.md) | **실행 · 프로세스 · 서비스(11-11):** 개념 정리와 결과(§12). 화면이 배치에 묶인 지점(근거와 파일 위치), `BATCH_JOB → svr_a·b·c` 예, 개체 셋과 관계, 화면별 변화, 단계 P0~P3, 정할 것 |
 | [docs/cards/](docs/cards/README.md) | **작업카드 원본.** 공통 지시문과 소유 경로(README), 카드 파일 8개(K·A·B·C·R·D·E·X) |
 | [pipeline_plan.md](pipeline_plan.md) | **카드 47장의 등급·우선 세션·선행** (파이프라인의 기준) |

@@ -241,7 +241,7 @@ export async function render(page, params = {}, query = {}) {
     page.replaceChildren(el('div', { class: 'de-off' },
       el('h2', { class: 'sec', text: id || '새 보드' }),
       el('p', { class: 'empty', text: missing ? '보드 없음' : errText(e) }),
-      el('a', { href: '#dashes', text: '보드 목록' })));
+      el('a', { href: '#dashes', text: '보드로' })));
     return;
   }
   if (!live()) return;
@@ -253,7 +253,7 @@ export async function render(page, params = {}, query = {}) {
     page.replaceChildren(el('div', { class: 'de-off' },
       el('h2', { class: 'sec', text: d.title || st.id || '새 보드' }),
       el('p', { class: 'empty', text: !can('operator') ? `편집 권한 없음 (${roleName('operator')} 이상)` : OFF_TEXT }),
-      st.isNew ? el('a', { href: '#dashes', text: '보드 목록' }) : el('a', { href: viewHref(st.id), text: '보기' })));
+      st.isNew ? el('a', { href: '#dashes', text: '보드로' }) : el('a', { href: viewHref(st.id), text: '보기' })));
     return;
   }
 
