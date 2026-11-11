@@ -95,11 +95,15 @@ export function countLevels(alerts) {
   }
   return c;
 }
+// 등급 수 뒤에 붙는 확인 표시: 모두 미확인 '' · 일부 확인 '(미확인 1)' · 모두 확인 '(모두 확인)'
+export function ackSuffix(n, open) {
+  if (open >= n) return '';
+  return `(${open ? `미확인 ${open}` : '모두 확인'})`;
+}
 // 머리 등급 배지 글자: '위험 2' · '위험 2 (미확인 1)' · '위험 2 (모두 확인)'
 export function levelCountText(level, n, open) {
-  const base = `${LEVEL_TEXT[level] || level} ${n}`;
-  if (open >= n) return base;
-  return `${base} (${open ? `미확인 ${open}` : '모두 확인'})`;
+  const s = ackSuffix(n, open);
+  return `${LEVEL_TEXT[level] || level} ${n}${s ? ' ' + s : ''}`;
 }
 // 확인한 줄 끝의 표시: '✓ operator', 말풍선 'operator 확인 · 10:42:31'
 export function ackText(a) {

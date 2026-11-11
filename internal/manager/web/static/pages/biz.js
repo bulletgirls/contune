@@ -8,7 +8,7 @@ import { lineChart, fmtTime, fmtTick } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
 import { hashWith } from '../tree.js';
 import { gate, can } from '../auth.js';
-import { bulletSVG, limitText, hasLimit, tileView, offTip, ALERT_MARK } from './dashboard.js';
+import { bulletSVG, limitText, hasLimit, tileView, offTip, ALERT_MARK, isAcked, countLevels as countAlertLevels, ackSuffix, ackText } from './dashboard.js';
 
 export { limitText };
 
@@ -49,9 +49,13 @@ export function inPanelGroup(group, pg) {
   return !!pg && (group === pg || String(group || '').startsWith(pg + '/'));
 }
 // 이 패널 그룹의 활성(firing) 알림. 위험 먼저, 같은 심각도면 최근 먼저.
+// 활성 알림의 등급: 위험이 아니면 경고로 묶는다.
+export const bizLevel = (a) => (a.level === 'crit' ? 'crit' : 'warn');
+// 이 패널 그룹의 firing 알림. 관제 실시간 이벤트와 같은 순서: 등급 → 확인 안 한 것 → 최신(05 §5).
 export function bizAlerts(alerts, pg) {
   return (alerts || []).filter((a) => a.state === 'firing' && ['tile', 'log', 'host'].includes(a.kind) && inPanelGroup(a.group, pg))
-    .sort((a, b) => (a.level === 'crit' ? 0 : 1) - (b.level === 'crit' ? 0 : 1) || b.ts - a.ts);
+    .sort((a, b) => (bizLevel(a) === 'crit' ? 0 : 1) - (bizLevel(b) === 'crit' ? 0 : 1) ||
+      Number(isAcked(a)) - Number(isAcked(b)) || b.ts - a.ts);
 }
 export function seriesPath(group, names, agg, from, to) {
   const q = new URLSearchParams({ group, name: names.join(','), agg: agg || '', from: String(from), to: String(to) });
@@ -540,6 +544,7 @@ function logExplorer(sec, panel) {
 }
 
 // 활성 알림: 이 패널 그룹의 firing 알림. 관제 화면의 실시간 이벤트와 같은 모양.
+// 확인한 알림은 조건이 풀릴 때까지 남기고 글자만 흐리게(등급 막대·기호는 그대로), 끝에 '✓ 확인한 사람'.
 function alertPanel(sec, panel) {
   const counts = el('span', { class: 'bz-ac' });
   const list = el('div', { class: 'bz-scroll bz-al' });
@@ -548,16 +553,21 @@ function alertPanel(sec, panel) {
   async function load() {
     const r = await api('/alerts?state=firing');
     const all = bizAlerts(r.alerts, panel.group);
-    const n = { crit: all.filter((a) => a.level === 'crit').length, warn: all.filter((a) => a.level !== 'crit').length };
-    counts.replaceChildren(...['crit', 'warn'].filter((k) => n[k]).map((k) => el('span', { class: `lvl-n ${k}` }, `${ALERT_MARK[k]} ${LEVEL_TEXT[k]} `, el('b', { class: 'num', text: String(n[k]) }))));
+    const n = countAlertLevels(all.map((a) => ({ ...a, level: bizLevel(a) })));
+    counts.replaceChildren(...['crit', 'warn'].filter((k) => n[k]).map((k) => {
+      const s = ackSuffix(n[k], n.open[k]);
+      return el('span', { class: `lvl-n ${k}${n.open[k] ? '' : ' all-acked'}` }, `${ALERT_MARK[k]} ${LEVEL_TEXT[k]} `, el('b', { class: 'num', text: String(n[k]) }),
+        s ? el('span', { class: 'lvl-s', text: ' ' + s }) : null);
+    }));
     if (!all.length) { list.replaceChildren(el('div', { class: 'bz-allok', text: '✓ 활성 알림 없음' })); return; }
     list.replaceChildren(...all.map((a) => {
-      const lv = a.level === 'crit' ? 'crit' : 'warn';
+      const lv = bizLevel(a);
       const target = a.exec_id ? '#run/' + a.exec_id : a.host ? '#host/' + encodeURIComponent(a.host) + '/overview' : null;
-      const ack = a.acked_at
-        ? el('span', { class: 'acked', text: '확인됨' })
+      const ak = isAcked(a) ? ackText(a) : null;
+      const ack = ak
+        ? el('span', { class: 'acked', text: ak.text, title: ak.title })
         : gate(el('button', { type: 'button', class: 'ghost', text: '확인', title: '알림 확인(Ack)', onclick: async (ev) => { ev.preventDefault(); ev.stopPropagation(); await api(`/alerts/${a.id}/ack`, { method: 'POST', body: {} }); load().catch(() => {}); } }), 'operator');
-      const row = el(target ? 'a' : 'div', { class: `bz-arow ${lv}${a.acked_at ? ' acked' : ''}`, href: target },
+      const row = el(target ? 'a' : 'div', { class: `bz-arow ${lv}${ak ? ' acked' : ''}`, href: target },
         el('span', { class: `am ${lv}`, text: ALERT_MARK[lv], title: LEVEL_TEXT[lv] }),
         el('span', { class: 'at' }, el('span', { class: 'amsg', text: a.message }), el('span', { class: 'ameta', text: [a.host, relTime(a.ts)].filter(Boolean).join(' · ') })),
         ack);
