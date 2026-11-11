@@ -291,6 +291,14 @@ export function dumpFlow(f) {
       L.push(`    retry: { count: ${s.retry.count || 0}, interval: ${dumpScalar(s.retry.interval || '1m')} }`);
     }
     if (s.profile) L.push('    profile: true');
+    if (s.gate && s.gate.length) {
+      L.push('    gate:');
+      for (const g of s.gate) {
+        const kv = ['host', 'metric', 'max', 'min'].filter((k) => g[k] != null && g[k] !== '').map((k) => `${k}: ${dumpScalar(g[k])}`);
+        L.push(`      - { ${kv.join(', ')} }`);
+      }
+    }
+    if (s.gate_max_wait) L.push(`    gate_max_wait: ${dumpScalar(s.gate_max_wait)}`);
   }
   return L.join('\n') + '\n';
 }

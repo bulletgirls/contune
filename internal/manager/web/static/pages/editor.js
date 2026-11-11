@@ -31,12 +31,12 @@ export function joinCommand(args) {
 }
 
 export function newStep(id = '') {
-  return { id, host: '', cmd: '', depends: [], timeout: '10m', rcount: 0, rint: '1m', profile: false };
+  return { id, host: '', cmd: '', depends: [], timeout: '10m', rcount: 0, rint: '1m', profile: false, gate: [], gateWait: '' };
 }
 export function emptyState() {
   return { id: '', board: '', schedule: '', steps: [newStep('step-1')], sha: '', isNew: true };
 }
-// 정의(API의 flow) → 폼 상태
+// 정의(API의 flow) → 폼 상태. gate·gate_max_wait는 폼에서 고치지 않지만 저장 때 그대로 돌려보내려고 들고 있는다.
 export function stateFromDef(def, board, keepId) {
   return {
     id: keepId ? def.id || '' : '',
@@ -45,10 +45,11 @@ export function stateFromDef(def, board, keepId) {
     steps: (def.steps || []).map((s) => ({
       id: s.id || '', host: s.host || '', cmd: joinCommand(s.command), depends: [...(s.depends || [])],
       timeout: s.timeout || '10m', rcount: s.retry?.count || 0, rint: s.retry?.interval || '1m', profile: !!s.profile,
+      gate: Array.isArray(s.gate) ? s.gate.map((g) => ({ ...g })) : [], gateWait: s.gate_max_wait || '',
     })),
   };
 }
-// 폼 상태 → 검증·저장에 보내는 정의
+// 폼 상태 → 검증·저장에 보내는 정의. gate·gate_max_wait는 있을 때만 싣는다.
 export function buildFlow(st) {
   return {
     id: st.id,
@@ -57,8 +58,18 @@ export function buildFlow(st) {
     steps: st.steps.map((s) => ({
       id: s.id, host: s.host, command: splitCommand(s.cmd), depends: [...s.depends],
       timeout: s.timeout, retry: { count: Number(s.rcount) || 0, interval: s.rint }, profile: !!s.profile,
+      ...(s.gate && s.gate.length ? { gate: s.gate.map((g) => ({ ...g })) } : {}),
+      ...(s.gateWait ? { gate_max_wait: s.gateWait } : {}),
     })),
   };
+}
+// 게이트 조건 한 줄: 'match-01 biz.order.queue ≤ 0'. host가 비면 스텝의 서버를 쓴다.
+export function gateText(g, stepHost) {
+  const host = g.host || stepHost || '';
+  const lim = [];
+  if (g.min != null) lim.push(`≥ ${g.min}`);
+  if (g.max != null) lim.push(`≤ ${g.max}`);
+  return [host, g.metric || '', lim.join(' · ')].filter(Boolean).join(' ');
 }
 // 검증 오류 → 허용 목록 위반 스텝 id 집합
 export function badCommandSteps(errors) {
@@ -444,7 +455,8 @@ function mount(page, info, st, ctx) {
         el('div', { class: 'ed-n1' }, el('code', { text: s.id || '(ID 없음)', class: s.id ? '' : 'none' }),
           isBad ? el('span', { class: 'ed-nerr', title: errs.join('\n') || (s.id ? '' : '스텝 ID가 없습니다'), text: '!' }) : null),
         el('div', { class: 'ed-n2' }, el('span', { class: s.host ? 'h' : 'h none', text: s.host || '서버 미지정' }),
-          s.profile ? el('span', { class: 'ed-ntag', text: '프로파일링' }) : null),
+          s.profile ? el('span', { class: 'ed-ntag', text: '프로파일링' }) : null,
+          s.gate.length ? el('span', { class: 'ed-ntag gate', text: '게이트', title: s.gate.map((g) => gateText(g, s.host)).join('\n') }) : null),
         el('div', { class: 'ed-n3' + (cmdLine ? '' : ' none'), text: cmdLine || '명령어 없음', title: cmdLine }),
         el('span', { class: 'ed-port out', title: '끌어서 후행 스텝에 연결' }),
         el('button', { type: 'button', class: 'ed-plus', title: '후행 스텝 추가', text: '+' }));
@@ -642,6 +654,10 @@ function mount(page, info, st, ctx) {
         field('재시도 횟수', el('input', { type: 'number', min: '0', class: 'ed-num', value: String(s.rcount), oninput: (e) => { s.rcount = e.target.value; touch(); } }))),
       field('재시도 간격', durField(() => s.rint, (v) => { s.rint = v; })),
       field('프로파일링', prof, '실행 중 함수별 CPU 사용을 수집합니다(타임머신 플레임 그래프)'),
+      s.gate.length || s.gateWait ? field('리소스 게이트', el('div', { class: 'ed-gate' },
+        s.gate.map((g) => el('code', { class: 'ed-tok', text: gateText(g, s.host) })),
+        s.gateWait ? el('span', { class: 'ed-gwait', text: `최대 대기 ${s.gateWait}` }) : null),
+      '조건을 모두 만족할 때까지 실행을 미룹니다. 여기서는 고칠 수 없고(YAML 파일에서 수정) 저장해도 그대로 유지됩니다') : null,
     ];
   }
 

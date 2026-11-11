@@ -29,6 +29,9 @@ function normalize(raw) {
       timeout: s.timeout ? String(s.timeout) : '1h',
       retry: { count: Number(s.retry?.count) || 0, interval: s.retry?.interval ? String(s.retry.interval) : '1m' },
       profile: !!s.profile,
+      // 게이트는 있을 때만 싣는다(편집기 buildFlow와 같은 모양)
+      ...(Array.isArray(s.gate) && s.gate.length ? { gate: s.gate.map((g) => ({ ...g })) } : {}),
+      ...(s.gate_max_wait ? { gate_max_wait: String(s.gate_max_wait) } : {}),
     })),
   };
   return f;
@@ -54,6 +57,11 @@ export function validateFlow(c, raw, prev) {
     if (!DUR_RE.test(s.timeout)) errors.push(`스텝 ${who}: 시간 제한 형식(예: 10m)`);
     if (s.retry.count < 0 || !Number.isInteger(s.retry.count)) errors.push(`스텝 ${who}: 재시도 횟수는 0 이상 정수`);
     if (!DUR_RE.test(s.retry.interval)) errors.push(`스텝 ${who}: 재시도 간격 형식(예: 1m)`);
+    (s.gate || []).forEach((g, i) => {
+      if (!g || !g.metric) errors.push(`스텝 ${who}: gate[${i}]에 metric이 없습니다`);
+      if (!g || (g.max == null && g.min == null)) errors.push(`스텝 ${who}: gate[${i}]에 max나 min이 필요합니다`);
+    });
+    if (s.gate_max_wait && !DUR_RE.test(s.gate_max_wait)) errors.push(`스텝 ${who}: gate_max_wait 형식(예: 30m)`);
   }
   for (const s of f.steps) {
     for (const d of s.depends) {

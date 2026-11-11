@@ -154,7 +154,9 @@ function buildFlows() {
     schedule: '40 15 * * 1-5',
     on_missed: 'skip',
     steps: [
-      { id: 'settle', host: 'batch-01', command: BURN(8), depends: [], timeout: '30m', retry: { count: 0, interval: '1m' }, profile: false },
+      // flows/정산/daily-settle.yaml과 같게: 체결 대기(biz.order.queue)가 0이 될 때까지 최대 30분 기다린다
+      { id: 'settle', host: 'batch-01', command: BURN(8), depends: [], timeout: '30m', retry: { count: 0, interval: '1m' }, profile: false,
+        gate: [{ host: 'match-01', metric: 'biz.order.queue', max: 0 }], gate_max_wait: '30m' },
       { id: 'settle-report', host: 'batch-01', command: BURN(4), depends: ['settle'], timeout: '1h', retry: { count: 0, interval: '1m' }, profile: false },
     ],
     state: 'prev',

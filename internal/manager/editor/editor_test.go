@@ -260,6 +260,70 @@ func TestSaveNew(t *testing.T) {
 	}
 }
 
+// 스텝 게이트(gate·gate_max_wait)가 {"flow": …} 저장과 def 왕복에서 빠지지 않는다(daily-settle 모양).
+func TestSaveKeepsGate(t *testing.T) {
+	e := newEnv(t, true)
+	fl := map[string]any{
+		"id":       "settle-x",
+		"schedule": "40 15 * * 1-5",
+		"steps": []any{
+			map[string]any{"id": "settle", "host": "batch-01", "command": []string{"${DEMO}/scripts/settle.sh"},
+				"gate":          []any{map[string]any{"host": "match-01", "metric": "biz.order.queue", "max": 0}},
+				"gate_max_wait": "30m"},
+			// 편집기 buildFlow처럼 게이트가 없으면 키 자체를 빼고 보낸다
+			map[string]any{"id": "settle-report", "host": "batch-01", "command": []string{"eum", "burn", "--cpu", "1", "--duration", "3s"},
+				"depends": []string{"settle"}},
+		},
+	}
+	checkGate := func(when string) model.Flow {
+		t.Helper()
+		f, ok := e.reg.Get("settle-x")
+		if !ok {
+			t.Fatalf("%s: 레지스트리에 없음: %v", when, e.reg.Errors())
+		}
+		g := f.Steps[0].Gate
+		if len(g) != 1 || g[0].Host != "match-01" || g[0].Metric != "biz.order.queue" ||
+			g[0].Max == nil || *g[0].Max != 0 || g[0].Min != nil || f.Steps[0].GateMaxWait != 30*time.Minute {
+			t.Fatalf("%s: settle 게이트가 바뀜: %+v wait=%v", when, g, f.Steps[0].GateMaxWait)
+		}
+		if len(f.Steps[1].Gate) != 0 || f.Steps[1].GateMaxWait != 0 {
+			t.Fatalf("%s: settle-report에 게이트가 생김: %+v", when, f.Steps[1])
+		}
+		return f
+	}
+
+	code, m := e.do("PUT", "/api/v1/flows/settle-x", map[string]any{"flow": fl, "board": "정산"})
+	if code != 200 {
+		t.Fatalf("PUT %d %v", code, m)
+	}
+	f := checkGate("저장")
+	data, err := os.ReadFile(filepath.Join(e.dir, "정산", "settle-x.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want, _ := flowdef.Marshal(f); string(data) != string(want) {
+		t.Fatalf("내용이 Marshal과 다름:\n%s\n---\n%s", data, want)
+	}
+	if !strings.Contains(string(data), "metric: biz.order.queue") || !strings.Contains(string(data), "gate_max_wait: 30m") {
+		t.Fatalf("파일에 게이트가 없음:\n%s", data)
+	}
+
+	// def가 돌려준 게이트를 그대로 다시 저장해도 유지되고 파일이 바뀌지 않는다
+	code, d := e.do("GET", "/api/v1/flows/settle-x/def", nil)
+	if code != 200 {
+		t.Fatalf("def %d %v", code, d)
+	}
+	st := d["flow"].(map[string]any)["steps"].([]any)[0].(map[string]any)
+	if st["gate_max_wait"] != "30m" || len(st["gate"].([]any)) != 1 {
+		t.Fatalf("def 게이트: %v", st)
+	}
+	code, m = e.do("PUT", "/api/v1/flows/settle-x", map[string]any{"flow": d["flow"], "board": "정산", "if_match": d["sha"]})
+	if code != 200 || m["sha"] != shaOf(data) {
+		t.Fatalf("왕복 저장 %d %v (전 sha %s)", code, m, shaOf(data))
+	}
+	checkGate("왕복")
+}
+
 func TestSaveRejectsCommand(t *testing.T) {
 	e := newEnv(t, true)
 	fl := burnFlow("demo-y")
