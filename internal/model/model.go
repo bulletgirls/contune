@@ -156,11 +156,13 @@ type Series struct {
 }
 
 // Flow는 플로우 정의다(YAML에서 읽음, DB에 넣지 않음). Board·File은 로더가 채운다.
+// Deadline은 업무 마감("16:30", 매니저 tz): 그날 첫 실행부터 이 시각까지 플로우 실행이 성공해야 한다(05 §19.11).
 type Flow struct {
 	ID       string `json:"id" yaml:"id"`
 	Board    string `json:"board" yaml:"-"`
 	File     string `json:"file" yaml:"-"`
 	Schedule string `json:"schedule" yaml:"schedule,omitempty"`
+	Deadline string `json:"deadline" yaml:"deadline,omitempty"`
 	OnMissed string `json:"on_missed" yaml:"on_missed,omitempty"`
 	Steps    []Step `json:"steps" yaml:"steps"`
 }

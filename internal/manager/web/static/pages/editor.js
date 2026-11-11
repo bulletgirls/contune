@@ -34,7 +34,7 @@ export function newStep(id = '') {
   return { id, host: '', cmd: '', depends: [], timeout: '10m', rcount: 0, rint: '1m', profile: false };
 }
 export function emptyState() {
-  return { id: '', board: '', schedule: '', steps: [newStep('step-1')], sha: '', isNew: true };
+  return { id: '', board: '', schedule: '', deadline: '', steps: [newStep('step-1')], sha: '', isNew: true };
 }
 // 정의(API의 flow) → 폼 상태
 export function stateFromDef(def, board, keepId) {
@@ -42,6 +42,7 @@ export function stateFromDef(def, board, keepId) {
     id: keepId ? def.id || '' : '',
     board: board || '',
     schedule: def.schedule || '',
+    deadline: def.deadline || '',
     steps: (def.steps || []).map((s) => ({
       id: s.id || '', host: s.host || '', cmd: joinCommand(s.command), depends: [...(s.depends || [])],
       timeout: s.timeout || '10m', rcount: s.retry?.count || 0, rint: s.retry?.interval || '1m', profile: !!s.profile,
@@ -53,6 +54,7 @@ export function buildFlow(st) {
   return {
     id: st.id,
     schedule: st.schedule.trim(),
+    ...(st.deadline ? { deadline: st.deadline } : {}),
     on_missed: 'skip',
     steps: st.steps.map((s) => ({
       id: s.id, host: s.host, command: splitCommand(s.cmd), depends: [...s.depends],
@@ -725,6 +727,11 @@ function mount(page, info, st, ctx) {
       field('배치판', el('div', { class: 'ed-col' }, boardSel, boardNew)),
       field('스케줄', el('div', { class: 'ed-col' }, seg, schedBody, sum)),
       field('다음 실행', nextBox),
+      field('업무 마감', el('div', { class: 'ed-inl' },
+        el('input', { type: 'time', value: st.deadline || '', 'aria-label': '업무 마감 시각',
+          onchange: (e) => { const had = !!st.deadline; st.deadline = e.target.value || ''; touch(); if (had !== !!st.deadline) drawSide(); } }),
+        st.deadline ? el('button', { type: 'button', class: 'ed-tbtn', text: '지우기', onclick: () => { st.deadline = ''; touch(); drawSide(); } }) : null),
+      '그날 첫 실행부터 이 시각까지 성공해야 하는 배치. 업무 관제의 업무 마감 · 배치 띠에 보입니다. 비우면 마감 없음'),
       field('누락 실행', el('span', { class: 'ed-fixed', text: '건너뜀' }), '중단 중 놓친 실행은 다시 하지 않음 (catchup off)'),
       el('div', { class: 'ed-stat' }, `스텝 ${st.steps.length}개 · 실행 서버 ${new Set(st.steps.map((s) => s.host).filter(Boolean)).size}대`),
       el('div', { class: 'ed-fh', text: '캔버스에서 스텝을 누르면 스텝 속성을 고칩니다' }),

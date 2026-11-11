@@ -89,6 +89,7 @@ type flowJSON struct {
 	ID       string     `json:"id"`
 	Board    string     `json:"board"`
 	Schedule string     `json:"schedule"`
+	Deadline string     `json:"deadline"`
 	OnMissed string     `json:"on_missed"`
 	Steps    []stepJSON `json:"steps"`
 }
@@ -115,7 +116,7 @@ func durStr(d time.Duration) string {
 }
 
 func toJSON(f model.Flow) flowJSON {
-	o := flowJSON{ID: f.ID, Board: f.Board, Schedule: f.Schedule, OnMissed: f.OnMissed, Steps: []stepJSON{}}
+	o := flowJSON{ID: f.ID, Board: f.Board, Schedule: f.Schedule, Deadline: f.Deadline, OnMissed: f.OnMissed, Steps: []stepJSON{}}
 	for _, s := range f.Steps {
 		o.Steps = append(o.Steps, stepJSON{
 			ID: s.ID, Host: s.Host, Command: nonNil(s.Command), Depends: nonNil(s.Depends),

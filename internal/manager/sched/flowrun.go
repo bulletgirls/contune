@@ -109,6 +109,11 @@ func flowRunStarts(flowID string, runs []model.Run) map[string]int64 {
 	return m
 }
 
+// LatestAttempts는 flowID 행에서 step_id → 최신 attempt 행이다(업무 관제 · 배치 화면과 같은 기준).
+func LatestAttempts(flowID string, runs []model.Run) map[string]model.Run {
+	return latestAttempts(flowID, runs)
+}
+
 // latestAttempts는 flowID 행에서 step_id → 최신 attempt 행이다.
 func latestAttempts(flowID string, runs []model.Run) map[string]model.Run {
 	m := map[string]model.Run{}

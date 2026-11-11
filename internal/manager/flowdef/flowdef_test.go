@@ -137,6 +137,65 @@ func TestMarshalRoundTrip(t *testing.T) {
 	}
 }
 
+// deadline(05 §19.11): HH:MM, 그날 첫 실행보다 늦어야 하고 @every와는 못 쓴다. 편집기 저장(Marshal)에도 남는다.
+func TestDeadline(t *testing.T) {
+	fl, err := Load("testdata/ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fl[0].Deadline != "08:00" || fl[1].Deadline != "" {
+		t.Fatalf("deadline %q %q", fl[0].Deadline, fl[1].Deadline)
+	}
+	if b, _ := Marshal(fl[0]); !strings.Contains(string(b), "\ndeadline: \"08:00\"\n") {
+		t.Errorf("Marshal에 deadline 없음\n%s", b)
+	}
+	steps := "steps:\n  - {id: a, host: h, command: [x]}\n"
+	cases := []struct{ y, want string }{
+		{"schedule: \"40 15 * * 1-5\"\ndeadline: \"16:30\"\n", ""},
+		{"deadline: \"16:30\"\n", ""},                               // 일정 없음(수동 실행): 그날 자정부터
+		{"schedule: \"0 9-15 * * 1-5\"\ndeadline: \"24:00\"\n", ""}, // 여러 번 도는 일정: 첫 실행 09:00
+		{"schedule: \"40 15 * * 1-5\"\ndeadline: \"4:30\"\n", "HH:MM"},
+		{"schedule: \"40 15 * * 1-5\"\ndeadline: \"16:61\"\n", "HH:MM"},
+		{"schedule: \"40 15 * * 1-5\"\ndeadline: \"15:40\"\n", "첫 실행 15:40보다 늦어야"},
+		{"schedule: \"0 17 * * 1-5\"\ndeadline: \"01:00\"\n", "자정을 넘는 마감"},
+		{"schedule: \"@every 1h\"\ndeadline: \"16:30\"\n", "@every"},
+	}
+	for _, c := range cases {
+		_, err := Parse([]byte("id: m\n"+c.y+steps), "m.yaml", "")
+		switch {
+		case c.want == "" && err != nil:
+			t.Errorf("%q: %v", c.y, err)
+		case c.want != "" && (err == nil || !strings.Contains(err.Error(), c.want)):
+			t.Errorf("%q: %v (기대 %q)", c.y, err, c.want)
+		}
+	}
+}
+
+func TestFiresOn(t *testing.T) {
+	kst := time.FixedZone("Asia/Seoul", 9*3600)
+	wed := time.Date(2026, 11, 11, 13, 0, 0, 0, kst)
+	sat := time.Date(2026, 11, 14, 13, 0, 0, 0, kst)
+	hm := func(ts []time.Time) string {
+		var s []string
+		for _, t := range ts {
+			s = append(s, t.Format("01-02 15:04"))
+		}
+		return strings.Join(s, ",")
+	}
+	if g := hm(FiresOn("30 5 * * 1-5", wed)); g != "11-11 05:30" {
+		t.Errorf("평일 %s", g)
+	}
+	if g := FiresOn("30 5 * * 1-5", sat); g != nil {
+		t.Errorf("주말 %v", g)
+	}
+	if g := hm(FiresOn("0 9-11 * * *", wed)); g != "11-11 09:00,11-11 10:00,11-11 11:00" {
+		t.Errorf("여러 번 %s", g)
+	}
+	if FiresOn("", wed) != nil || FiresOn("@every 1h", wed) != nil || FiresOn("x", wed) != nil {
+		t.Error("일정 없음 · @every · 틀린 일정은 nil")
+	}
+}
+
 func writeFile(t *testing.T, p, s string) {
 	t.Helper()
 	if err := os.WriteFile(p, []byte(s), 0o644); err != nil {

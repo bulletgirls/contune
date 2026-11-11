@@ -1,10 +1,10 @@
-// /bizwatch: 업무 관제(#bizwatch) 1단계(05 §19). 실제 매니저에는 아직 없다(mock 전용).
+// /bizwatch: 업무 관제(#bizwatch) mock(05 §19). 매니저 GET /api/v1/bizwatch와 같은 응답 모양이다.
 // 원칙: 새 데이터를 만들지 않는다. 업무 = 패널 하나. 서버 · 배치 · 업무 지표를 패널에 적힌 연결로만 묶는다.
-//   group(있음) = 그 그룹 서버, tiles(있음) = 업무 지표, active(새) = 업무 감시 시간,
-//   flows(새) = 이 업무가 기대는 배치, main(새) = 대표 지표. 적지 않은 연결은 추정하지 않는다.
+//   group(있음) = 그 그룹 서버, tiles(있음) = 업무 지표, active = 업무 감시 시간,
+//   flows = 이 업무가 기대는 배치, main = 대표 지표, 플로우 deadline(2단계) = 업무 마감. 적지 않은 연결은 추정하지 않는다.
 // 등급: 증상(타일 판정 · 그룹 로그 알림)은 그대로, 원인(그룹 서버 · flows 실패)은 경고까지, 감시 시간 밖이면 시간 외.
-// ?at=HH:MM(mock 전용)이면 그 시각(KST)으로 감시 시간을 판단한다(값은 지금 값, 이력은 그 시각까지).
-import { MIN, SEC, DAY, KST, fmtN, round, clamp } from './util.js';
+// ?at=HH:MM(mock 전용)이면 그 시각(KST)으로 감시 시간 · 업무 마감을 판단한다(값은 지금 값, 이력은 그 시각까지).
+import { MIN, SEC, DAY, KST, fmtN, round, clamp, cronDay } from './util.js';
 import { hostsView, groupMatch, flowOf, isDead } from './world.js';
 import { bizAt, logLevelsAt, BIZ_NAMES } from './signal.js';
 import { panelsView, profileShape, QUOTE_SERIES } from './core.js';
@@ -72,6 +72,91 @@ function failSpans(w, flowId) {
     if (r.status === 'FAILED') out.push({ flow: flowId, step: r.step, exec_id: r.exec_id, from: r.at, to: frs[i + 1] ? frs[i + 1].started_at : Infinity });
   });
   return out;
+}
+
+// ---- 업무 배치(05 §19.11): deadline이 있는 플로우 ----
+// mock은 장면 시각으로 모의한다: 세계의 마지막 플로우 실행 모양(걸린 시간 · 결과 · 실패한 스텝)을 오늘 첫 실행 시각에 옮겨 놓고,
+// 첫 스텝의 게이트는 지금 값으로 본다(값은 지금 값). 매니저는 실제 실행 기록과 스케줄러가 판단에 쓰는 게이트 값을 쓴다.
+const durMin = (s) => {
+  const m = /^(\d+)(s|m|h)$/.exec(String(s || ''));
+  return m ? Number(m[1]) * { s: 1 / 60, m: 1, h: 60 }[m[2]] : 0;
+};
+// 분(소수)을 매니저 durText와 같은 글자로: 1분 미만은 초
+const durTxt = (m) => (m < 1 ? `${Math.max(1, Math.floor(m * 60))}초` : dur(Math.floor(m)));
+
+function lastShape(w, flow) {
+  const frs = w.flowRuns.filter((x) => x.flow_id === flow.id);
+  if (!frs.length) return null;
+  const fr = frs.reduce((a, b) => (b.started_at >= a.started_at ? b : a));
+  const rows = w.runs.filter((r) => r.flow_run_id === fr.id);
+  const t0 = Math.min(...rows.map((r) => r.scheduled_at));
+  const t1 = Math.max(...rows.map((r) => r.ended_at || r.started_at || r.scheduled_at));
+  const res = flowRunResult(w, flow, fr);
+  const first = rows.find((r) => r.step_id === flow.steps[0].id) || rows[0];
+  return { dur: Math.max(SEC, t1 - t0) / MIN, failed: res.status === 'FAILED', dead: res.step || '', exec: res.status === 'FAILED' ? res.exec_id : first.exec_id, rows };
+}
+
+// 장면의 오늘 실행(첫 실행 시각 first에 옮긴 세계의 마지막 실행). 시각은 자정부터 분.
+function simRuns(w, flow, first, nowMin, gateOf) {
+  const sh = nowMin >= first && lastShape(w, flow);
+  if (!sh) return [];
+  const s0 = flow.steps[0];
+  const run = { status: 'RUNNING', trigger: 'schedule', at: first, began: first + 1 / 60, end: 0, exec_id: sh.exec, dead: '', held: null };
+  const conds = (s0.gate || []).map((g) => gateOf(g, s0));
+  if (conds.some((g) => !g.met)) {
+    const maxW = durMin(s0.gate_max_wait);
+    const exec = (sh.rows.find((r) => r.step_id === s0.id) || {}).exec_id || sh.exec;
+    if (maxW && nowMin >= first + maxW) return [{ ...run, status: 'FAILED', began: 0, end: first + maxW, dead: s0.id, exec_id: exec }];
+    return [{ ...run, began: 0, exec_id: exec, held: { step: s0.id, since: first, max_wait: maxW, conds } }];
+  }
+  if (nowMin < first + sh.dur) return [run];
+  return [{ ...run, status: sh.failed ? 'FAILED' : 'SUCCEEDED', end: first + sh.dur, dead: sh.dead }];
+}
+
+function gateText(g) {
+  const name = `${g.host} ${g.metric}`;
+  if (!g.has) return `${name} 지표 없음`;
+  if (g.max != null && g.value > g.max) return `${name} ${fmtN(g.value)} (${fmtN(g.max)} 이하) · ${fmtN(g.value - g.max)} 남음`;
+  if (g.min != null && g.value < g.min) return `${name} ${fmtN(g.value)} (${fmtN(g.min)} 이상) · ${fmtN(g.min - g.value)} 남음`;
+  return `${name} 충족`;
+}
+
+// 매니저 bizwatch.JudgeBatch와 같은 규칙: 마감을 따지는 실행 = 오늘 첫 실행 이후. 지났으면 마감 안 성공이 있는지로.
+export function judgeBatch(f, runs, fires, nowMin) {
+  const dl = hm(f.deadline);
+  const b = {
+    flow: f.id, board: f.board, href: `#board/${f.board.split('/').map(encodeURIComponent).join('/')}/${encodeURIComponent(f.id)}`,
+    deadline: f.deadline, deadline_min: dl, plan: '', plan_min: null, state: '', level: '', mark: '', text: '', left: '', runs: [],
+  };
+  for (const r of runs) {
+    const start = r.began || r.at, end = r.status === 'RUNNING' || !r.end ? nowMin : r.end;
+    const [st, what] = r.status === 'SUCCEEDED' ? ['done', '성공'] : r.status === 'FAILED' ? ['failed', `실패 · ${r.dead}`] : r.held ? ['gated', `조건 대기 · ${r.held.step}`] : ['running', '실행 중'];
+    const how = r.trigger === 'manual' ? '수동 실행 · ' : r.trigger === 'rerun' ? '다시 실행 · ' : '';
+    b.runs.push({ state: st, from: clamp(start, 0, 1440), to: clamp(end, 0, 1440), href: r.exec_id ? `#run/${r.exec_id}` : '',
+      tip: `${clock(start)}–${st === 'done' || st === 'failed' ? clock(end) : '지금'} · ${how}${what}` });
+  }
+  const from = fires.length ? fires[0] : 0;
+  if (fires.length) { b.plan = clock(from); b.plan_min = from; }
+  const target = runs.filter((r) => r.at >= from);
+  const past = nowMin >= dl;
+  const met = [...target].reverse().find((r) => r.status === 'SUCCEEDED' && r.end <= dl);
+  const risk = (state, mark, text, before) => Object.assign(b, { state, mark, text, level: past ? 'crit' : before, left: past ? `${durTxt(nowMin - dl)} 지남` : `${durTxt(dl - nowMin)} 남음` });
+  const quiet = (state, level, mark, text) => Object.assign(b, { state, level, mark, text });
+  const last = target[target.length - 1];
+  if (f.schedule && !fires.length) quiet('idle', 'off', '◷', '오늘은 실행하지 않는 날');
+  else if (past && met) quiet('done', 'ok', '✓', `${clock(met.end)} 성공`);
+  else if (!last && !f.schedule) risk('none', '◷', '오늘 실행 기록 없음(일정 없음)', 'info');
+  else if (!last && nowMin < from + 1) quiet('plan', 'off', '◷', `${b.plan} 예정`);
+  else if (!last) risk('missed', '◷', `${b.plan} 실행 기록 없음`, 'warn');
+  else if (last.status === 'SUCCEEDED') {
+    if (last.end <= dl) quiet('done', 'ok', '✓', `${clock(last.end)} 성공`);
+    else quiet('late', 'warn', '✓', `${clock(last.end)} 성공 · ${durTxt(last.end - dl)} 늦음`);
+  } else if (last.status === 'FAILED') risk('failed', '✕', `${last.end ? clock(last.end) + ' ' : ''}${last.dead} 실패`, 'warn');
+  else if (last.held) {
+    const h = last.held, unmet = h.conds.filter((g) => !g.met).map(gateText);
+    risk('gated', '⏸', `${h.step} 조건 대기 · ${unmet.length ? unmet.join(', ') : '조건 충족(곧 시작)'}${h.max_wait ? ` · 대기 한도 ${clock(h.since + h.max_wait)}` : ''}`, 'warn');
+  } else risk('running', '▶', `${clock(last.began || last.at)}부터 실행 중`, 'info');
+  return b;
 }
 
 function bizwatch(c) {
@@ -197,12 +282,38 @@ function bizwatch(c) {
     return { service: s.id, title: s.title, level: s.level, rows };
   }).filter((e) => e.rows.length).sort((a, z) => (RANK[z.level] ?? -1) - (RANK[a.level] ?? -1));
 
+  // ---- 업무 배치: deadline이 있는 플로우의 오늘 마감 · 실행 기록(장면 시각) ----
+  const bizNow = bizAt(now, ex);
+  const gateOf = (g, st) => {
+    const value = BIZ_NAMES.includes(g.metric) ? bizNow[g.metric] : null;
+    const met = value != null && (g.max == null || value <= g.max) && (g.min == null || value >= g.min);
+    return { host: g.host || st.host, metric: g.metric, value, has: value != null, max: g.max, min: g.min, met };
+  };
+  const hostGroup = new Map(hv.map((h) => [h.id, h.group]));
+  const batches = c.w.flows.filter((f) => f.deadline).map((f) => {
+    const fires = f.schedule ? cronDay(f.schedule, dow) : [];
+    const b = judgeBatch(f, f.schedule && fires.length ? simRuns(c.w, f, fires[0], nowDayMin, gateOf) : [], fires, nowDayMin);
+    b._hosts = f.steps.flatMap((st) => [st.host, ...(st.gate || []).map((g) => g.host).filter(Boolean)]);
+    return b;
+  }).sort((a, z) => a.deadline_min - z.deadline_min || (a.flow < z.flow ? -1 : 1));
+
+  // ---- 그룹 범위: 업무는 패널 group, 업무 배치는 범위 안 업무의 flows이거나 스텝 · 게이트 서버가 그 그룹 ----
+  const inScope = (grp) => groupMatch(grp, g);
+  const scoped = services.filter((s) => inScope(s.group));
+  const listed = new Set(scoped.flatMap((s) => s.flows));
+  const shownBatches = batches.filter((b) => !g || listed.has(b.flow) || b._hosts.some((h) => inScope(hostGroup.get(h) || ''))).map(({ _hosts, ...b }) => b);
+
   // ---- 오늘 업무 상태 이력: 5분 칸마다 같은 규칙으로 다시 판정 ----
-  // 창 = 감시 시간 중 가장 이른 시작 1시간 전 ~ 가장 늦은 끝 1시간 뒤(정시). 감시 시간이 없으면 하루 전체.
-  const acts = services.map((s) => s._act).filter(Boolean);
-  const a0 = acts.length ? Math.max(0, Math.floor(Math.min(...acts.map((x) => x.from)) / 60) * 60 - 60) : 0;
-  const a1 = acts.length ? Math.min(24 * 60, Math.ceil(Math.max(...acts.map((x) => x.to)) / 60) * 60 + 60) : 24 * 60;
-  const rows = services.map((s) => {
+  // 창 = 감시 시간 · 업무 배치(첫 실행 ~ 마감, 실행 기록) 중 가장 이른 때 1시간 전 ~ 가장 늦은 때 1시간 뒤(정시).
+  // 감시 시간이 없는 업무가 있으면 하루 전체.
+  const spans = [...scoped.map((s) => s._act && [s._act.from, s._act.to]),
+    ...shownBatches.flatMap((b) => [[b.plan_min ?? b.deadline_min, b.deadline_min], ...b.runs.map((r) => [r.from, r.to])])];
+  let a0 = 0, a1 = 24 * 60;
+  if (spans.length && spans.every(Boolean)) {
+    a0 = Math.max(0, Math.floor(Math.min(...spans.map((x) => x[0])) / 60) * 60 - 60);
+    a1 = Math.min(24 * 60, Math.ceil(Math.max(...spans.map((x) => x[1])) / 60) * 60 + 60);
+  }
+  const rows = scoped.map((s) => {
     const p = s._p;
     const hostAl = alerts.filter((a) => a.kind === 'host' && groupMatch(a.group, s.group));
     const logAl = alerts.filter((a) => a.kind === 'log' && groupMatch(a.group, s.group));
@@ -233,8 +344,7 @@ function bizwatch(c) {
     return { id: s.id, title: s.title, panel: s.panel, group: s.group, level: s.level, cells, tips };
   });
 
-  const inScope = (grp) => groupMatch(grp, g);
-  const shown = services.filter((s) => inScope(s.group)).map(({ _p, _act, _spans, ...s }) => s);
+  const shown = scoped.map(({ _p, _act, _spans, ...s }) => s);
   const counts = { crit: 0, warn: 0, ok: 0, off: 0 };
   for (const s of shown) counts[s.level] = (counts[s.level] || 0) + 1;
   const day = new Date(now + KST);
@@ -247,7 +357,8 @@ function bizwatch(c) {
     counts,
     services: shown,
     events: events.filter((e) => inScope(services.find((s) => s.id === e.service).group)),
-    history: { slot: SLOT, from: clock(a0), to: a1 >= 24 * 60 ? '24:00' : clock(a1), t0: Math.round(real(a0)), rows: rows.filter((r) => inScope(r.group)) },
+    batches: shownBatches,
+    history: { slot: SLOT, from: clock(a0), to: a1 >= 24 * 60 ? '24:00' : clock(a1), t0: Math.round(real(a0)), rows },
   });
 }
 

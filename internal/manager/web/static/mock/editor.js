@@ -20,6 +20,7 @@ function normalize(raw) {
   const f = {
     id: String(raw.id ?? ''),
     schedule: raw.schedule ? String(raw.schedule) : '',
+    ...(raw.deadline ? { deadline: String(raw.deadline) } : {}),
     on_missed: raw.on_missed ? String(raw.on_missed) : 'skip',
     steps: (Array.isArray(raw.steps) ? raw.steps : []).map((s) => ({
       id: String(s.id ?? ''),
@@ -39,6 +40,7 @@ export function validateFlow(c, raw, prev) {
   const f = normalize(raw || {});
   if (!ID_RE.test(f.id)) errors.push('id: 소문자·숫자·-만, 첫 글자는 소문자나 숫자, 63자까지');
   if (f.schedule && f.schedule.trim().split(/\s+/).length !== 5) errors.push('일정: cron 5필드가 아님');
+  if (f.deadline && !/^([01]\d|2[0-3]):[0-5]\d$|^24:00$/.test(f.deadline)) errors.push('업무 마감: "16:30"처럼 HH:MM');
   if (!f.steps.length) errors.push('스텝: 하나 이상 필요');
   const hostIds = c.w.hosts.map((h) => h.id);
   const ids = new Set();

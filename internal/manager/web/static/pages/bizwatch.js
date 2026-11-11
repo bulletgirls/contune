@@ -1,8 +1,9 @@
-// 업무 관제(#bizwatch) 1단계(05 §19): 업무 상태 카드 · 업무 이벤트 · 오늘 업무 상태 이력.
+// 업무 관제(#bizwatch)(05 §19): 업무 상태 카드 · 업무 이벤트 · 업무 마감 · 오늘 업무 배치 띠 · 오늘 업무 상태 이력.
 // 업무 = 패널 하나. 관제(#dashboard)가 IT 자원 관점이라면 여기는 업무 관점이고, 숫자 상세와 로그는 업무 탭(#biz/<panel>)이 맡는다.
 // 카드는 대표 지표 하나와 근거(등급을 정한 증상) · 원인(그룹 서버 · 관련 배치 · 함수) · 일정(감시 시간)만 싣는다.
+// 업무 배치(2단계) = 플로우 YAML에 deadline이 적힌 배치: 마감까지 남은 시간(조건 대기면 gate 조건과 남은 양)과 오늘 실행 기록.
 // 매니저 GET /api/v1/bizwatch(05 §19.7)를 읽는다. mock(?mock=1)도 같은 응답 모양이다.
-// 주소: #bizwatch[?g=<그룹>&cmp=day|week&at=HH:MM] (at: mock 전용, 감시 시간 판단 시각 KST)
+// 주소: #bizwatch[?g=<그룹>&cmp=day|week&at=HH:MM] (at: mock 전용, 감시 시간 · 업무 마감 판단 시각 KST)
 import { api, poll, isMock } from '../api.js';
 import { el, esc, fmtNum, relTime, info, DASH } from '../ui.js';
 import { hashWith } from '../tree.js';
@@ -10,6 +11,8 @@ import { hashWith } from '../tree.js';
 // 등급 기호 · 이름(ui.js STATE_TEXT와 같은 기호에 시간 외 · 지표 없음 · 참고를 더함)
 export const LV = { ok: ['●', '정상'], warn: ['▲', '경고'], crit: ['■', '위험'], off: ['◷', '시간 외'], none: ['–', '지표 없음'], info: ['›', '참고'] };
 export const SIGNALS = [['traffic', '트래픽'], ['latency', '지연'], ['errors', '오류'], ['saturation', '포화']];
+// 업무 배치 띠의 실행 칸(상태 → 기호 · 이름)
+export const RUN = { done: ['✓', '성공'], running: ['▶', '실행 중'], gated: ['⏸', '조건 대기'], failed: ['✕', '실패'] };
 const CMP = { day: '어제', week: '지난주' };
 const MAX_ITEMS = 3;
 const ROWS = 3;
@@ -45,6 +48,13 @@ export function cmpText(k, label) {
 }
 // 상태 이력 칸 글자: none은 그 칸을 기록하지 못한 것(매니저가 꺼져 있던 때 등)
 export const cellLabel = (lv) => (lv === 'none' ? '기록 없음' : (LV[lv] || ['', lv])[1]);
+// 업무 마감 오른쪽 글자: '마감 16:30 · 25분 남음'
+export const dueRight = (b) => `마감 ${b.deadline}${b.left ? ' · ' + b.left : ''}`;
+// 띠 칸의 위치 · 너비(%). 아주 짧은 실행도 보이게 너비는 화면에서 최소 폭을 준다.
+export function span(from, to, win) {
+  const l = pos(from, win);
+  return [l, Math.max(0, pos(to, win) - l)];
+}
 // 상태 이력 칸 → 그 구간(앞뒤 10분)의 업무 탭
 export function cellHref(row, i, h) {
   const from = h.t0 + (i * h.slot - 10) * 60000, to = from + (h.slot + 20) * 60000;
@@ -54,13 +64,13 @@ export function cellHref(row, i, h) {
 // ---- 그리기 ----
 
 // mock 전용: 감시 시간 판단 시각을 골라 본다(주소의 at). 값은 지금 값 그대로.
-export const AT_PICKS = [['', '지금'], ['07:10', '07:10 장 시작 전'], ['10:42', '10:42 장중'], ['16:05', '16:05 장 마감 뒤']];
+export const AT_PICKS = [['', '지금'], ['07:10', '07:10 장 시작 전'], ['10:42', '10:42 장중'], ['16:05', '16:05 장 마감 뒤'], ['17:05', '17:05 업무 마감 뒤']];
 function atPicker(query) {
   const sel = el('select', { id: 'bw-at', 'aria-label': 'mock 시각' });
   for (const [v, t] of AT_PICKS) sel.append(el('option', { value: v, text: t }));
   sel.value = AT_PICKS.some(([v]) => v === (query.at || '')) ? query.at || '' : '';
   sel.addEventListener('change', () => { location.hash = hashWith('bizwatch', { ...query, at: sel.value }); });
-  return el('label', { class: 'bw-at', title: 'mock 전용: 감시 시간을 이 시각으로 판단한다(값은 지금 값)' }, 'mock 시각 ', sel);
+  return el('label', { class: 'bw-at', title: 'mock 전용: 감시 시간 · 업무 마감을 이 시각으로 판단한다(값은 지금 값)' }, 'mock 시각 ', sel);
 }
 
 function head(d, query) {
@@ -152,8 +162,48 @@ function eventSec(d) {
     for (const r of causes) list.append(el('a', { class: 'bw-ec', href: r.href || '#' }, el('b', { text: '↳' }), el('span', { text: r.text })));
   }
   if (!d.events.length) list.append(el('p', { class: 'empty', text: '활성 알림 없음' }));
-  sec.append(list);
+  sec.append(list, dueSec(d.batches || []));
   return sec;
+}
+
+// 업무 마감: 플로우 deadline이 있는 배치마다 오늘 마감까지 남은 시간 · 상태(조건 대기면 gate 조건과 남은 양)
+function dueSec(batches) {
+  const box = el('div', { class: 'bw-due' });
+  const c = { crit: 0, warn: 0 };
+  for (const b of batches) if (b.level in c) c[b.level]++;
+  const counts = el('span', { class: 'bw-counts' });
+  counts.innerHTML = ['crit', 'warn'].filter((k) => c[k]).map((k) => badge(k, c[k])).join('');
+  box.append(el('div', { class: 'bw-h' }, el('h3', { text: '업무 마감' }),
+    info('플로우 YAML에 deadline이 적힌 배치. 그날 첫 실행(schedule)부터 마감까지 성공해야 한다. 마감이 지났는데 그 전에 성공한 실행이 없으면 위험. 업무 등급에는 넣지 않는다'),
+    el('span', { class: 'grow' }), counts));
+  for (const b of batches) {
+    box.append(el('div', { class: `bw-dr ${b.level}` },
+      el('b', { class: b.level, text: b.mark }),
+      el('a', { class: 'bw-dt', href: b.href, text: b.flow, title: `배치판 ${b.board}에서 보기` }),
+      el('span', { class: 'bw-dl', text: dueRight(b) }),
+      el('span', { class: 'bw-dx', text: b.text, title: b.text })));
+  }
+  if (!batches.length) box.append(el('p', { class: 'empty', text: '마감이 적힌 배치 없음(플로우 YAML deadline)' }));
+  return box;
+}
+
+// 업무 배치 띠 한 줄: 첫 실행 ~ 마감(점선 칸) · 마감 선 · 오늘 실행 기록(칸을 누르면 그 실행)
+function bandRow(b, win, nowPct) {
+  const name = el('a', { class: 'bw-lane bw-hn', href: b.href, title: `${b.flow} · ${b.text} · ${dueRight(b)}` }, el('b', { class: b.level, text: b.mark }), b.flow);
+  const track = el('div', { class: 'bw-band' });
+  if (b.plan_min != null) {
+    const [l, w] = span(b.plan_min, b.deadline_min, win);
+    track.append(el('span', { class: 'bw-plan', style: `left:${l.toFixed(2)}%;width:${w.toFixed(2)}%`, title: `${b.plan} 첫 실행 ~ ${b.deadline} 마감` }));
+  }
+  track.append(el('span', { class: `bw-dline ${b.level}`, style: `left:${pos(b.deadline_min, win).toFixed(2)}%`, title: `마감 ${b.deadline}` }));
+  for (const r of b.runs) {
+    const [l, w] = span(r.from, r.to, win);
+    const [m, t] = RUN[r.state] || ['•', r.state];
+    track.append(el('a', { class: `bw-run ${r.state}`, href: r.href || b.href, style: `left:${l.toFixed(2)}%;width:${w.toFixed(2)}%`,
+      title: `${b.flow} ${r.tip}`, 'aria-label': `${b.flow} ${t} ${r.tip}` }, m));
+  }
+  track.append(el('span', { class: 'bw-nowline', style: `left:${nowPct.toFixed(2)}%` }));
+  return [name, track];
 }
 
 function axisEl(win) {
@@ -177,6 +227,14 @@ function historySec(d) {
   const win = { from: h.from, to: h.to };
   const grid = el('div', { class: 'bw-tt-grid bw-hist-grid' });
   const nowPct = pos(d.scene_min, win);
+  const batches = d.batches || [];
+  if (batches.length) {
+    const blg = el('span', { class: 'bw-hlg' }, el('span', {}, el('i', { class: 'plan' }), '첫 실행 ~ 마감'));
+    for (const [k, [m, t]] of Object.entries(RUN)) blg.append(el('span', {}, el('i', { class: k }), `${m} ${t}`));
+    grid.append(el('span', { class: 'bw-lane bw-sub', text: '업무 배치' }), el('div', { class: 'bw-subr' }, blg));
+    for (const b of batches) grid.append(...bandRow(b, win, nowPct));
+    grid.append(el('span', { class: 'bw-lane bw-sub', text: '업무 상태' }), el('span'));
+  }
   for (const r of h.rows) {
     const name = el('a', { class: 'bw-lane bw-hn', href: `#biz/${encodeURIComponent(r.panel)}` }, el('b', { class: r.level, text: LV[r.level][0] }), r.title);
     const cells = el('div', { class: 'bw-cells', style: `grid-template-columns:repeat(${r.cells.length},minmax(0,1fr))` });
@@ -212,9 +270,9 @@ export function render(root, params, query) {
 
   const wrap = el('div', { class: 'bw' });
   root.append(wrap);
-  // 이력 칸 위에 마우스가 있으면 다시 그리지 않는다(말풍선과 누르기가 2초 갱신에 끊기지 않게).
+  // 이력 칸 · 배치 띠 위에 마우스가 있으면 다시 그리지 않는다(말풍선과 누르기가 2초 갱신에 끊기지 않게).
   let hold = false;
-  wrap.addEventListener('mouseover', (e) => { hold = !!(e.target.closest && e.target.closest('.bw-cells')); });
+  wrap.addEventListener('mouseover', (e) => { hold = !!(e.target.closest && e.target.closest('.bw-cells, .bw-band')); });
   wrap.addEventListener('mouseleave', () => { hold = false; });
   let lastSig = '';
   poll(async () => {

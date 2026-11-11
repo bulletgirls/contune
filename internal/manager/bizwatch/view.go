@@ -117,9 +117,9 @@ func SlotStart(t time.Time) time.Time {
 	return day.Add(t.Sub(day) / Slot * Slot)
 }
 
-// Window는 상태 이력 창(자정부터 분)이다: 감시 시간 중 가장 이른 시작 1시간 전 ~ 가장 늦은 끝 1시간 뒤(정시).
-// 감시 시간이 없거나 자정을 넘는 패널이 있으면 하루 전체.
-func Window(panels []model.Panel) (from, to int) {
+// Window는 상태 이력과 업무 배치 띠가 함께 쓰는 창(자정부터 분)이다: 감시 시간 · 업무 배치(오늘 첫 실행 ~ 마감,
+// 오늘 실행 기록) 중 가장 이른 때 1시간 전 ~ 가장 늦은 때 1시간 뒤(정시). 감시 시간이 없거나 자정을 넘는 패널이 있으면 하루 전체.
+func Window(panels []model.Panel, batches []Batch) (from, to int) {
 	from, to = 1440, 0
 	for _, p := range panels {
 		a, _ := model.ParseActive(p.Active)
@@ -128,6 +128,16 @@ func Window(panels []model.Panel) (from, to int) {
 		}
 		from, to = min(from, a.From), max(to, a.To)
 	}
+	for _, b := range batches {
+		lo := b.DeadMin
+		if b.PlanMin != nil {
+			lo = min(lo, *b.PlanMin)
+		}
+		from, to = min(from, lo), max(to, b.DeadMin)
+		for _, r := range b.Runs {
+			from, to = min(from, int(r.From)), max(to, int(r.To+0.999))
+		}
+	}
 	if from >= to {
 		return 0, 1440
 	}
@@ -135,9 +145,9 @@ func Window(panels []model.Panel) (from, to int) {
 }
 
 // BuildHistory는 저장된 5분 칸(states)으로 오늘 상태 이력을 만든다(05 §19.5). now는 매니저 tz의 지금,
-// levels는 업무 id → 지금 등급(줄 머리 기호).
-func BuildHistory(panels []model.Panel, levels map[string]string, states []model.BizState, now time.Time) History {
-	from, to := Window(panels)
+// levels는 업무 id → 지금 등급(줄 머리 기호). 창은 업무 배치 띠(batches)와 같이 쓴다.
+func BuildHistory(panels []model.Panel, batches []Batch, levels map[string]string, states []model.BizState, now time.Time) History {
+	from, to := Window(panels, batches)
 	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	t0 := day.Add(time.Duration(from) * time.Minute)
 	h := History{Slot: int(Slot / time.Minute), From: hm(from), To: hm(to), T0: t0.UnixMilli(), Rows: []HistoryRow{}}

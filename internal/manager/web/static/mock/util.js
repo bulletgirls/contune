@@ -147,6 +147,15 @@ export function parseCron(expr, strict = true) {
 }
 
 // 다음 n번의 발화 시각(ms). 지원하지 않는 표현이면 []
+// cronDay는 요일 dow(0=일)인 하루에 cron이 도는 분(자정부터)이다. mock 업무 배치용이라 날짜 · 월 칸은 보지 않는다.
+export function cronDay(expr, dow) {
+  const c = parseCron(expr, false);
+  if (!c || !(fieldHas(c.w, dow) || (dow === 0 && fieldHas(c.w, 7)))) return [];
+  const out = [];
+  for (let m = 0; m < 24 * 60; m++) if (fieldHas(c.h, Math.floor(m / 60)) && fieldHas(c.m, m % 60)) out.push(m);
+  return out;
+}
+
 export function cronNext(expr, from, n = 3, strict = true) {
   const c = parseCron(expr, strict);
   if (!c) return [];
@@ -279,6 +288,7 @@ export function dumpFlow(f) {
   const L = [];
   L.push(`id: ${dumpScalar(f.id)}`);
   if (f.schedule) L.push(`schedule: ${dumpScalar(f.schedule)}`);
+  if (f.deadline) L.push(`deadline: "${f.deadline}"`);
   if (f.on_missed) L.push(`on_missed: ${dumpScalar(f.on_missed)}`);
   L.push('steps:');
   for (const s of f.steps || []) {
@@ -291,6 +301,14 @@ export function dumpFlow(f) {
       L.push(`    retry: { count: ${s.retry.count || 0}, interval: ${dumpScalar(s.retry.interval || '1m')} }`);
     }
     if (s.profile) L.push('    profile: true');
+    if (s.gate && s.gate.length) {
+      L.push('    gate:');
+      for (const g of s.gate) {
+        const lim = [g.max != null ? `max: ${g.max}` : '', g.min != null ? `min: ${g.min}` : ''].filter(Boolean).join(', ');
+        L.push(`      - { host: ${dumpScalar(g.host || s.host)}, metric: ${dumpScalar(g.metric)}, ${lim} }`);
+      }
+    }
+    if (s.gate_max_wait) L.push(`    gate_max_wait: ${dumpScalar(s.gate_max_wait)}`);
   }
   return L.join('\n') + '\n';
 }

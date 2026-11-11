@@ -99,6 +99,15 @@ func ParseActive(s string) (Active, error) {
 	return a, nil
 }
 
+// ParseDeadline은 플로우 마감 "16:30"을 자정부터 분으로 읽는다(05 §19.11). "24:00"(그날 끝)도 받는다.
+func ParseDeadline(s string) (int, error) {
+	m, err := parseHM(strings.TrimSpace(s), true)
+	if err != nil {
+		return 0, fmt.Errorf("deadline은 \"16:30\"처럼 HH:MM입니다")
+	}
+	return m, nil
+}
+
 // parseHM은 "09:00"을 자정부터 분으로 읽는다. end면 "24:00"도 받는다.
 func parseHM(s string, end bool) (int, error) {
 	h, m, ok := strings.Cut(s, ":")

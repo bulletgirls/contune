@@ -68,17 +68,24 @@ func TestEvents(t *testing.T) {
 
 func TestWindow(t *testing.T) {
 	p := func(a string) model.Panel { return model.Panel{Active: a} }
+	plan := 5*60 + 30
+	open := Batch{DeadMin: 8 * 60, PlanMin: &plan}                                                               // market-open 05:30 ~ 08:00
+	settle := Batch{DeadMin: 16*60 + 30, PlanMin: new(int), Runs: []BatchRun{{From: 15*60 + 40, To: 17*60 + 5}}} // 마감 뒤까지 돈 실행
+	*settle.PlanMin = 15*60 + 40
 	for name, c := range map[string]struct {
 		ps       []model.Panel
+		bs       []Batch
 		from, to int
 	}{
-		"한 패널":  {[]model.Panel{p("mon-fri 08:30-15:30")}, 7 * 60, 17 * 60},
-		"둘":     {[]model.Panel{p("mon-fri 08:30-15:30"), p("mon-fri 08:00-16:40")}, 7 * 60, 18 * 60},
-		"늘 감시":  {[]model.Panel{p("mon-fri 08:30-15:30"), p("")}, 0, 1440},
-		"자정 넘김": {[]model.Panel{p("mon-fri 22:00-02:00")}, 0, 1440},
-		"끝 쪽":   {[]model.Panel{p("20:00-24:00")}, 19 * 60, 1440},
+		"한 패널":     {[]model.Panel{p("mon-fri 08:30-15:30")}, nil, 7 * 60, 17 * 60},
+		"둘":        {[]model.Panel{p("mon-fri 08:30-15:30"), p("mon-fri 08:00-16:40")}, nil, 7 * 60, 18 * 60},
+		"늘 감시":     {[]model.Panel{p("mon-fri 08:30-15:30"), p("")}, nil, 0, 1440},
+		"자정 넘김":    {[]model.Panel{p("mon-fri 22:00-02:00")}, nil, 0, 1440},
+		"끝 쪽":      {[]model.Panel{p("20:00-24:00")}, nil, 19 * 60, 1440},
+		"업무 배치":    {[]model.Panel{p("mon-fri 08:30-15:30")}, []Batch{open, settle}, 4 * 60, 19 * 60},
+		"패널 없이 배치": {nil, []Batch{open}, 4 * 60, 9 * 60},
 	} {
-		if f, to := Window(c.ps); f != c.from || to != c.to {
+		if f, to := Window(c.ps, c.bs); f != c.from || to != c.to {
 			t.Errorf("%s: %d-%d", name, f, to)
 		}
 	}
@@ -94,7 +101,7 @@ func TestBuildHistory(t *testing.T) {
 		{Panel: "matching", TS: slot(10, 40), Level: "crit", Why: "대기 큐 · p99 응답 시간"},
 		{Panel: "other", TS: slot(10, 40), Level: "crit"},
 	}
-	h := BuildHistory([]model.Panel{p}, map[string]string{"matching": "crit"}, states, now)
+	h := BuildHistory([]model.Panel{p}, nil, map[string]string{"matching": "crit"}, states, now)
 	if h.Slot != 5 || h.From != "07:00" || h.To != "17:00" || h.T0 != slot(7, 0) || len(h.Rows) != 1 {
 		t.Fatalf("머리 %+v", h)
 	}

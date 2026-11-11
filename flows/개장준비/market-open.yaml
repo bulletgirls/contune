@@ -1,6 +1,7 @@
 # 새벽 개장 준비: 기준정보 적재 후 체결 서비스 기동
 id: market-open
 schedule: "30 5 * * 1-5"      # 평일 05:30
+deadline: "08:00"            # 업무 마감: 체결 감시(08:30) 전에 끝나 있어야 한다(05 §19.11)
 on_missed: skip
 steps:
   - id: fetch-master

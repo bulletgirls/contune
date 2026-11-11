@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"math/bits"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -42,6 +43,7 @@ type rawStep struct {
 type rawFlow struct {
 	ID       string    `yaml:"id"`
 	Schedule string    `yaml:"schedule"`
+	Deadline string    `yaml:"deadline"`
 	OnMissed string    `yaml:"on_missed"`
 	Steps    []rawStep `yaml:"steps"`
 }
@@ -53,7 +55,7 @@ func Parse(data []byte, file, board string) (model.Flow, error) {
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return model.Flow{File: file, Board: board}, fmt.Errorf("%s: YAML 해석 실패: %v", file, err)
 	}
-	f := model.Flow{ID: raw.ID, Board: board, File: file, Schedule: raw.Schedule, OnMissed: raw.OnMissed}
+	f := model.Flow{ID: raw.ID, Board: board, File: file, Schedule: raw.Schedule, Deadline: raw.Deadline, OnMissed: raw.OnMissed}
 	var errs []string
 	add := func(step, format string, a ...any) {
 		errs = append(errs, fmt.Sprintf("%s:%s:%s: %s", file, raw.ID, step, fmt.Sprintf(format, a...)))
@@ -64,9 +66,22 @@ func Parse(data []byte, file, board string) (model.Flow, error) {
 	} else if !idRe.MatchString(raw.ID) {
 		add("", "플로우 id %q가 규칙(^[a-z0-9][a-z0-9-]{0,62}$)에 맞지 않습니다", raw.ID)
 	}
+	var sch cron.Schedule
 	if raw.Schedule != "" {
-		if _, err := cron.ParseStandard(raw.Schedule); err != nil {
+		var err error
+		if sch, err = cron.ParseStandard(raw.Schedule); err != nil {
 			add("", "잘못된 cron %q: %v", raw.Schedule, err)
+		}
+	}
+	if raw.Deadline != "" {
+		dl, err := model.ParseDeadline(raw.Deadline)
+		switch first, daily := firstMinute(sch); {
+		case err != nil:
+			add("", "deadline %q: %v", raw.Deadline, err)
+		case sch != nil && !daily:
+			add("", "deadline은 @every 일정과 함께 쓸 수 없습니다(그날 첫 실행이 정해지지 않음)")
+		case sch != nil && dl <= first:
+			add("", "deadline %s이 그날 첫 실행 %02d:%02d보다 늦어야 합니다(자정을 넘는 마감은 다루지 않음)", raw.Deadline, first/60, first%60)
 		}
 	}
 	if f.OnMissed == "" {
@@ -137,6 +152,43 @@ func Parse(data []byte, file, board string) (model.Flow, error) {
 		return f, fmt.Errorf("%s", strings.Join(errs, "\n"))
 	}
 	return f, nil
+}
+
+// firstMinute는 cron 일정이 하루 중 처음 도는 시각(자정부터 분)이다. 분 · 시 칸은 날짜와 무관하므로
+// 도는 날이면 언제나 같다. @every처럼 하루 시각이 정해지지 않은 일정이면 daily=false.
+func firstMinute(s cron.Schedule) (min int, daily bool) {
+	spec, ok := s.(*cron.SpecSchedule)
+	if !ok {
+		return 0, false
+	}
+	const star = 1 << 63 // robfig/cron의 '*' 표시 비트
+	h, m := spec.Hour&^star, spec.Minute&^star
+	if h == 0 || m == 0 {
+		return 0, false
+	}
+	return bits.TrailingZeros64(h)*60 + bits.TrailingZeros64(m), true
+}
+
+// FiresOn은 schedule이 day가 속한 하루(day의 시간대)에 도는 시각들이다. 일정이 없거나 못 읽거나
+// @every처럼 하루 시각이 정해지지 않으면 nil.
+func FiresOn(schedule string, day time.Time) []time.Time {
+	if schedule == "" {
+		return nil
+	}
+	s, err := cron.ParseStandard(schedule)
+	if err != nil {
+		return nil
+	}
+	if _, daily := firstMinute(s); !daily {
+		return nil
+	}
+	start := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
+	end := start.AddDate(0, 0, 1)
+	var out []time.Time
+	for t := s.Next(start.Add(-time.Second)); !t.IsZero() && t.Before(end) && len(out) < 1440; t = s.Next(t) {
+		out = append(out, t)
+	}
+	return out
 }
 
 // computeLevels는 Kahn 위상 정렬로 Level을 채운다. 순환이면 경로 문자열을 돌려준다.
@@ -345,6 +397,7 @@ type outStep struct {
 type outFlow struct {
 	ID       string    `yaml:"id"`
 	Schedule string    `yaml:"schedule,omitempty"`
+	Deadline string    `yaml:"deadline,omitempty"`
 	OnMissed string    `yaml:"on_missed,omitempty"`
 	Steps    []outStep `yaml:"steps"`
 }
@@ -365,7 +418,7 @@ func shortDur(d time.Duration) string {
 
 // Marshal은 플로우를 02 §9 모양의 YAML로 쓴다. 기본값과 같은 필드는 생략한다.
 func Marshal(f model.Flow) ([]byte, error) {
-	o := outFlow{ID: f.ID, Schedule: f.Schedule, Steps: []outStep{}}
+	o := outFlow{ID: f.ID, Schedule: f.Schedule, Deadline: f.Deadline, Steps: []outStep{}}
 	if f.OnMissed != "" && f.OnMissed != "skip" {
 		o.OnMissed = f.OnMissed
 	}

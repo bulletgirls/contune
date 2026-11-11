@@ -215,7 +215,9 @@ func burnFlow(id string) map[string]any {
 
 func TestSaveNew(t *testing.T) {
 	e := newEnv(t, true)
-	code, m := e.do("PUT", "/api/v1/flows/demo-x", map[string]any{"flow": burnFlow("demo-x"), "board": "데모/신규"})
+	fx := burnFlow("demo-x")
+	fx["deadline"] = "08:00" // 업무 마감(05 §19.11): 편집기 저장 · def 왕복에 남는다
+	code, m := e.do("PUT", "/api/v1/flows/demo-x", map[string]any{"flow": fx, "board": "데모/신규"})
 	if code != 200 {
 		t.Fatalf("PUT %d %v", code, m)
 	}
@@ -228,7 +230,7 @@ func TestSaveNew(t *testing.T) {
 	if !ok {
 		t.Fatalf("레지스트리에 없음: %v", e.reg.Errors())
 	}
-	if f.Board != "데모/신규" || f.Steps[1].Retry.Count != 2 || f.Steps[1].Timeout != 10*time.Minute {
+	if f.Board != "데모/신규" || f.Deadline != "08:00" || f.Steps[1].Retry.Count != 2 || f.Steps[1].Timeout != 10*time.Minute {
 		t.Fatalf("정의: %+v", f)
 	}
 	want, _ := flowdef.Marshal(f)
@@ -250,7 +252,7 @@ func TestSaveNew(t *testing.T) {
 	}
 	fl := d["flow"].(map[string]any)
 	st := fl["steps"].([]any)[1].(map[string]any)
-	if st["timeout"] != "10m" || st["level"] != float64(1) {
+	if st["timeout"] != "10m" || st["level"] != float64(1) || fl["deadline"] != "08:00" {
 		t.Fatalf("def flow: %v", fl)
 	}
 	// def의 flow를 그대로 다시 저장해도 통과(왕복)

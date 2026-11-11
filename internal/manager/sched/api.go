@@ -58,6 +58,7 @@ type flowView struct {
 	ID       string     `json:"id"`
 	Board    string     `json:"board"`
 	Schedule string     `json:"schedule"`
+	Deadline string     `json:"deadline,omitempty"` // 업무 마감(05 §19.11)
 	NextRun  int64      `json:"next_run"`
 	Steps    []stepView `json:"steps"`
 	Last     *flowLast  `json:"last"`
@@ -76,7 +77,7 @@ func (s *Scheduler) handleFlows(w http.ResponseWriter, r *http.Request) {
 		if !boardMatch(f.Board, want) {
 			continue
 		}
-		v := flowView{ID: f.ID, Board: f.Board, Schedule: f.Schedule, Steps: []stepView{}}
+		v := flowView{ID: f.ID, Board: f.Board, Schedule: f.Schedule, Deadline: f.Deadline, Steps: []stepView{}}
 		for _, st := range f.Steps {
 			dep := st.Depends
 			if dep == nil {

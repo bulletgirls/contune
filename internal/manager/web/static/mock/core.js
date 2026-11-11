@@ -24,6 +24,7 @@ export function flowView(c, f) {
     id: f.id,
     board: f.board,
     schedule: f.schedule || '',
+    ...(f.deadline ? { deadline: f.deadline } : {}),
     next_run: n.length ? n[0] : 0,
     steps: f.steps.map((s) => ({
       id: s.id,

@@ -102,6 +102,7 @@ type resp struct {
 		Sched   Item              `json:"schedule"`
 	} `json:"services"`
 	Events  []EventGroup `json:"events"`
+	Batches []Batch      `json:"batches"`
 	History struct {
 		From, To string
 		Rows     []struct {
@@ -281,5 +282,63 @@ func TestRecordMergesWhy(t *testing.T) {
 	got, _ := e.st.ListBizState(ctx, kt(11, 10, 40, 0).UnixMilli(), kt(11, 10, 45, 0).UnixMilli())
 	if len(got) == 0 || got[0].Panel != "matching" || got[0].Level != "crit" || got[0].Why != "대기 큐 · market-open 실패 · p99 응답 시간" {
 		t.Errorf("까닭 %+v", got)
+	}
+}
+
+// 업무 배치(05 §19.11): deadline이 있는 플로우의 오늘 마감 · 실행 기록 · 조건 대기의 게이트 값, 그룹 범위, 이력 창.
+func TestAPIBatches(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	if err := e.st.UpsertHost(ctx, model.Host{ID: "batch-01", Group: "사후처리/배치", LastSeen: e.now.UnixMilli()}); err != nil {
+		t.Fatal(err)
+	}
+	// market-open: 05:30 일정 · 08:00 마감. 오늘 08:41에 생긴 실행이 load-equity에서 죽었다(newEnv의 FR1).
+	e.flows[0].Board, e.flows[0].Schedule, e.flows[0].Deadline = "개장준비", "30 5 * * 1-5", "08:00"
+	// queue-drain: 10:00 일정 · 11:00 마감. 체결 대기 큐가 0이 될 때까지 기다린다(게이트 서버 match-01).
+	zero := 0.0
+	e.flows = append(e.flows, model.Flow{ID: "queue-drain", Board: "정산", Schedule: "0 10 * * 1-5", Deadline: "11:00", Steps: []model.Step{
+		{ID: "drain", Host: "batch-01", Gate: []model.GateCond{{Host: "match-01", Metric: "biz.order.queue", Max: &zero}}, GateMaxWait: 30 * time.Minute},
+	}})
+	at := kt(11, 10, 0, 1).UnixMilli()
+	if err := e.st.CreateRuns(ctx, []model.Run{{ExecID: "E5", FlowRunID: "FR5", FlowID: "queue-drain", StepID: "drain", Host: "batch-01", Trigger: "schedule", Attempt: 1, ScheduledAt: at}}, "scheduler", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.st.Transition(ctx, model.Transition{ExecID: "E5", From: []model.RunStatus{model.StatusWaiting}, To: model.StatusHeld, TS: at, Actor: "scheduler"}); err != nil {
+		t.Fatal(err)
+	}
+	r := e.get(t, "")
+	if len(r.Batches) != 2 {
+		t.Fatalf("업무 배치 %+v", r.Batches)
+	}
+	mo, qd := r.Batches[0], r.Batches[1]
+	if mo.Flow != "market-open" || mo.State != "failed" || mo.Level != "crit" || mo.Text != "08:42 load-equity 실패" || mo.Left != "2시간 42분 지남" || mo.Plan != "05:30" {
+		t.Errorf("market-open %+v", mo)
+	}
+	if len(mo.Runs) != 1 || mo.Runs[0].State != "failed" || mo.Runs[0].Href != "#run/E1" {
+		t.Errorf("market-open 띠 %+v", mo.Runs)
+	}
+	if qd.Flow != "queue-drain" || qd.State != "gated" || qd.Level != "warn" || qd.Left != "17분 남음" ||
+		qd.Text != "drain 조건 대기 · match-01 biz.order.queue 2,240 (0 이하) · 2,240 남음 · 대기 한도 10:30" {
+		t.Errorf("queue-drain %+v", qd)
+	}
+	if len(qd.Runs) != 1 || qd.Runs[0].State != "gated" || qd.Runs[0].Href != "#run/E5" || qd.Href != "#board/%EC%A0%95%EC%82%B0/queue-drain" {
+		t.Errorf("queue-drain 띠 %+v %s", qd.Runs, qd.Href)
+	}
+	// 이력 창이 업무 배치를 품는다: 05:30 첫 실행 → 04:00부터
+	if r.History.From != "04:00" || r.History.To != "17:00" || len(r.History.Rows[0].Cells) != 156 {
+		t.Errorf("창 %s-%s %d", r.History.From, r.History.To, len(r.History.Rows[0].Cells))
+	}
+	// 그룹 범위: 패널 flows · 스텝 서버 · 게이트 서버로만 묶는다.
+	flows := func(r resp) string {
+		var ids []string
+		for _, b := range r.Batches {
+			ids = append(ids, b.Flow)
+		}
+		return strings.Join(ids, ",")
+	}
+	for g, want := range map[string]string{"매매/체결": "market-open,queue-drain", "사후처리": "market-open,queue-drain", "매매/시세": ""} {
+		if got := flows(e.get(t, "?g="+g)); got != want {
+			t.Errorf("범위 %s: %q", g, got)
+		}
 	}
 }

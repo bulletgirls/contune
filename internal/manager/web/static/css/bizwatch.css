@@ -1,4 +1,4 @@
-/* 업무 관제(#bizwatch) 1단계(05 §19). 카드 모양 · 등급 색은 관제(dashboard.css)와 같다. */
+/* 업무 관제(#bizwatch)(05 §19). 카드 모양 · 등급 색은 관제(dashboard.css)와 같다. */
 .bw { display:flex; flex-direction:column; gap:12px; }
 .bw-card { background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:10px 12px; min-width:0; }
 .bw-h { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 10px; margin-bottom:8px; }
@@ -76,9 +76,32 @@ a.bw-it:hover span { text-decoration:underline; }
 .bw-ec b { font-weight:400; color:var(--t3); }
 a.bw-ec:hover span, a.bw-more:hover { text-decoration:underline; }
 
-/* 오늘 업무 상태 이력: 줄 = 업무, 칸 = 5분 */
-.bw-tt-grid { display:grid; grid-template-columns:64px minmax(0,1fr); align-items:center; column-gap:8px; row-gap:4px; min-width:680px; }
-.bw-lane { font-size:12px; color:var(--t2); }
+/* 업무 마감(업무 이벤트 아래): 줄 = deadline이 있는 배치 */
+.bw-due { flex:none; margin-top:10px; padding-top:8px; border-top:1px solid var(--line); }
+.bw-due .bw-h { margin-bottom:4px; }
+.bw-due h3 { margin:0; font-size:13px; font-weight:600; }
+.bw-dr { display:grid; grid-template-columns:14px minmax(0,1fr) auto; column-gap:6px; align-items:baseline; padding:4px 6px 4px 4px; border-bottom:1px solid var(--line); border-left:3px solid transparent; font-size:13px; }
+.bw-dr.crit { border-left-color:var(--crit); } .bw-dr.warn { border-left-color:var(--warn); }
+.bw-dr > b { font-size:11px; font-weight:400; }
+.bw-dt { font-weight:600; text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+a.bw-dt:hover { color:var(--accent); text-decoration:underline; }
+.bw-dl { font-size:12px; color:var(--t2); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.bw-dx { grid-column:2 / -1; font-size:12px; line-height:17px; color:var(--t2); overflow-wrap:anywhere; }
+.bw-dr.crit :is(.bw-dl, .bw-dx) { color:var(--crit); } .bw-dr.warn :is(.bw-dl, .bw-dx) { color:var(--warn); }
+
+/* 오늘 업무 상태 이력: 줄 = 업무, 칸 = 5분. 위에 오늘 업무 배치 띠(같은 창 · 같은 축) */
+.bw-tt-grid { display:grid; grid-template-columns:minmax(64px, max-content) minmax(0,1fr); align-items:center; column-gap:8px; row-gap:4px; min-width:680px; }
+.bw-lane { font-size:12px; color:var(--t2); max-width:150px; }
+.bw-sub { font-size:11px; color:var(--t3); margin-top:2px; }
+.bw-subr { display:flex; justify-content:flex-end; margin-top:2px; }
+.bw-band { position:relative; height:18px; background:var(--bg); border-radius:2px; }
+.bw-plan { position:absolute; top:1px; bottom:1px; box-sizing:border-box; border:1px dashed var(--t3); border-radius:3px; }
+.bw-dline { position:absolute; top:-3px; bottom:-3px; width:2px; margin-left:-1px; background:var(--t2); }
+.bw-dline.warn { background:var(--warn); } .bw-dline.crit { background:var(--crit); }
+.bw-run { position:absolute; top:3px; bottom:3px; min-width:12px; box-sizing:border-box; border-radius:3px; font-size:10px; line-height:12px; text-align:center; overflow:hidden; white-space:nowrap; text-decoration:none; color:var(--surface); }
+.bw-run.done { background:var(--ok); } .bw-run.failed { background:var(--crit); }
+.bw-run.gated { background:var(--warn); } .bw-run.running { background:var(--st-running, var(--accent)); }
+.bw-run:hover { outline:2px solid var(--accent); outline-offset:1px; z-index:1; }
 .bw-hn { display:flex; align-items:center; gap:4px; text-decoration:none; white-space:nowrap; }
 a.bw-hn:hover { color:var(--accent); }
 .bw-cells { position:relative; display:grid; gap:1px; height:18px; }
@@ -99,6 +122,8 @@ a.bw-hn:hover { color:var(--accent); }
 .bw-hlg i.ok { background:color-mix(in srgb, var(--ok) 32%, var(--surface)); } .bw-hlg i.warn { background:var(--warn); }
 .bw-hlg i.crit { background:var(--crit); } .bw-hlg i.off { background:var(--bg); border:1px solid var(--line); }
 .bw-hlg i.none { background:repeating-linear-gradient(135deg, var(--line) 0 2px, transparent 2px 4px); border:1px solid var(--line); }
+.bw-hlg i.plan { border:1px dashed var(--t3); } .bw-hlg i.done { background:var(--ok); } .bw-hlg i.failed { background:var(--crit); }
+.bw-hlg i.gated { background:var(--warn); } .bw-hlg i.running { background:var(--st-running, var(--accent)); }
 
 @media (max-width:700px) {
   .bw-hr { margin-left:0; }

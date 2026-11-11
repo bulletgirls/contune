@@ -15,6 +15,9 @@ import (
 // gateFresh는 게이트 판단에 쓸 수 있는 지표의 최대 나이다. 이보다 오래되면 "모르면 실행하지 않는다".
 const gateFresh = 10 * time.Second
 
+// LiveGate는 스케줄러가 게이트 판단에 쓰는 지표 읽기다(업무 관제가 같은 값을 보이려고 쓴다).
+func LiveGate(c *live.Cache) func(host, metric string) (float64, int64, bool) { return liveGate(c) }
+
 // liveGate는 Input.Gate 함수다: Live.Find([host], metric) 중 가장 최근 값(exec_id 무관).
 func liveGate(c *live.Cache) func(host, metric string) (float64, int64, bool) {
 	if c == nil {
@@ -32,27 +35,54 @@ func liveGate(c *live.Cache) func(host, metric string) (float64, int64, bool) {
 	}
 }
 
+// GateView는 게이트 조건 하나의 지금 상태다(스케줄러 판단과 같은 값 · 같은 신선도). 업무 관제의 '조건 대기'
+// (조건과 남은 양, 05 §19.11)가 이것을 그대로 보인다. Host는 비면 스텝의 host로 채운다.
+type GateView struct {
+	Host, Metric string
+	Value        float64
+	Has          bool          // 값이 있음
+	Age          time.Duration // 값의 나이
+	Max, Min     *float64
+	Met          bool // 값이 있고 10초 안이고 max · min 안
+}
+
+// Fresh는 값이 판단에 쓸 만큼 새로운지다(gateFresh 안).
+func (g GateView) Fresh() bool { return g.Has && g.Age <= gateFresh }
+
+// GateViews는 스텝의 게이트 조건마다의 지금 상태다.
+func GateViews(gate func(host, metric string) (float64, int64, bool), s model.Step, now time.Time) []GateView {
+	out := make([]GateView, 0, len(s.Gate))
+	for _, g := range s.Gate {
+		v := GateView{Host: g.Host, Metric: g.Metric, Max: g.Max, Min: g.Min}
+		if v.Host == "" {
+			v.Host = s.Host
+		}
+		if gate != nil {
+			var ts int64
+			v.Value, ts, v.Has = gate(v.Host, g.Metric)
+			v.Age = time.Duration(now.UnixMilli()-ts) * time.Millisecond
+		}
+		v.Met = v.Fresh() && (g.Max == nil || v.Value <= *g.Max) && (g.Min == nil || v.Value >= *g.Min)
+		out = append(out, v)
+	}
+	return out
+}
+
 // gateCheck는 스텝의 게이트를 모두 충족하는지와, 불충족이면 그 조건들을 알려 준다.
 // 값이 없거나 10초보다 오래되었거나 max·min을 벗어나면 불충족이다. 조건의 host가 비면 스텝의 host를 쓴다.
 func gateCheck(gate func(host, metric string) (float64, int64, bool), s model.Step, now time.Time) (bool, string) {
 	var unmet []string
-	for _, g := range s.Gate {
-		host := g.Host
-		if host == "" {
-			host = s.Host
-		}
-		name := host + " " + g.Metric
-		v, ts, ok := gate(host, g.Metric)
+	for _, g := range GateViews(gate, s, now) {
+		name := g.Host + " " + g.Metric
 		switch {
-		case !ok:
+		case !g.Has:
 			unmet = append(unmet, name+" 지표 없음")
-		case now.UnixMilli()-ts > gateFresh.Milliseconds():
-			age := time.Duration(now.UnixMilli()-ts) * time.Millisecond
-			unmet = append(unmet, fmt.Sprintf("%s 지표 오래됨(%s 전)", name, age.Round(time.Second)))
-		case g.Max != nil && v > *g.Max:
-			unmet = append(unmet, fmt.Sprintf("%s=%s (max %s)", name, num(v), num(*g.Max)))
-		case g.Min != nil && v < *g.Min:
-			unmet = append(unmet, fmt.Sprintf("%s=%s (min %s)", name, num(v), num(*g.Min)))
+		case !g.Fresh():
+			unmet = append(unmet, fmt.Sprintf("%s 지표 오래됨(%s 전)", name, g.Age.Round(time.Second)))
+		case g.Max != nil && g.Value > *g.Max:
+			unmet = append(unmet, fmt.Sprintf("%s=%s (max %s)", name, num(g.Value), num(*g.Max)))
+		case g.Min != nil && g.Value < *g.Min:
+			unmet = append(unmet, fmt.Sprintf("%s=%s (min %s)", name, num(g.Value), num(*g.Min)))
 		}
 	}
 	if len(unmet) == 0 {
@@ -62,6 +92,11 @@ func gateCheck(gate func(host, metric string) (float64, int64, bool), s model.St
 }
 
 func num(v float64) string { return strconv.FormatFloat(v, 'g', -1, 64) }
+
+// GateWaitStart는 gateWaitStart다(업무 관제가 대기 한도 시각을 보일 때 쓴다).
+func GateWaitStart(s model.Step, r model.Run, latest map[string]model.Run) int64 {
+	return gateWaitStart(s, r, latest)
+}
 
 // gateWaitStart는 게이트 대기 시작 시각(ms)이다: 선행들의 최신 attempt ended_at 중 최대값,
 // 선행이 없으면 ScheduledAt. 재시도 attempt처럼 ScheduledAt이 더 늦으면 ScheduledAt부터 센다.

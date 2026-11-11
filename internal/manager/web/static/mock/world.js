@@ -139,6 +139,7 @@ function buildFlows() {
     id: 'market-open',
     board: '개장준비',
     schedule: '30 5 * * 1-5',
+    deadline: '08:00', // 업무 마감(05 §19.11): 체결 감시(08:30) 전
     on_missed: 'skip',
     steps: [
       { id: 'fetch-master', host: 'batch-01', command: BURN(5), depends: [], timeout: '10m', retry: { count: 0, interval: '1m' }, profile: false },
@@ -152,9 +153,12 @@ function buildFlows() {
     id: 'daily-settle',
     board: '정산',
     schedule: '40 15 * * 1-5',
+    deadline: '16:30',
     on_missed: 'skip',
     steps: [
-      { id: 'settle', host: 'batch-01', command: BURN(8), depends: [], timeout: '30m', retry: { count: 0, interval: '1m' }, profile: false },
+      // 저장소 flows/정산/daily-settle.yaml과 같은 게이트: 체결 대기 큐가 0이 될 때까지(최대 30분)
+      { id: 'settle', host: 'batch-01', command: BURN(8), depends: [], timeout: '30m', retry: { count: 0, interval: '1m' }, profile: false,
+        gate: [{ host: 'match-01', metric: 'biz.order.queue', max: 0 }], gate_max_wait: '30m' },
       { id: 'settle-report', host: 'batch-01', command: BURN(4), depends: ['settle'], timeout: '1h', retry: { count: 0, interval: '1m' }, profile: false },
     ],
     state: 'prev',
@@ -163,6 +167,7 @@ function buildFlows() {
     id: 'ext-send-margin',
     board: '대외송수신',
     schedule: '50 16 * * 1-5',
+    deadline: '17:00',
     on_missed: 'skip',
     steps: [
       { id: 'make-file', host: 'ext-01', command: BURN(3), depends: [], timeout: '10m', retry: { count: 0, interval: '1m' }, profile: false },

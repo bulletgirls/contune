@@ -1,5 +1,6 @@
 id: market-open
 schedule: "30 5 * * 1-5"
+deadline: "08:00"
 on_missed: skip
 steps:
   - id: fetch

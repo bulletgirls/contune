@@ -1,6 +1,7 @@
 # 장 마감 후 정산
 id: daily-settle
 schedule: "40 15 * * 1-5"     # 평일 15:40
+deadline: "16:30"            # 업무 마감(05 §19.11): 조건 대기(gate)로 늦어지면 업무 관제에 남은 양이 보인다
 steps:
   - id: settle
     host: batch-01

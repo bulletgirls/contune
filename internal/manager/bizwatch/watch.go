@@ -7,10 +7,12 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"eum/internal/manager/flowdef"
 	"eum/internal/manager/live"
 	"eum/internal/manager/query"
 	"eum/internal/manager/sched"
@@ -65,13 +67,21 @@ func (w *Watch) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/bizwatch", w.handle)
 }
 
+// snap은 지금 업무마다의 판정과 그 재료 중 화면이 더 쓰는 것이다.
+type snap struct {
+	svcs   []Service
+	panels []model.Panel
+	firing []model.Alert
+	hosts  []model.Host
+}
+
 // snapshot은 지금 업무마다의 판정이다. full이면 평소 값과 함수 변화도 읽는다(화면용, 기록은 등급만 필요).
-func (w *Watch) snapshot(ctx context.Context, now time.Time, cmp time.Duration, full bool) ([]Service, []model.Panel, []model.Alert, error) {
+func (w *Watch) snapshot(ctx context.Context, now time.Time, cmp time.Duration, full bool) (snap, error) {
 	hosts := query.MergedHosts(ctx, w.d.State, w.d.Live)
 	states := w.d.Panels.Eval(now, hosts, w.d.Live)
 	firing, err := w.d.State.ListAlerts(ctx, model.AlertFilter{State: "firing", Limit: 1000})
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("알림: %w", err)
+		return snap{}, fmt.Errorf("알림: %w", err)
 	}
 	issues := w.hostIssues(now, hosts)
 	flows := map[string]model.Flow{}
@@ -106,7 +116,7 @@ func (w *Watch) snapshot(ctx context.Context, now time.Time, cmp time.Duration, 
 			}
 			ff, err := w.lastFail(ctx, f)
 			if err != nil {
-				return nil, nil, nil, err
+				return snap{}, err
 			}
 			if ff != nil {
 				in.Fails = append(in.Fails, *ff)
@@ -119,7 +129,7 @@ func (w *Watch) snapshot(ctx context.Context, now time.Time, cmp time.Duration, 
 		svcs = append(svcs, Judge(in))
 		panels = append(panels, p)
 	}
-	return svcs, panels, firing, nil
+	return snap{svcs: svcs, panels: panels, firing: firing, hosts: hosts}, nil
 }
 
 // hostIssues는 정상이 아닌 서버다(/hosts와 같은 JudgeHost). What은 원인 줄 글자.
@@ -169,23 +179,123 @@ func (w *Watch) lastFail(ctx context.Context, f model.Flow) (*FlowFail, error) {
 	if sched.FlowRunStatus(f, group) != sched.FlowRunFailed {
 		return nil, nil
 	}
-	// 스텝마다 최신 시도 중 끝내 실패한 것(여럿이면 먼저 끝난 것)
-	var dead *model.Run
-	for _, s := range f.Steps {
-		var last *model.Run
-		for i := range group {
-			if r := &group[i]; r.StepID == s.ID && (last == nil || r.Attempt > last.Attempt) {
-				last = r
-			}
-		}
-		if last != nil && sched.IsDead(*last, s) && (dead == nil || last.EndedAt < dead.EndedAt) {
-			dead = last
-		}
-	}
+	dead := deadRun(f, group)
 	if dead == nil {
 		return nil, nil
 	}
 	return &FlowFail{Flow: f.ID, Step: dead.StepID, ExecID: dead.ExecID, At: dead.EndedAt}, nil
+}
+
+// deadRun은 플로우 실행 하나에서 스텝마다 최신 시도 중 끝내 실패한 것(여럿이면 먼저 끝난 것)이다.
+func deadRun(f model.Flow, group []model.Run) *model.Run {
+	latest := sched.LatestAttempts(f.ID, group)
+	var dead *model.Run
+	for _, s := range f.Steps {
+		if r, ok := latest[s.ID]; ok && sched.IsDead(r, s) && (dead == nil || r.EndedAt < dead.EndedAt) {
+			dead = &r
+		}
+	}
+	return dead
+}
+
+// batches는 업무 배치(deadline이 있는 플로우)마다 오늘 마감과 실행 기록이다(05 §19.11).
+func (w *Watch) batches(ctx context.Context, now time.Time) ([]Batch, error) {
+	local := now.In(w.d.Loc)
+	day := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, w.d.Loc)
+	gate := sched.LiveGate(w.d.Live)
+	out := []Batch{}
+	for _, f := range w.d.Flows() {
+		if f.Deadline == "" {
+			continue
+		}
+		// 하루 앞부터 읽는다: 어제 생긴 플로우 실행의 재시도 행이 오늘 시각을 가질 수 있어 묶음의 시작을 바로 보려고.
+		rows, err := w.d.State.ListRuns(ctx, model.RunFilter{FlowID: f.ID, From: day.AddDate(0, 0, -1).UnixMilli(), Limit: flowRunsRead})
+		if err != nil {
+			return nil, fmt.Errorf("실행 %s: %w", f.ID, err)
+		}
+		b := JudgeBatch(BatchInput{Flow: f, Now: local, Fires: flowdef.FiresOn(f.Schedule, local), Runs: todayRuns(f, rows, day.UnixMilli(), gate, local)})
+		for _, s := range f.Steps {
+			b.hosts = append(b.hosts, s.Host)
+			for _, g := range s.Gate {
+				if g.Host != "" {
+					b.hosts = append(b.hosts, g.Host)
+				}
+			}
+		}
+		out = append(out, b)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].DeadMin != out[j].DeadMin {
+			return out[i].DeadMin < out[j].DeadMin
+		}
+		return out[i].Flow < out[j].Flow
+	})
+	return out, nil
+}
+
+// todayRuns는 실행 행을 플로우 실행으로 묶어 오늘(dayStart 이후) 생긴 것만 At 순으로 돌려준다.
+func todayRuns(f model.Flow, rows []model.Run, dayStart int64, gate func(host, metric string) (float64, int64, bool), now time.Time) []RunRec {
+	groups := map[string][]model.Run{}
+	for _, r := range rows {
+		if r.FlowID == f.ID {
+			groups[r.FlowRunID] = append(groups[r.FlowRunID], r)
+		}
+	}
+	out := []RunRec{}
+	for id, g := range groups {
+		rec := RunRec{ID: id, At: g[0].ScheduledAt, Trigger: g[0].Trigger}
+		for _, r := range g {
+			if r.ScheduledAt < rec.At || (r.ScheduledAt == rec.At && r.Attempt == 1) {
+				rec.At, rec.Trigger = r.ScheduledAt, r.Trigger
+			}
+			if r.StartedAt > 0 && (rec.Began == 0 || r.StartedAt < rec.Began) {
+				rec.Began = r.StartedAt
+			}
+			rec.End = max(rec.End, r.EndedAt)
+		}
+		if rec.At < dayStart {
+			continue
+		}
+		rec.Status = sched.FlowRunStatus(f, g)
+		if rec.Status == sched.FlowRunRunning {
+			rec.End = 0
+		}
+		latest := sched.LatestAttempts(f.ID, g)
+		for _, s := range f.Steps {
+			r, ok := latest[s.ID]
+			if !ok {
+				continue
+			}
+			if rec.ExecID == "" {
+				rec.ExecID = r.ExecID // 첫 스텝
+			}
+			if rec.Status == sched.FlowRunRunning && rec.Held == nil && r.Status == model.StatusHeld {
+				rec.Held = &Held{Step: s.ID, Since: sched.GateWaitStart(s, r, latest), MaxWait: s.GateMaxWait, Conds: sched.GateViews(gate, s, now)}
+				rec.ExecID = r.ExecID
+			}
+		}
+		if rec.Status == sched.FlowRunFailed {
+			if d := deadRun(f, g); d != nil {
+				rec.Dead, rec.ExecID = d.StepID, d.ExecID
+			}
+		}
+		if rec.Status == sched.FlowRunRunning && rec.Held == nil {
+			for _, s := range f.Steps { // 지금 도는 스텝(띠를 누르면 그 실행)
+				if r, ok := latest[s.ID]; ok && (r.Status == model.StatusRunning || r.Status == model.StatusDispatched) {
+					rec.ExecID = r.ExecID
+					break
+				}
+			}
+		}
+		out = append(out, rec)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].At != out[j].At {
+			return out[i].At < out[j].At
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out
 }
 
 // baseline은 대표 지표의 at 시각 값이다(같은 지표 · 같은 agg, at 앞 baseWindow 안의 마지막 값). 없으면 nil.
@@ -310,7 +420,11 @@ func (w *Watch) handle(rw http.ResponseWriter, r *http.Request) {
 	g := q.Get("g")
 	now := w.d.Now()
 	local := now.In(w.d.Loc)
-	svcs, panels, firing, err := w.snapshot(r.Context(), now, cmp, true)
+	sn, err := w.snapshot(r.Context(), now, cmp, true)
+	var bs []Batch
+	if err == nil {
+		bs, err = w.batches(r.Context(), now)
+	}
 	if err != nil {
 		slog.Error("업무 관제를 만들지 못함", "err", err)
 		writeJSON(rw, http.StatusInternalServerError, map[string]string{"error": "업무 관제를 만들지 못했습니다: " + err.Error()})
@@ -325,18 +439,19 @@ func (w *Watch) handle(rw http.ResponseWriter, r *http.Request) {
 	var shownPanels []model.Panel
 	levels := map[string]string{}
 	counts := map[string]int{"crit": 0, "warn": 0, "ok": 0, "off": 0}
-	for i, s := range svcs {
+	for i, s := range sn.svcs {
 		if g != "" && !query.InGroup(s.Group, g) {
 			continue
 		}
 		shown = append(shown, s)
-		shownPanels = append(shownPanels, panels[i])
+		shownPanels = append(shownPanels, sn.panels[i])
 		levels[s.ID] = s.Level
 		counts[s.Level]++
 	}
 	if shown == nil {
 		shown = []Service{}
 	}
+	shownBatches := scopeBatches(bs, g, shownPanels, sn.hosts)
 	writeJSON(rw, http.StatusOK, map[string]any{
 		"now":       now.UnixMilli(),
 		"scene_min": local.Hour()*60 + local.Minute(),
@@ -345,9 +460,39 @@ func (w *Watch) handle(rw http.ResponseWriter, r *http.Request) {
 		"day":       fmt.Sprintf("%d/%d(%s)", local.Month(), local.Day(), weekday[local.Weekday()]),
 		"counts":    counts,
 		"services":  shown,
-		"events":    Events(shown, firing, now.UnixMilli()),
-		"history":   BuildHistory(shownPanels, levels, states, local),
+		"events":    Events(shown, sn.firing, now.UnixMilli()),
+		"batches":   shownBatches,
+		"history":   BuildHistory(shownPanels, shownBatches, levels, states, local),
 	})
+}
+
+// scopeBatches는 그룹 범위(g)에 드는 업무 배치다: 범위 안 업무(패널)의 flows에 있거나,
+// 스텝 · 게이트 서버가 그 그룹에 있는 것(플로우 YAML에 적힌 서버). g가 비면 전부.
+func scopeBatches(bs []Batch, g string, panels []model.Panel, hosts []model.Host) []Batch {
+	if g == "" {
+		return bs
+	}
+	listed := map[string]bool{}
+	for _, p := range panels {
+		for _, id := range p.Flows {
+			listed[id] = true
+		}
+	}
+	group := map[string]string{}
+	for _, h := range hosts {
+		group[h.ID] = h.Group
+	}
+	out := []Batch{}
+	for _, b := range bs {
+		in := listed[b.Flow]
+		for _, h := range b.hosts {
+			in = in || query.InGroup(group[h], g)
+		}
+		if in {
+			out = append(out, b)
+		}
+	}
+	return out
 }
 
 // Run은 recordEvery마다 업무 등급을 그 5분 칸에 기록한다(칸 하나 = 그 5분의 가장 나쁜 등급과 그 까닭).
@@ -368,11 +513,12 @@ func (w *Watch) Run(ctx context.Context) error {
 
 // Record는 지금 판정을 칸에 더한다(Run이 부르고, 테스트가 직접 부른다).
 func (w *Watch) Record(ctx context.Context, now time.Time) {
-	svcs, _, _, err := w.snapshot(ctx, now, 0, false)
+	sn, err := w.snapshot(ctx, now, 0, false)
 	if err != nil {
 		slog.Warn("업무 상태를 기록하지 못함", "err", err)
 		return
 	}
+	svcs := sn.svcs
 	slot := SlotStart(now.In(w.d.Loc)).UnixMilli()
 	w.mu.Lock()
 	defer w.mu.Unlock()
