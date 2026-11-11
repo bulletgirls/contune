@@ -2,6 +2,8 @@ package memstore
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -14,7 +16,8 @@ import (
 
 // NewState는 메모리 StateStore를 만든다(맵 + 뮤텍스).
 func NewState() store.StateStore {
-	return &stateStore{runs: map[string]*model.Run{}, events: map[string][]model.RunEvent{}, hosts: map[string]model.Host{}}
+	return &stateStore{runs: map[string]*model.Run{}, events: map[string][]model.RunEvent{}, hosts: map[string]model.Host{},
+		exits: map[string][]byte{}}
 }
 
 type stateStore struct {
@@ -26,6 +29,7 @@ type stateStore struct {
 	holds     []model.RiskHold
 	alerts    []model.Alert
 	audit     []model.AuditEntry
+	exits     map[string][]byte // id → model.ExitRecord JSON(sqlite와 같게 복사본만 주고받는다)
 }
 
 func copyRun(r *model.Run) model.Run {
@@ -342,4 +346,91 @@ func (s *stateStore) AuditStats(ctx context.Context, from, to int64) (model.Audi
 		st.Actors[e.Actor]++
 	}
 	return st, nil
+}
+
+func (s *stateStore) AddExit(ctx context.Context, r model.ExitReport) error {
+	if r.ID == "" {
+		return errors.New("종료 보고서 id가 비었음")
+	}
+	b, err := json.Marshal(model.ExitRecord{Report: r})
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, dup := s.exits[r.ID]; dup {
+		return fmt.Errorf("종료 보고서 %s: 이미 있음", r.ID)
+	}
+	s.exits[r.ID] = b
+	return nil
+}
+
+func decodeExit(b []byte) (model.ExitRecord, error) {
+	var rec model.ExitRecord
+	err := json.Unmarshal(b, &rec)
+	return rec, err
+}
+
+func (s *stateStore) GetExit(ctx context.Context, id string) (model.ExitRecord, error) {
+	s.mu.Lock()
+	b, ok := s.exits[id]
+	s.mu.Unlock()
+	if !ok {
+		return model.ExitRecord{}, store.ErrNotFound
+	}
+	return decodeExit(b)
+}
+
+func (s *stateStore) ListExits(ctx context.Context, f model.ExitFilter) ([]model.ExitRecord, error) {
+	s.mu.Lock()
+	var out []model.ExitRecord
+	for _, b := range s.exits {
+		rec, err := decodeExit(b)
+		if err != nil {
+			s.mu.Unlock()
+			return nil, err
+		}
+		r := rec.Report
+		if f.ExecID != "" && r.ExecID != f.ExecID || f.Host != "" && r.Host != f.Host || f.Comm != "" && r.Comm != f.Comm ||
+			f.From != 0 && r.EndedAt < f.From || f.To != 0 && r.EndedAt >= f.To {
+			continue
+		}
+		out = append(out, rec)
+	}
+	s.mu.Unlock()
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i].Report, out[j].Report
+		if a.EndedAt != b.EndedAt {
+			return a.EndedAt > b.EndedAt
+		}
+		return a.ID > b.ID
+	})
+	limit := f.Limit
+	if limit <= 0 {
+		limit = 200
+	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (s *stateStore) SetExitLLM(ctx context.Context, id string, d model.ExitDiagnosis) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b, ok := s.exits[id]
+	if !ok {
+		return store.ErrNotFound
+	}
+	rec, err := decodeExit(b)
+	if err != nil {
+		return err
+	}
+	rec.LLM = &d
+	nb, err := json.Marshal(rec)
+	if err != nil {
+		return err
+	}
+	s.exits[id] = nb
+	return nil
 }
