@@ -37,7 +37,9 @@ func (r *Registry) Live(host string) []model.ProcInfo { return nil }
 
 // List는 기록 조회다: State.ListProcs 결과에 살아 있으면 직전 측정 값(CPU·RSS·스레드·LastSeen)을 덮고, ExecID의 플로우·스텝,
 // 끝난 것의 종료 보고서 ID를 채운다.
-func (r *Registry) List(ctx context.Context, f model.ProcFilter) ([]model.ProcInfo, error) { return nil, nil }
+func (r *Registry) List(ctx context.Context, f model.ProcFilter) ([]model.ProcInfo, error) {
+	return nil, nil
+}
 
 // LinkExit는 종료 보고서가 들어왔을 때 그 프로세스 기록에 보고서 ID를 붙인다(같은 host·pid, 시작 시각 차이 2초 안).
 func (r *Registry) LinkExit(ctx context.Context, rep model.ExitReport) {}

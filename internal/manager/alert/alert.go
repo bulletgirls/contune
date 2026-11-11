@@ -50,8 +50,8 @@ type Deps struct {
 	// Services는 서비스 조건(서비스 미기동·선언한 서비스가 뜨지 않음, 06·카드 P-D)이다. nil이면 서비스 알림 없음.
 	// 조건이 목록에 있는 동안 알림(kind service)이 열려 있고, 빠지면 닫힌다.
 	Services func(ctx context.Context, now int64) []ServiceCond
-	Cfg   Config
-	Now   func() time.Time
+	Cfg      Config
+	Now      func() time.Time
 }
 
 // Exit는 종료 알림 하나의 재료다: 종료 보고서 요약과 규칙 진단(exits가 채운다).
