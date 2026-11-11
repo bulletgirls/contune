@@ -1,4 +1,4 @@
-// 결정적 세계: 서버 43대·그룹 8개, 플로우 41개·배치판 6개, 실행 이력, 장애 기록.
+// 결정적 세계: 서버 46대·그룹 7개, 플로우 41개·배치판 6개, 실행 이력, 장애 기록.
 // 업무 프로세스 둘: 체결(match-01 matching_svc, market-open → w.startRun), 시세(feed-01 quote_svc, quote-open → w.quoteRun).
 // 실행 · 프로세스 · 서비스(06 §2.1): BATCH_JOB › start(batch-02)가 svr_a·svr_b·svr_c를 띄우고 2초 만에 끝난다(w.batchRun, w.procs).
 // svr_b가 SIGSEGV로 죽은 뒤 수동 재실행(w.batchRuns[1])이 svr_b만 다시 띄운다(계보, 06 §7.2).
@@ -16,20 +16,24 @@ export const ALLOW = [
 ];
 
 const GROUPS = [
-  ['매매/주문접수', 'gw', 2, 6],
-  ['매매/체결', 'match', 2, 8],
-  ['매매/시세', 'feed', 2, 6],
-  ['사후처리/청산정산', 'settle', 1, 4],
-  ['사후처리/배치', 'batch', 2, 4],
-  ['대외정보/대외연계', 'ext', 1, 6],
-  ['대외정보/정보계', 'dw', 1, 5],
-  ['공통/관리', 'ops', 1, 4],
+  ['채널', 'gw', 2, 6],
+  ['채널', 'ext', 1, 6],
+  ['매매체결', 'match', 2, 8],
+  ['매매통계', 'dw', 1, 5],
+  ['정보분배', 'feed', 2, 6],
+  ['지수산출', 'idx', 1, 3],
+  ['청산결제', 'settle', 1, 4],
+  ['청산결제', 'batch', 2, 4],
+  ['rds', 'rds', 1, 4],
 ];
+
+// 업무 시뮬레이터(카드 U §2, deploy/fleet.yaml stages): 이 서버가 biz.<name>.* 서버 지표를 낸다
+export const STAGE_HOSTS = { 'gw-02': 'channel', 'dw-01': 'stats', 'idx-01': 'index', 'settle-01': 'clearing', 'rds-01': 'rds' };
 
 const ID2 = (n) => String(n).padStart(2, '0');
 
 function buildHosts() {
-  const real = { 'match-01': '매매/체결', 'gw-01': '매매/주문접수', 'batch-01': '사후처리/배치', 'feed-01': '매매/시세' };
+  const real = { 'match-01': '매매체결', 'gw-01': '채널', 'batch-01': '청산결제', 'feed-01': '정보분배' };
   const list = [];
   for (const [group, prefix, from, to] of GROUPS) {
     const ids = [];
@@ -40,6 +44,7 @@ function buildHosts() {
         id,
         group,
         real: id in real,
+        stage: STAGE_HOSTS[id] || '',
         cpuBase: id === 'gw-01' ? 34 : 12 + 40 * rnd(id + 'cb'),
         memBase: 35 + 30 * rnd(id + 'mb'),
         memFixed: id === 'dw-02' ? 93 : 0,
@@ -58,15 +63,15 @@ function buildHosts() {
 // [배치판, id, cron, 스텝("id@host<선행,… …"), 상태 ok|prev|running]
 const AUX = [
   ['개장준비', 'fetch-ref', '10 5 * * 1-5', 'pull-ref@batch-02 verify-ref@batch-02', 'ok'],
-  ['개장준비', 'check-calendar', '0 5 * * 1-5', 'read-calendar@ops-01', 'ok'],
-  ['개장준비', 'warm-cache', '45 5 * * 1-5', 'warm-a@match-02< warm-b@match-03< report@ops-01<warm-a,warm-b', 'ok'],
+  ['개장준비', 'check-calendar', '0 5 * * 1-5', 'read-calendar@rds-01', 'ok'],
+  ['개장준비', 'warm-cache', '45 5 * * 1-5', 'warm-a@match-02< warm-b@match-03< report@rds-01<warm-a,warm-b', 'ok'],
   ['개장준비', 'sync-limits', '50 5 * * 1-5', 'fetch-limits@settle-01 apply-limits@settle-01', 'prev'],
-  ['개장준비', 'open-notice', '55 5 * * 1-5', 'build-notice@ops-02 send-notice@ops-02', 'prev'],
+  ['개장준비', 'open-notice', '55 5 * * 1-5', 'build-notice@rds-02 send-notice@rds-02', 'prev'],
   ['장중', 'intraday-risk', '*/10 * * * *', 'calc-risk@settle-02 post-risk@settle-02', 'running'],
   ['장중', 'margin-snap', '*/30 * * * *', 'snap@batch-02 store@batch-01', 'running'],
   ['장중', 'price-bar', '*/5 * * * *', 'make-bar@feed-01', 'ok'],
-  ['장중', 'exec-report', '0 * * * *', 'collect@ops-03 render@ops-03', 'running'],
-  ['장중', 'session-audit', '15 * * * *', 'scan@ops-04 report@ops-04', 'ok'],
+  ['장중', 'exec-report', '0 * * * *', 'collect@rds-03 render@rds-03', 'running'],
+  ['장중', 'session-audit', '15 * * * *', 'scan@rds-04 report@rds-04', 'ok'],
   ['정산', 'clearing-prep', '20 16 * * 1-5', 'extract@settle-01 check@settle-01', 'ok'],
   ['정산', 'clearing-send', '30 16 * * 1-5', 'pack@settle-02 send@ext-01', 'ok'],
   ['정산', 'fee-calc', '0 17 * * 1-5', 'calc-fee@settle-03 post-fee@settle-03', 'ok'],
@@ -89,10 +94,10 @@ const AUX = [
   ['정보계적재', 'build-mart', '0 21 * * 1-5', 'aggregate@dw-03 publish@dw-03', 'prev'],
   ['정보계적재', 'dw-verify', '30 21 * * 1-5', 'count@dw-05 diff@dw-05', 'prev'],
   ['정보계적재', 'dw-archive', '0 22 * * 1-5', 'pack@dw-04 move@dw-04', 'prev'],
-  ['주간월간', 'weekly-report', '0 7 * * 1', 'collect@ops-01 render@ops-01', 'prev'],
+  ['주간월간', 'weekly-report', '0 7 * * 1', 'collect@rds-01 render@rds-01', 'prev'],
   ['주간월간', 'monthly-close', '0 6 1 * *', 'lock@settle-01 close@settle-01', 'prev'],
-  ['주간월간', 'weekly-purge', '0 3 * * 0', 'purge@ops-02', 'prev'],
-  ['주간월간', 'monthly-audit', '0 5 1 * *', 'collect@ops-03 report@ops-03', 'prev'],
+  ['주간월간', 'weekly-purge', '0 3 * * 0', 'purge@rds-02', 'prev'],
+  ['주간월간', 'monthly-audit', '0 5 1 * *', 'collect@rds-03 report@rds-03', 'prev'],
 ];
 
 const BURN = (sec) => ['eum', 'burn', '--cpu', '1', '--duration', `${sec}s`];
@@ -424,26 +429,45 @@ function buildIncidents(base) {
     return [start, start + durMin * MIN];
   };
   const seeds = [
-    [d(6, 10, 12, 19), '매매/체결', '체결 지연'],
-    [d(5, 14, 3, 11), '매매/시세', '시세 수신 끊김'],
-    [d(4, 16, 20, 34), '사후처리/배치', '정산 배치 지연'],
-    [d(3, 9, 41, 8), '매매/주문접수', '주문 접수 오류'],
-    [d(2, 11, 25, 17), '매매/체결', '체결 지연'],
-    [d(1, 17, 5, 22), '대외정보/대외연계', '대외 전송 실패'],
+    [d(6, 10, 12, 19), '매매체결', '체결 지연'],
+    [d(5, 14, 3, 11), '정보분배', '시세 수신 끊김'],
+    [d(4, 16, 20, 34), '청산결제', '정산 배치 지연'],
+    [d(3, 9, 41, 8), '채널', '주문 접수 오류'],
+    [d(2, 11, 25, 17), '매매체결', '체결 지연'],
+    [d(1, 17, 5, 22), '채널', '대외 전송 실패'],
   ];
   const list = seeds.map(([[s, e], scope, title], i) => ({ id: i + 1, start: s, end: e, scope, title, source: 'seed', note: '', confirmed: false }));
   // 알림 규칙이 연 자동 기록: 하나는 사람이 장애로 확인했고, 하나는 아직(학습 라벨 아님, 05 §6.1)
   const [as, ae] = d(3, 13, 48, 6), [bs, be] = d(1, 10, 2, 4);
-  list.push({ id: list.length + 1, start: as, end: ae, scope: '매매/체결', title: '자동: 체결 · 대기 큐 위험', source: 'auto', note: '', confirmed: true });
+  list.push({ id: list.length + 1, start: as, end: ae, scope: '매매체결', title: '자동: 체결 · 대기 큐 위험', source: 'auto', note: '', confirmed: true });
   list.push({ id: list.length + 1, start: bs, end: be, scope: '', title: '자동: match-01 CPU 92%, match-03 CPU 91%', source: 'auto', note: '', confirmed: false });
   return list;
 }
 
 export const PANELS = [
   {
+    id: 'channel',
+    title: '채널',
+    group: '채널',
+    tiles: [
+      { title: '주문 수신량', signal: 'traffic', metric: 'biz.channel.in_tps', agg: 'sum', unit: 'TPS' },
+      { title: '주문 전달량', signal: 'traffic', metric: 'biz.channel.out_tps', agg: 'sum', unit: 'TPS' },
+      { title: '평균 전달 지연', signal: 'latency', metric: 'biz.channel.latency_avg_ms', agg: 'max', unit: 'ms', warn: 20, crit: 100 },
+      { title: '전달 지연 p99', signal: 'latency', metric: 'biz.channel.latency_p99_ms', agg: 'max', unit: 'ms', warn: 50, crit: 200 },
+      { title: '주문 거부', signal: 'errors', metric: 'biz.channel.error_tps', agg: 'sum', unit: '건/초', warn: 100, crit: 500 },
+      { title: '전달 대기', signal: 'saturation', metric: 'biz.channel.queue', agg: 'sum', unit: '건', warn: 2000, crit: 10000 },
+    ],
+    charts: [
+      { title: '처리량', unit: 'TPS', agg: 'sum', metrics: ['biz.channel.in_tps', 'biz.channel.out_tps'] },
+      { title: '지연', unit: 'ms', agg: 'max', metrics: ['biz.channel.latency_avg_ms', 'biz.channel.latency_p99_ms'] },
+      { title: '대기', unit: '건', agg: 'sum', metrics: ['biz.channel.queue'] },
+    ],
+    log_levels: ['error', 'warn'],
+  },
+  {
     id: 'matching',
-    title: '체결',
-    group: '매매/체결',
+    title: '매매체결',
+    group: '매매체결',
     tiles: [
       { title: '주문 유입량', signal: 'traffic', metric: 'biz.order.in_tps', agg: 'sum', unit: 'TPS', kpi: true },
       { title: '체결 처리량', signal: 'traffic', metric: 'biz.order.tps', agg: 'sum', unit: 'TPS' },
@@ -462,11 +486,29 @@ export const PANELS = [
     ],
     log_levels: ['error', 'warn'],
   },
-  // panels/호가시세.yaml과 같다(파일 이름 순서로 체결 뒤)
+  {
+    id: 'stats',
+    title: '매매통계',
+    group: '매매통계',
+    tiles: [
+      { title: '체결 수신량', signal: 'traffic', metric: 'biz.stats.in_tps', agg: 'sum', unit: 'TPS' },
+      { title: '통계 반영량', signal: 'traffic', metric: 'biz.stats.out_tps', agg: 'sum', unit: 'TPS' },
+      { title: '평균 반영 지연', signal: 'latency', metric: 'biz.stats.latency_avg_ms', agg: 'max', unit: 'ms', warn: 500, crit: 2000 },
+      { title: '반영 지연 p99', signal: 'latency', metric: 'biz.stats.latency_p99_ms', agg: 'max', unit: 'ms', warn: 1000, crit: 5000 },
+      { title: '반영 대기', signal: 'saturation', metric: 'biz.stats.queue', agg: 'sum', unit: '건', warn: 10000, crit: 50000 },
+    ],
+    charts: [
+      { title: '처리량', unit: 'TPS', agg: 'sum', metrics: ['biz.stats.in_tps', 'biz.stats.out_tps'] },
+      { title: '지연', unit: 'ms', agg: 'max', metrics: ['biz.stats.latency_avg_ms', 'biz.stats.latency_p99_ms'] },
+      { title: '대기', unit: '건', agg: 'sum', metrics: ['biz.stats.queue'] },
+    ],
+    log_levels: ['error', 'warn'],
+  },
+  // panels/04-정보분배.yaml과 같다(파일 번호 순서: 01 채널 · 02 매매체결 · 03 매매통계 · 04 정보분배 · 05 지수산출 · 06 청산결제 · 07 rds)
   {
     id: 'quote',
-    title: '시세',
-    group: '매매/시세',
+    title: '정보분배',
+    group: '정보분배',
     tiles: [
       { title: '시세 수신량', signal: 'traffic', metric: 'biz.quote.recv_tps', agg: 'sum', unit: '건/초', kpi: true },
       { title: '시세 송출량', signal: 'traffic', metric: 'biz.quote.sent_tps', agg: 'sum', unit: '건/초' },
@@ -484,6 +526,61 @@ export const PANELS = [
       { title: '시세 지연', unit: 'ms', agg: 'max', metrics: ['biz.quote.delay_avg_ms', 'biz.quote.delay_p99_ms'] },
       { title: '시세 누락', unit: '건/초', agg: 'sum', metrics: ['biz.quote.lost'] },
       { title: '수신 대기', unit: '건', agg: 'sum', metrics: ['biz.quote.backlog'] },
+    ],
+    log_levels: ['error', 'warn'],
+  },
+  {
+    id: 'index',
+    title: '지수산출',
+    group: '지수산출',
+    tiles: [
+      { title: '체결 입력', signal: 'traffic', metric: 'biz.index.in_tps', agg: 'sum', unit: 'TPS' },
+      { title: '지수 송출량', signal: 'traffic', metric: 'biz.index.out_tps', agg: 'sum', unit: '건/초' },
+      { title: '평균 산출 지연', signal: 'latency', metric: 'biz.index.latency_avg_ms', agg: 'max', unit: 'ms', warn: 300, crit: 1000 },
+      { title: '산출 지연 p99', signal: 'latency', metric: 'biz.index.latency_p99_ms', agg: 'max', unit: 'ms', warn: 500, crit: 2000 },
+      { title: '계산 대기', signal: 'saturation', metric: 'biz.index.queue', agg: 'sum', unit: '건', warn: 5000, crit: 20000 },
+    ],
+    charts: [
+      { title: '체결 입력', unit: 'TPS', agg: 'sum', metrics: ['biz.index.in_tps'] },
+      { title: '지수 송출', unit: '건/초', agg: 'sum', metrics: ['biz.index.out_tps'] },
+      { title: '지연', unit: 'ms', agg: 'max', metrics: ['biz.index.latency_avg_ms', 'biz.index.latency_p99_ms'] },
+      { title: '대기', unit: '건', agg: 'sum', metrics: ['biz.index.queue'] },
+    ],
+    log_levels: ['error', 'warn'],
+  },
+  {
+    id: 'clearing',
+    title: '청산결제',
+    group: '청산결제',
+    tiles: [
+      { title: '체결 수신량', signal: 'traffic', metric: 'biz.clearing.in_tps', agg: 'sum', unit: 'TPS' },
+      { title: '청산 처리량', signal: 'traffic', metric: 'biz.clearing.out_tps', agg: 'sum', unit: 'TPS' },
+      { title: '평균 처리 지연', signal: 'latency', metric: 'biz.clearing.latency_avg_ms', agg: 'max', unit: 'ms', warn: 1000, crit: 3000 },
+      { title: '처리 지연 p99', signal: 'latency', metric: 'biz.clearing.latency_p99_ms', agg: 'max', unit: 'ms', warn: 2000, crit: 6000 },
+      { title: '청산 대기', signal: 'saturation', metric: 'biz.clearing.queue', agg: 'sum', unit: '건', warn: 10000, crit: 50000 },
+    ],
+    charts: [
+      { title: '처리량', unit: 'TPS', agg: 'sum', metrics: ['biz.clearing.in_tps', 'biz.clearing.out_tps'] },
+      { title: '지연', unit: 'ms', agg: 'max', metrics: ['biz.clearing.latency_avg_ms', 'biz.clearing.latency_p99_ms'] },
+      { title: '대기', unit: '건', agg: 'sum', metrics: ['biz.clearing.queue'] },
+    ],
+    log_levels: ['error', 'warn'],
+  },
+  {
+    id: 'rds',
+    title: 'rds',
+    group: 'rds',
+    tiles: [
+      { title: '쓰기 요청', signal: 'traffic', metric: 'biz.rds.in_tps', agg: 'sum', unit: '건/초' },
+      { title: '커밋 완료', signal: 'traffic', metric: 'biz.rds.out_tps', agg: 'sum', unit: '건/초' },
+      { title: '평균 커밋 지연', signal: 'latency', metric: 'biz.rds.latency_avg_ms', agg: 'max', unit: 'ms', warn: 20, crit: 100 },
+      { title: '커밋 지연 p99', signal: 'latency', metric: 'biz.rds.latency_p99_ms', agg: 'max', unit: 'ms', warn: 50, crit: 200 },
+      { title: '쓰기 대기', signal: 'saturation', metric: 'biz.rds.queue', agg: 'sum', unit: '건', warn: 5000, crit: 20000 },
+    ],
+    charts: [
+      { title: '처리량', unit: '건/초', agg: 'sum', metrics: ['biz.rds.in_tps', 'biz.rds.out_tps'] },
+      { title: '지연', unit: 'ms', agg: 'max', metrics: ['biz.rds.latency_avg_ms', 'biz.rds.latency_p99_ms'] },
+      { title: '대기', unit: '건', agg: 'sum', metrics: ['biz.rds.queue'] },
     ],
     log_levels: ['error', 'warn'],
   },

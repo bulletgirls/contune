@@ -9,7 +9,7 @@
 //   PUT    /dashboards/{id}         {dash, rev} → {dash, rev} | 400 | 403(?editor=0) | 409 {error, rev}
 //   DELETE /dashboards/{id}?rev=    {} | 404 | 409 {error, rev} | 403
 //
-// 보드는 메모리에 둔다(처음 열 때 예시 셋 ops-wall · trading · settle, reset()이면 처음으로). rev = 정의 JSON의 짧은 해시.
+// 보드는 메모리에 둔다(처음 열 때 예시 넷 ops-wall · trading · settle · bizflow, reset()이면 처음으로). rev = 정의 JSON의 짧은 해시.
 // 지표 위젯 값은 카드 W "값 계산 규칙"을 mock 세계 값으로 흉내 낸다: 계열은 mock /series 처리기(services.js가 감싼 것 포함)에서,
 // Ref 타일은 mock /panels 처리기에서, 서비스 주인 키(svc:<서비스>@<서버>)는 mock /services의 인스턴스에서 얻는다.
 import { MIN, HOUR, DAY, sha, round } from './util.js';
@@ -23,7 +23,7 @@ const ok = (body, status = 200) => ({ status, body });
 const err = (status, msg, extra) => ({ status, body: { error: msg, ...extra } });
 
 // ---- model/dash.go ----
-const TYPES = ['stat', 'timeseries', 'bar', 'table', 'text', 'kpi', 'events', 'servers', 'servermap', 'batch', 'hours', 'risk', 'logs', 'services'];
+const TYPES = ['stat', 'timeseries', 'bar', 'table', 'text', 'kpi', 'events', 'servers', 'servermap', 'batch', 'hours', 'risk', 'logs', 'services', 'bizflow'];
 const METRIC_TYPES = new Set(['stat', 'timeseries', 'bar', 'table']);
 const AGGS = ['', 'sum', 'max', 'avg', 'min'];
 const BYS = ['', 'host', 'owner'];
@@ -78,6 +78,19 @@ function normScope(s) {
   put(o, 'panel', str(s.panel));
   return o;
 }
+// 업무 흐름 상자(model.FlowNode): panel · title · in · out · stock · edge · from · at
+function normNode(n) {
+  n = n || {};
+  const o = { panel: str(n.panel) };
+  put(o, 'title', str(n.title));
+  put(o, 'in', str(n.in));
+  put(o, 'out', str(n.out));
+  put(o, 'stock', str(n.stock));
+  put(o, 'edge', str(n.edge));
+  put(o, 'from', strs(n.from));
+  put(o, 'at', Array.isArray(n.at) ? n.at.map(Number) : []);
+  return o;
+}
 function normWidget(w, i) {
   if (!w || typeof w !== 'object') throw new Bad(`위젯 ${i + 1}번: 객체가 아닙니다`);
   const at = `위젯 ${str(w.id) || i + 1 + '번'}`;
@@ -96,6 +109,7 @@ function normWidget(w, i) {
   put(o, 'levels', strs(w.levels));
   put(o, 'limit', intOpt(w.limit, `${at}: limit`));
   put(o, 'text', str(w.text));
+  put(o, 'nodes', Array.isArray(w.nodes) ? w.nodes.map(normNode) : []);
   return o;
 }
 function normDash(d) {
@@ -132,6 +146,19 @@ function validate(d) {
 function validateWidget(w) {
   if (!TYPES.includes(w.type)) return `알 수 없는 종류 "${w.type}"`;
   const qs = w.queries || [];
+  if (w.type === 'bizflow') {
+    const ns = w.nodes || [];
+    if (ns.length < 1 || ns.length > 20) return '업무 흐름은 상자 1~20개입니다';
+    const ids = new Set();
+    for (const n of ns) {
+      if (!n.panel) return '상자에 panel이 없습니다';
+      if (ids.has(n.panel)) return `상자 ${n.panel}: panel이 겹칩니다`;
+      ids.add(n.panel);
+    }
+    for (const n of ns) for (const f of n.from || []) if (!ids.has(f) || f === n.panel) return `상자 ${n.panel}: from의 '${f}'는 이 위젯의 다른 상자가 아닙니다`;
+    return qs.length || w.ref ? '지표 위젯이 아니면 queries·ref를 쓸 수 없습니다' : '';
+  }
+  if ((w.nodes || []).length) return 'nodes는 업무 흐름 위젯만 쓸 수 있습니다';
   if (!METRIC_TYPES.has(w.type)) return qs.length || w.ref ? '지표 위젯이 아니면 queries·ref를 쓸 수 없습니다' : '';
   for (const [i, q] of qs.entries()) {
     if (!q.metric) return `쿼리 ${i + 1}: metric이 없습니다`;
@@ -209,16 +236,16 @@ function examples(now) {
         queries: [{ metric: 'biz.order.in_tps', label: '주문 유입', agg: 'sum' }, { metric: 'biz.order.tps', label: '체결', agg: 'sum' }] },
       { id: 'quote-delay', type: 'timeseries', title: '시세 지연', w: 6, h: 2, unit: 'ms', scope: { service: 'quote' }, warn: 100, crit: 500,
         queries: [{ metric: 'biz.quote.delay_avg_ms', label: '평균', agg: 'max' }, { metric: 'biz.quote.delay_p99_ms', label: 'p99', agg: 'max' }] },
-      { id: 'cpu', type: 'bar', title: '서버별 CPU', w: 4, h: 2, unit: '%', scope: { group: '매매' }, warn: 70, crit: 90, top: 10,
+      { id: 'cpu', type: 'bar', title: '서버별 CPU', w: 4, h: 2, unit: '%', scope: { group: '매매체결' }, warn: 70, crit: 90, top: 10,
         queries: [{ metric: 'host.cpu.pct', label: 'CPU', by: 'host' }] },
       { id: 'svc-res', type: 'table', title: '서비스 자원', w: 8, h: 2,
         queries: [{ metric: 'svc.cpu.pct', label: 'CPU %', by: 'owner' }, { metric: 'svc.rss.mb', label: 'RSS MB', by: 'owner' }] },
       { id: 'log', type: 'logs', title: '체결 로그', w: 6, h: 2, scope: { service: 'matching' }, levels: ['error', 'warn'] },
-      { id: 'svcs', type: 'services', title: '매매 서비스', w: 6, h: 2, scope: { group: '매매' } },
+      { id: 'svcs', type: 'services', title: '매매 서비스', w: 6, h: 2, scope: { group: '매매체결' } },
     ],
   };
   const settle = {
-    id: 'settle', title: '정산', desc: '사후처리 배치와 서버', group: '사후처리', range: '6h', ...meta(5 * HOUR),
+    id: 'settle', title: '정산', desc: '청산결제 배치와 서버', group: '청산결제', range: '6h', ...meta(5 * HOUR),
     widgets: [
       { id: 'batch', type: 'batch', title: '금일 정산 배치', w: 4, h: 2, scope: { board: '정산' } },
       { id: 'hours', type: 'hours', title: '시간대별 정산 배치', w: 8, h: 2, scope: { board: '정산' } },
@@ -229,7 +256,25 @@ function examples(now) {
         text: '정산 담당: 사후처리팀 (내선 2041)\n야간 당직: 운영팀 (내선 2000)\n청산 기관 연락: 업무 시간 02-000-0000\n장애 시 먼저 #ops 채널에 남기고 당직에게 전화' },
     ],
   };
-  return [opsWall, trading, settle].map(normDash);
+  // dashboards/bizflow.yaml과 같다(카드 U §5): 상자 하나 = 업무 패널 하나, 화살표 = 앞 업무의 out
+  const bizflow = {
+    id: 'bizflow', title: '업무 흐름', desc: '채널 → 매매체결 → 정보분배·지수산출·매매통계·청산결제 → rds 처리량과 대기', range: '1h', ...meta(HOUR),
+    widgets: [
+      { id: 'flow', type: 'bizflow', title: '업무 흐름', w: 12, h: 5, nodes: [
+        { panel: 'channel', in: '주문 수신량', out: '주문 전달량', stock: '전달 대기', at: [0, 0] },
+        { panel: 'matching', in: '주문 유입량', out: '체결 처리량', stock: '대기 큐', at: [1, 0], from: ['channel'] },
+        { panel: 'quote', in: '시세 수신량', out: '시세 송출량', stock: '수신 대기', at: [2, 0], from: ['matching', 'index'] },
+        { panel: 'index', in: '체결 입력', out: '지수 송출량', stock: '계산 대기', at: [2, 1], from: ['matching'] },
+        { panel: 'stats', in: '체결 수신량', out: '통계 반영량', stock: '반영 대기', at: [2, 2], from: ['matching'] },
+        { panel: 'clearing', in: '체결 수신량', out: '청산 처리량', stock: '청산 대기', at: [2, 3], from: ['matching'] },
+        { panel: 'rds', in: '쓰기 요청', out: '커밋 완료', stock: '쓰기 대기', at: [3, 2], from: ['stats', 'clearing'] },
+      ] },
+      { id: 'kpi', type: 'kpi', w: 4, h: 2 },
+      { id: 'ev', type: 'events', w: 4, h: 2, limit: 10 },
+      { id: 'svc', type: 'services', w: 4, h: 2 },
+    ],
+  };
+  return [opsWall, trading, settle, bizflow].map(normDash);
 }
 // 틀린 파일 예(목록 errors, 조회 422). 화면 오류 줄을 보이려는 것
 const BROKEN = [{ id: 'night', file: 'night.yaml', msg: '위젯 w3: 알 수 없는 종류 "gauge"' }];

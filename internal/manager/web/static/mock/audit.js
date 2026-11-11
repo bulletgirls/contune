@@ -34,7 +34,7 @@ const SPEC = [
   [240, U, 'risk.train', 'risk', '표본 436건 · 정확도 0.89'],
   [214, U, 'collect.discover', 'host:match-01', '후보 6개'],
   [212, U, 'collect.peek', 'host:match-01', '/data/log/matching_svc.01JC9B2K.log 20줄'],
-  [209, U, 'collect.save', 'group:매매/체결', 'group-매매-체결.yaml 4c1e9a07 → 8b52d3f6 로그 파일 1개'],
+  [209, U, 'collect.save', 'group:매매체결', 'group-매매체결.yaml 4c1e9a07 → 8b52d3f6 로그 파일 1개'],
   [190, U, 'flow.save', 'market-open', 'flows/개장준비/market-open.yaml 7b20d4aa → c91e5f08'],
   // 몰림: 3분 사이 5회
   [98, 'web(10.0.3.7)', 'login.fail', 'admin', ''],
@@ -53,7 +53,7 @@ const SPEC = [
   [33, O, 'run.kill', '01JCA2F7E4W9ZT5N0D3R8H1BKC', 'daily-settle/settle-report'],
   [26, O, 'run.force_ok', '01JCA2F7E4W9ZT5N0D3R8H1BKC', 'daily-settle/settle-report 사유: 보고서는 수작업으로 발송 완료'],
   [30, U, 'panels.reload', 'panels', '패널 2개, 읽지 못한 파일 1개'],
-  [22, U, 'collect.delete', 'host:ops-03', 'host-ops-03.yaml'],
+  [22, U, 'collect.delete', 'host:rds-03', 'host-rds-03.yaml'],
   [18, U, 'incident.create', 'incident:8', '정산 보고서 지연'],
   [12, U, 'flow.save', 'ext-send-margin', 'flows/대외송수신/ext-send-margin.yaml a4d83e15 → 1d6c70b9'],
   [6, U, 'audit.export', 'audit', '최근 24시간 · 41건'],
