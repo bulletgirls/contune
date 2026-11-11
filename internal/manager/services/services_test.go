@@ -430,10 +430,10 @@ func TestDetailEvents(t *testing.T) {
 	if len(d.Events) != 3 || d.Events[0].Kind != "start" || d.Events[0].TS != now-hour {
 		t.Fatalf("기본 1시간: %+v", d.Events)
 	}
-	// 종료 코드로 끝난 것은 warn, 이름표는 exit n.
+	// 종료 코드로 끝난 것은 warn, 이름표는 "종료 코드 n"(화면 endText와 같은 말).
 	code1 := 1
 	lv, text := exitLevelText(model.ExitReport{How: model.HowExit, ExitCode: &code1, Comm: "x"})
-	if lv != "warn" || text != "exit 1" {
+	if lv != "warn" || text != "종료 코드 1" {
 		t.Fatalf("exit.error %q %q", lv, text)
 	}
 	if code, _ := e.do("GET", "/api/v1/services/nope"); code != 404 {

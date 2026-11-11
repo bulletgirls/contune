@@ -193,6 +193,7 @@ type ExitItem struct {
 	EndedAt    int64  `json:"ended_at"`
 	Host       string `json:"host"`
 	ExecID     string `json:"exec_id"`
+	Service    string `json:"service,omitempty"` // 맞은 서비스(06, 카드 P)
 	FlowID     string `json:"flow_id,omitempty"`
 	StepID     string `json:"step_id,omitempty"`
 	PID        int    `json:"pid"`

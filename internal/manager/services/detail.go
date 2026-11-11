@@ -150,7 +150,7 @@ func exitLevelText(r model.ExitReport) (string, string) {
 	case r.SignalName != "":
 		return level, r.SignalName
 	case r.ExitCode != nil:
-		return level, fmt.Sprintf("exit %d", *r.ExitCode)
+		return level, fmt.Sprintf("종료 코드 %d", *r.ExitCode) // 화면 말(endText)과 같게
 	}
 	return level, d.Title
 }
