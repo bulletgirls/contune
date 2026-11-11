@@ -87,7 +87,7 @@
 - 함수 스택은 `matching_svc;[unknown];main;handle_order;…`처럼 `main` 앞에 `[unknown]`(libc 시작 프레임)이 하나 끼어 있습니다. glibc 2.34+의 `__libc_start_main_impl`은 11-11에 시작 프레임으로 지웁니다(`quote_svc;main;…`).
 
 **시연 전 사람이 할 일:**
-- 체결·시세 서비스 정의(`services/*.yaml`)의 감시 시간은 평일 08:30-15:40입니다. 시연이 그 밖이면 서비스가 "시간 외"로 보이고 미기동 알림이 쉬므로, 필요하면 `active`를 시연 시간에 맞춥니다.
+- 체결·시세 서비스 정의(`services/*.yaml`)의 감시 시간은 평일 08:30-21:30입니다. 시연이 그 밖이면 서비스가 "시간 외"로 보이고 미기동 알림이 쉬므로, 필요하면 `active`를 시연 시간에 맞춥니다.
 - 함수 추적: `sudo sysctl -w kernel.perf_event_paranoid=1`(재부팅하면 되돌아가므로 시연 직전에 확인).
 - compose 시연을 하려면 Docker 데몬을 켜고 `deploy/demo.sh` 앞에 `EUM_MODE=compose`. 데몬이 없으면 dev 모드로 같은 장면을 보입니다.
 - 시연 PC에서 `surge`를 한 번 돌려 p99가 수백 ms까지 오르는지 보고, 모자라면 `COST_SCAN`을 올려 다시 빌드합니다.
