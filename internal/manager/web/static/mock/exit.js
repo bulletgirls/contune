@@ -1,7 +1,8 @@
-// 종료 보고서 mock(카드 T5, 계약 T-exit-report §4): 세 건.
+// 종료 보고서 mock(카드 T5, 계약 T-exit-report §4).
 // ① matching_svc SIGSEGV NULL 역참조(core, gdb 칸 12개, 직전 구간 book_insert 74%)
 // ② quote_svc 메모리 부족(커널 OOM 줄, core 없음, RSS 120→1,830MB)
 // ③ matching_svc 다른 실행이 종료(SIGTERM, 같은 서버의 다른 실행이 2초 전에 시작)
+// ④ ext_client 종료 코드 2(ext-send-margin 스텝이 띄운 자식, 시도마다 한 건). 스텝 자신의 코드 종료는 보고하지 않는다(계약 1).
 // 실행은 세계(world.js)의 지난 market-open·quote-open 실행에 붙인다(타임머신 링크가 이어지게).
 // ?llm=0이면 LLM 없음, ?core=builtin이면 ①을 내장 분석(추정 칸)으로 보인다. DOM 없이 import된다.
 import { SEC, MIN, HOUR, ulid } from './util.js';
@@ -22,13 +23,16 @@ function stOf(w) {
       .sort((a, b) => b.started_at - a.started_at);
     const m = past('market-open', 'start-matching');
     const qr = past('quote-open', 'start-quote');
-    s = { m1: m[0] || w.startRun, m2: m[1] || m[0] || w.startRun, q1: qr[0] || w.quoteRun, llm: new Map() };
+    const xs = w.runs.filter((r) => r.flow_id === 'ext-send-margin' && r.step_id === 'send-margin' && r.status === 'FAILED' && r.started_at && r.ended_at)
+      .sort((a, b) => a.started_at - b.started_at);
+    s = { m1: m[0] || w.startRun, m2: m[1] || m[0] || w.startRun, q1: qr[0] || w.quoteRun, xs, llm: new Map() };
     state.set(w, s);
   }
   return s;
 }
 
 export const IDS = { crash: ulid(7001, 'exit/matching_svc/crash'), oom: ulid(7002, 'exit/quote_svc/oom'), term: ulid(7003, 'exit/matching_svc/term') };
+const extID = (i) => ulid(7010 + i, 'exit/ext_client/' + i);
 
 const fr = (func, offset, module, addr, file, line) => ({ func, offset, module, addr, ...(file ? { file, line } : {}) });
 const GDB_FRAMES = [
@@ -185,6 +189,37 @@ function termRec(w, s) {
   return { pack: { version: 1, report: rep, flow_id: r.flow_id, step_id: r.step_id, run_status: r.status, evidence }, rule };
 }
 
+// ④ 대외 송신 스텝(ext_send.sh)이 띄운 ext_client가 상대 서버에 붙지 못해 종료 코드 2. 시도(재시도 포함)마다 한 건.
+function extRecs(w, s) {
+  return s.xs.map((r, i) => {
+    const end = r.ended_at - 400;
+    const line = `(E) 상대 서버 연결 실패: 시간 초과 (시도 ${r.attempt || 1})`;
+    const before = s.xs.slice(0, i).filter((p) => end - (p.ended_at - 400) < 24 * HOUR); // 24시간 안의 앞선 종료
+    const rep = report({
+      id: extID(i), host: r.host, exec_id: r.exec_id, pid: 61877 + i * 131, ppid: 61870 + i * 131, comm: 'ext_client',
+      exe: '/opt/eum/demo/bin/ext_client', build_id: '0c7e2a95d41b8f3e6a0d2c9b7f1e4a8d3b6c5e20',
+      cmdline: '/opt/eum/demo/bin/ext_client --target margin --timeout 10 --key=***', started_at: r.started_at + 300, ended_at: end,
+      how: 'exit', exit_code: 2, resident: false, max_rss_mb: 6.2, last_rss_mb: 6.1, last_cpu_pct: 0.4, threads: 1,
+      stdout: '/opt/eum/demo/log/ext_send.out', stderr: '/opt/eum/demo/log/ext_send.out',
+      output_tail: ['(I) ext_send 시작 margin', '(I) 연결 시도 10.20.3.41:7100', line],
+    });
+    const evidence = [
+      { id: 'exit', title: '종료 코드 2로 끝남 · 스텝이 띄운 자식 프로세스', ts: end, lines: [`pid ${rep.pid} ext_client, ${Math.round((end - rep.started_at) / 1000)}초 동안 실행`, 'wait4: 종료 코드 2'] },
+      { id: 'output', title: '출력 끝 줄 3줄 (ext_send.out)', ts: end, lines: rep.output_tail },
+    ];
+    const n = before.length + 1;
+    if (before.length) evidence.push({ id: 'prev', title: `같은 서버에서 ext_client가 24시간 안에 ${n}번 끝남`, ts: end, facts: { count_24h: n },
+      lines: before.map((p) => `${hhmmss(p.ended_at - 400)} 종료 코드 2 (시도 ${p.attempt || 1})`) });
+    const rule = {
+      category: 'exit.error', title: `종료 코드 2 — ${line}`, confidence: 'high', by: 'rule', at: end + 2 * SEC,
+      detail: `스스로 종료 코드 2로 끝났습니다. 출력 끝 줄: ${line}` + (before.length ? ` 같은 서버에서 24시간 안에 ${n}번 같은 모양으로 끝났습니다.` : ''),
+      evidence_ids: before.length ? ['exit', 'output', 'prev'] : ['exit', 'output'],
+      next_checks: ['/opt/eum/demo/log/ext_send.out 파일 끝에서 오류 확인', '설정 파일·포트·파일 권한·의존 서비스 확인', '같은 명령을 손으로 실행해 재현'],
+    };
+    return { pack: { version: 1, report: rep, flow_id: r.flow_id, step_id: r.step_id, run_status: r.status, evidence }, rule };
+  });
+}
+
 // LLM 참고 초안(analyze). 규칙과 같은 묶음을 받지만 다른 근거를 더 본다.
 const DRAFTS = {
   [IDS.crash]: {
@@ -216,7 +251,7 @@ const SYSTEM = [
 
 function records(c) {
   const s = stOf(c.w);
-  return [crashRec(c.w, s, c.flags), oomRec(c.w, s), termRec(c.w, s)].map((x) => ({ ...x, llm: s.llm.get(x.pack.report.id) || null }));
+  return [crashRec(c.w, s, c.flags), oomRec(c.w, s), termRec(c.w, s), ...extRecs(c.w, s)].map((x) => ({ ...x, llm: s.llm.get(x.pack.report.id) || null }));
 }
 const find = (c, id) => records(c).find((x) => x.pack.report.id === id);
 const llmOn = (c) => !c.flags.llmOff;
@@ -230,6 +265,7 @@ function itemOf(x) {
   if (r.signal_name) o.signal_name = r.signal_name;
   if (r.exit_code != null) o.exit_code = r.exit_code;
   if (r.core_dumped) o.core_dumped = true;
+  if (r.resident) o.resident = true;
   if (x.llm) o.has_llm = true;
   return o;
 }
@@ -272,7 +308,8 @@ function analyze(c, m) {
   const x = find(c, id);
   if (!x) return err(404, 'not found');
   if (!llmOn(c)) return ok({ available: false, message: 'LLM 연동 뒤 쓸 수 있습니다 (manager.yaml llm)' });
-  const d = { ...DRAFTS[id], by: 'llm', model: 'mock-llm', at: c.now, actor: 'demo' };
+  const { by, at, ...base } = x.rule; // 초안이 없는 보고서는 규칙 진단을 그대로 되돌려 준다
+  const d = { ...(DRAFTS[id] || base), by: 'llm', model: 'mock-llm', at: c.now, actor: 'demo' };
   stOf(c.w).llm.set(id, d);
   return ok({ available: true, llm: d });
 }

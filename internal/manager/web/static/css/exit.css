@@ -131,3 +131,20 @@ mark.hl, .ex-prof .hl { background:color-mix(in srgb, var(--crit) 20%, transpare
 
 /* 모으지 못한 것 */
 .ex-notes ul { margin:0; padding-left:20px; color:var(--t2); }
+
+/* 종료 보고서 목록 #exits (실행 메뉴의 둘째 화면, 틀은 실행 이력과 같다) */
+body[data-page="exits"] #page { display:flex; flex-direction:column; }
+.exl-tbl col.c-at { width:124px; } .exl-tbl col.c-host { width:90px; } .exl-tbl col.c-proc { width:200px; }
+.exl-tbl col.c-end { width:170px; } .exl-tbl col.c-run { width:230px; }
+.exl-tbl tr.lv-crit td:first-child { box-shadow:inset 3px 0 0 var(--crit); }
+.exl-tbl tr.lv-warn td:first-child { box-shadow:inset 3px 0 0 var(--warn); }
+.exl-tbl td.proc .ex-b, .exl-tbl td.end .ex-b { margin-left:6px; font-size:11px; }
+.exl-tbl td.why .ex-b { margin-left:6px; font-size:11px; }
+.exl-tbl .dim { color:var(--t3); }
+.exl-tbl a { color:var(--t2); text-decoration:none; } .exl-tbl a:hover { color:var(--accent); text-decoration:underline; }
+.ex-cat { font-size:11px; padding:0 6px; border-radius:9px; background:var(--bg); border:1px solid var(--line); color:var(--t2); white-space:nowrap; }
+.bt-seg .dot.exg-crash { --c:var(--crit); } .bt-seg .dot.exg-oom { --c:var(--crit); } .bt-seg .dot.exg-killed { --c:var(--warn); }
+.bt-seg .dot.exg-error { --c:var(--warn); } .bt-seg .dot.exg-ok { --c:var(--ok); } .bt-seg .dot.exg-unknown { --c:var(--silent); }
+@media (max-width:900px) { .exl-tbl col.c-run { width:140px; } .exl-tbl col.c-proc { width:150px; } }
+body[data-page="exits"] .rn-listcard .bt-seg { max-width:100%; overflow-x:auto; }
+body[data-page="exits"] .rn-listcard .bt-seg button { flex:none; }

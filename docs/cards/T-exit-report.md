@@ -160,6 +160,13 @@ sqlite 표 `exits(id TEXT PRIMARY KEY, ended_at, host, exec_id, pid, comm, how, 
 **모으지 못한 것**(`Notes`).
 타임머신(`#run/<exec_id>`)은 그 실행의 종료 보고가 있으면 맨 위에 띠 `프로세스 종료 1건 — matching_svc SIGSEGV · book_insert에서 NULL 역참조 →`.
 
+**들어가는 길(11-11 보강):** 알림·타임머신 띠만으로는 알림이 없는 종료(`killed.run`·`exit.ok`)나 닫힌 알림, 실행을 모르는 종료에 닿지 못해 다음을 더했다.
+- **목록 `#exits[?host=&cat=&q=]`**: 실행 메뉴의 둘째 화면(머리 탭 `실행 이력 | 종료 보고서`). 시간 구간(기본 24시간, 실시간이면 끝을 열어 둠)·서버로 `GET /exits`를 부르고, 원인 묶음(비정상 종료 `crash.*` · 메모리 부족 · 강제 종료 `killed.*` · 오류 종료 · 정상 종료 · 원인 미상, 건수)·검색(프로세스·원인·플로우·pid)은 화면에서 거른다. 표: 끝난 시각 · 서버(→ 프로세스 탭) · 프로세스·pid·`상주` · 끝난 모양 배지·`core` · 원인 종류와 규칙 제목·`LLM` · 실행(→ 타임머신, 없으면 `이음이 띄우지 않음`). crit·warn 줄은 왼쪽 띠. 줄을 누르면 `#exit/<id>`.
+- **서버 `#host/<id>/proc`**: `이음 실행 프로세스` 아래 `종료된 프로세스`(고른 구간, 최근 10건, `종료 보고서 목록 →`은 `#exits?host=<id>`).
+- **실행 이력 `#runs`**: 그 실행에 딸린 종료 보고가 있으면 `플로우 › 스텝` 옆에 `■ matching_svc SIGSEGV`(여럿이면 `+n`) 칩 → `#exit/<id>`. 구간에 시작한 실행의 프로세스가 구간 뒤에 죽을 수 있어 `GET /exits?from=`의 끝을 연다.
+- **보고서 머리**: 경로 `종료 보고서 › <서버> › <프로세스> (pid)`(목록·그 서버의 목록으로).
+- `ExitItem`에 `resident`를 더했다(목록의 알림 등급 색과 `상주` 표시, 상주 서비스의 `unknown`은 warn).
+
 화면 말(05 §14.2): `SEGV_MAPERR` → `없는 주소`, `SEGV_ACCERR` → `권한 없는 접근`, `SI_USER` → `다른 프로세스가 보냄(kill)`, `SI_TKILL` → `스스로 보냄(abort·raise)`, `FPE_INTDIV` → `0으로 나눔`, `BUS_ADRALN` → `정렬 안 된 주소`. 원인 종류: `crash.null` NULL 역참조 · `crash.segv` 잘못된 메모리 접근 · `crash.abort` 스스로 중단 · `crash.signal` 실행 오류 신호 · `oom` 메모리 부족 · `killed.eum` eum 강제 종료 · `killed.run` 다른 실행이 종료 · `killed.other` 밖에서 종료 · `exit.error` 오류 종료 · `exit.ok` 정상 종료 · `unknown` 원인 미상.
 
 ---

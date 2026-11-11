@@ -84,6 +84,7 @@ export function parseRoute(hash, boards = new Set()) {
     case 'edit': params = { flow: segs[1] || '' }; break;
     case 'biz': params = { panel: segs[1] || '' }; break;
     case 'runs': break;
+    case 'exits': break;
     case 'run': params = { id: segs[1] || '' }; break;
     case 'alerts': break;
     case 'risk': break;

@@ -200,9 +200,10 @@ type ExitItem struct {
 	SignalName string `json:"signal_name,omitempty"`
 	ExitCode   *int   `json:"exit_code,omitempty"`
 	CoreDumped bool   `json:"core_dumped,omitempty"`
-	Category   string `json:"category"`   // 규칙 진단
-	Title      string `json:"title"`      // 규칙 진단
-	Confidence string `json:"confidence"` // 규칙 진단
+	Resident   bool   `json:"resident,omitempty"` // 스텝이 끝난 뒤에도 살아 있던 서비스(알림 등급·목록 표시)
+	Category   string `json:"category"`           // 규칙 진단
+	Title      string `json:"title"`              // 규칙 진단
+	Confidence string `json:"confidence"`         // 규칙 진단
 	HasLLM     bool   `json:"has_llm,omitempty"`
 }
 

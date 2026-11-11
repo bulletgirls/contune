@@ -174,7 +174,7 @@ func item(rec model.ExitRecord, m memo) model.ExitItem {
 	r := rec.Report
 	return model.ExitItem{
 		ID: r.ID, EndedAt: r.EndedAt, Host: r.Host, ExecID: r.ExecID, FlowID: m.flow, StepID: m.step,
-		PID: r.PID, Comm: r.Comm, How: r.How, SignalName: r.SignalName, ExitCode: r.ExitCode, CoreDumped: r.CoreDumped,
+		PID: r.PID, Comm: r.Comm, How: r.How, SignalName: r.SignalName, ExitCode: r.ExitCode, CoreDumped: r.CoreDumped, Resident: r.Resident,
 		Category: m.diag.Category, Title: m.diag.Title, Confidence: m.diag.Confidence, HasLLM: rec.LLM != nil,
 	}
 }

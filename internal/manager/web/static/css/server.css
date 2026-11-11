@@ -54,3 +54,8 @@
 @media (max-width:1100px) { .srv .meter .mt { width:44px; } }
 /* 목록의 정상 배지는 테두리 없는 회색: 이상(위험·경고·무응답) 배지만 눈에 띄게. 자리는 같게 둔다 */
 .srv-list .badge.ok { color:var(--t3); border-color:transparent; }
+/* 프로세스 탭: 종료된 프로세스(종료 보고서) */
+.srv-sech { display:flex; align-items:baseline; gap:12px; }
+.srv-sech h3.sec { margin-right:auto; }
+.srv-more { font-size:12px; color:var(--accent); text-decoration:none; } .srv-more:hover { text-decoration:underline; }
+.srv-why { display:inline-block; max-width:520px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom; }

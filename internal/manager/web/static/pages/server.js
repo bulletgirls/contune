@@ -5,6 +5,7 @@ import { el, fmtNum, numUnit, relTime, badge, table, info, shortExec, EMPTY, DAS
 import { lineChart, unitScale } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
 import { hashWith } from '../tree.js';
+import { endBadge, CATEGORY_TEXT } from './exit.js';
 
 const STATE_RANK = { crit: 0, silent: 1, warn: 2, ok: 3 };
 const SYNC = 'srv';
@@ -334,11 +335,15 @@ const PROC_COLS = [
 ];
 
 async function drawProc(body, grp, ctx) {
-  const hostBox = el('div'), tblBox = el('div'), detail = el('div', { class: 'srv-detail' }), recent = el('div');
-  // 지금 도는 실행이 먼저, 서버 전체 추이는 그 아래
+  const hostBox = el('div'), tblBox = el('div'), detail = el('div', { class: 'srv-detail' }), recent = el('div'), endedBox = el('div');
+  // 지금 도는 실행이 먼저, 그다음 끝난 프로세스(종료 보고서), 서버 전체 추이는 그 아래
   body.replaceChildren(
     el('h3', { class: 'sec' }, '이음 실행 프로세스 ', info('이음이 띄운 실행만 보인다(보안 최소선). CPU 사용률은 코어 1개 = 100%. 줄을 누르면 그 실행의 차트')),
     tblBox, detail,
+    el('div', { class: 'srv-sech' },
+      el('h3', { class: 'sec' }, '종료된 프로세스 ', info('고른 시간 구간에 이 서버에서 끝난 프로세스의 종료 보고서. 신호로 죽었거나 0이 아닌 코드로 끝난 것, 상주 서비스의 종료. 줄을 누르면 보고서')),
+      el('a', { class: 'srv-more', href: '#exits?host=' + encodeURIComponent(ctx.hostId), text: '종료 보고서 목록 →' })),
+    endedBox,
     el('h3', { class: 'sec', text: '서버 전체' }), hostBox,
     el('h3', { class: 'sec', text: '최근 실행' }), recent);
   const stops = [];
@@ -366,6 +371,27 @@ async function drawProc(body, grp, ctx) {
     if (sel && !list.some((p) => p.exec_id === sel.exec_id)) { sel = null; drawDetail(); }
   }
   stops.push(poll(async () => { const r = await api(`/hosts/${encodeURIComponent(ctx.hostId)}/procs`); drawProcs(r.procs || []); }, ctx.tr.current().live ? 2000 : 5000));
+  const ENDED = 10;
+  async function drawEnded() {
+    const rg = ctx.tr.current();
+    const p = new URLSearchParams({ host: ctx.hostId, from: String(Math.round(rg.from)), limit: String(ENDED + 1) });
+    if (!rg.live) p.set('to', String(Math.round(rg.to)));
+    const all = (await api('/exits?' + p)).exits || [];
+    const rows = all.slice(0, ENDED);
+    endedBox.replaceChildren(table({
+      empty: '이 구간에 끝난 프로세스 없음', rows,
+      onRow: (x) => { location.hash = '#exit/' + encodeURIComponent(x.id); },
+      columns: [
+        { key: 'ended_at', label: '끝난 시각', render: (x) => el('span', { title: new Date(x.ended_at).toLocaleString(), text: relTime(x.ended_at) }) },
+        { key: 'comm', label: '프로세스', render: (x) => el('span', {}, el('b', { text: x.comm || DASH }), ` · ${x.pid ?? DASH}`) },
+        { key: 'end', label: '끝난 모양', render: (x) => endBadge(x) },
+        { key: 'title', label: '원인', render: (x) => el('span', { class: 'srv-why', title: x.title || '' }, el('span', { class: 'ex-cat', text: CATEGORY_TEXT[x.category] || x.category || DASH }), ' ', x.title || '') },
+        { key: 'run', label: '실행', render: (x) => (x.exec_id ? `${x.flow_id || ''} › ${x.step_id || ''}` : '이음이 띄우지 않음') },
+      ],
+    }));
+    if (all.length > ENDED) endedBox.append(el('a', { class: 'srv-more', href: '#exits?host=' + encodeURIComponent(ctx.hostId), text: '더 보기 →' }));
+  }
+  stops.push(poll(() => drawEnded().catch(() => {}), 10000));
   const r = await api(`/runs?host=${encodeURIComponent(ctx.hostId)}&limit=20`);
   recent.replaceChildren(table({
     empty: EMPTY.none, rows: r.runs || [],

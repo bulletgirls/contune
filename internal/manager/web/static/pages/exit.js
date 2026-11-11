@@ -44,6 +44,25 @@ export function exitLevel(category, resident) {
   if (c === 'killed.other' || c === 'exit.error' || (c === 'unknown' && resident)) return 'warn';
   return '';
 }
+// 목록 거르기 묶음(#exits): 화면 단추 하나 = 원인 범주 여러 개
+export const EXIT_GROUPS = [
+  ['', '전체'], ['crash', '비정상 종료'], ['oom', '메모리 부족'], ['killed', '강제 종료'],
+  ['error', '오류 종료'], ['ok', '정상 종료'], ['unknown', '원인 미상'],
+];
+export function exitGroup(category) {
+  const c = String(category || '');
+  if (c.startsWith('crash.')) return 'crash';
+  if (c.startsWith('killed.')) return 'killed';
+  if (c === 'oom') return 'oom';
+  if (c === 'exit.error') return 'error';
+  if (c === 'exit.ok') return 'ok';
+  return 'unknown';
+}
+// 끝난 모양 배지(목록 한 줄): ■ SIGSEGV · ▲ 종료 코드 2 · ● SIGTERM
+export function endBadge(x) {
+  const lv = exitLevel(x.category, x.resident);
+  return el('span', { class: `badge ${lv || 'silent'}`, text: `${lv === 'crit' ? '■' : lv === 'warn' ? '▲' : '●'} ${endText(x)}` });
+}
 // 끝난 모양 한 낱말: SIGSEGV · 종료 코드 3 · 종료 상태 모름 (ExitReport·ExitItem 둘 다)
 export function endText(x) {
   if (x.how === 'signal' && x.signal_name) return x.signal_name;
@@ -214,7 +233,7 @@ export async function render(root, params) {
   try { d = await api('/exits/' + q(id)); } catch (e) {
     page.append(el('h2', { class: 'sec', text: '종료 보고서' }),
       el('p', { class: 'empty', text: e.status === 404 ? '종료 보고서를 찾을 수 없음' : '종료 보고서를 불러오지 못함' }),
-      el('a', { href: '#runs', text: '실행 이력으로' }));
+      el('a', { href: '#exits', text: '종료 보고서 목록으로' }));
     return;
   }
   const pk = d.pack || {};
@@ -237,9 +256,10 @@ export async function render(root, params) {
   // 머리
   const head = el('div', { class: 'ex-head' });
   {
-    const crumbs = [el('a', { href: '#runs', text: '실행 이력' })];
-    if (pk.flow_id) crumbs.push(' › ', el('a', { href: runRef(rep.exec_id), text: `${pk.flow_id}/${pk.step_id || ''}` }));
-    crumbs.push(' › ', el('span', { text: '종료 보고서' }));
+    // 목록(#exits) › 그 서버의 종료 › 이 보고서. 실행(플로우/스텝)은 아래 메타 줄에 있다.
+    const crumbs = [el('a', { href: '#exits', text: '종료 보고서' })];
+    if (rep.host) crumbs.push(' › ', el('a', { href: '#exits?host=' + q(rep.host), text: rep.host, title: '이 서버에서 끝난 프로세스' }));
+    crumbs.push(' › ', el('span', { text: `${rep.comm || '프로세스'} (pid ${rep.pid ?? DASH})` }));
     const badges = [el('span', { class: `badge ${level || 'silent'}`, text: `${level === 'crit' ? '■' : level === 'warn' ? '▲' : '●'} ${endText(rep)}` })];
     if (rep.core_dumped || core) badges.push(el('span', { class: 'ex-b on', text: 'core 있음' }));
     else badges.push(el('span', { class: 'ex-b', text: 'core 없음' }));
@@ -247,8 +267,9 @@ export async function render(root, params) {
     if (rep.leader) badges.push(el('span', { class: 'ex-b', text: '스텝 프로세스', title: '에이전트가 띄운 스텝 자신' }));
     if (rep.killed_by_agent) badges.push(el('span', { class: 'ex-b', text: 'eum이 종료 신호 보냄' }));
     const life = rep.started_at && rep.ended_at ? fmtDuration(rep.ended_at - rep.started_at) : DASH;
-    const execLink = el('a', { href: runRef(rep.exec_id), title: '타임머신에서 이 실행 보기' },
-      pk.flow_id ? `${pk.flow_id}/${pk.step_id || ''}` : rep.exec_id, el('span', { class: 'dim', text: ` #${shortExec(rep.exec_id)}` }));
+    const execLink = rep.exec_id ? el('a', { href: runRef(rep.exec_id), title: '타임머신에서 이 실행 보기' },
+      pk.flow_id ? `${pk.flow_id}/${pk.step_id || ''}` : rep.exec_id, el('span', { class: 'dim', text: ` #${shortExec(rep.exec_id)}` }))
+      : el('span', { text: '이음이 띄우지 않음', title: '에이전트가 띄운 실행에 딸리지 않은 프로세스(core·커널 로그로 찾음)' });
     head.append(
       el('div', { class: 'ex-crumb' }, crumbs),
       el('div', { class: 'ex-title' }, el('h2', { text: `${rep.comm || '프로세스'} 종료` }), badges),

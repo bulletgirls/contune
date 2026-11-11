@@ -7,6 +7,7 @@ import { el, fmtDuration, fmtNum, shortExec, info, DASH } from '../ui.js';
 import { fmtTime, fmtTick, TIME_INCRS } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
 import { fmtDT, runStatusHTML, TRIGGER_TEXT } from './batch.js';
+import { endText, exitLevel } from './exit.js';
 
 const LIMIT = 1000;
 
@@ -110,6 +111,23 @@ export function matchText(r, q) {
   return [r.flow_id, r.step_id, r.exec_id, r.host].some((v) => String(v || '').toLowerCase().includes(s));
 }
 
+// 실행 메뉴의 두 화면: 실행 이력(#runs) · 종료 보고서(#exits)
+export function runTabs(active) {
+  const tab = (id, href, text) => el('a', { href, class: active === id ? 'on' : '', text, ...(active === id ? { 'aria-current': 'page' } : {}) });
+  return el('nav', { class: 'rn-tabs', 'aria-label': '실행 보기' }, tab('runs', '#runs', '실행 이력'), tab('exits', '#exits', '종료 보고서'));
+}
+// 실행 줄의 종료 표시: 그 실행에 딸린 종료 보고(가장 최근 것) 한 칸, 여럿이면 +n
+function exitMark(items) {
+  if (!items || !items.length) return null;
+  const it = items[0];
+  const lv = exitLevel(it.category, it.resident) || 'info';
+  return el('a', {
+    class: 'rn-exit ' + lv, href: '#exit/' + encodeURIComponent(it.id),
+    title: `종료 보고서: ${it.comm} ${endText(it)} — ${it.title}` + (items.length > 1 ? ` 외 ${items.length - 1}건` : ''),
+    onclick: (ev) => ev.stopPropagation(),
+  }, `${lv === 'crit' ? '■' : lv === 'warn' ? '▲' : '●'} ${it.comm} ${endText(it).replace('종료 코드 ', '코드 ')}`, items.length > 1 ? el('span', { class: 'n', text: ` +${items.length - 1}` }) : null);
+}
+
 // ---- 화면 ----
 let stopFn = null;
 let tr = null;
@@ -118,8 +136,9 @@ export async function render(host, params, query = {}) {
   const f = { flow: query.flow || '', host: query.host || '', status: parseStatus(query.status), type: query.type || '', q: query.q || '' };
   let win = null; // 막대를 눌러 고른 시간대 {from, to}
   let runs = [];
+  let exitsBy = new Map(); // exec_id → 종료 보고(끝난 시각 내림차순)
 
-  const head = el('div', { class: 'rn-head' }, el('h2', { class: 'sec', text: '실행 이력' }));
+  const head = el('div', { class: 'rn-head' }, runTabs('runs'));
   const rangeBar = el('div', { class: 'rn-range' });
   const filters = el('div', { class: 'rn-filters' });
   const kpis = el('div', { class: 'bt-kpis rn-kpis' });
@@ -249,7 +268,7 @@ export async function render(host, params, query = {}) {
         el('td', { class: 'num at', text: fmtDT(startOf(r)), title: r.started_at ? '' : '예정 시각' }),
         el('td', { class: 'name' }, el('a', { href: '#runs?flow=' + encodeURIComponent(r.flow_id), class: 'fl', text: r.flow_id, title: '이 플로우만 보기',
           onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); f.flow = r.flow_id; keepQuery(); syncSelects(); load(); } }),
-          el('span', { class: 'sep', text: ' › ' }), el('span', { class: 'step', text: r.step_id })),
+          el('span', { class: 'sep', text: ' › ' }), el('span', { class: 'step', text: r.step_id }), exitMark(exitsBy.get(r.exec_id))),
         el('td', { class: 'cut', text: r.host || DASH }),
         el('td', { class: 'num' + (r.attempt > 1 ? ' retry' : ''), text: String(r.attempt ?? DASH) }),
         durCell(r, now, med, maxDur),
@@ -285,9 +304,19 @@ export async function render(host, params, query = {}) {
     const t = tr.current();
     const q = new URLSearchParams({ limit: String(LIMIT), from: String(Math.round(t.from)), to: String(Math.round(t.to)) });
     for (const k of ['flow', 'host']) if (f[k]) q.set(k, f[k]);
-    const r = await api('/runs?' + q);
+    // 종료 보고는 그 구간에 시작한 실행의 프로세스가 구간 뒤에 죽었을 수 있어 끝을 열어 둔다
+    const [r, ex] = await Promise.all([
+      api('/runs?' + q),
+      api('/exits?' + new URLSearchParams({ from: String(Math.round(t.from)), limit: '1000', ...(f.host ? { host: f.host } : {}) })).catch(() => ({ exits: [] })),
+    ]);
     if (my !== seq) return;
     runs = r.runs || [];
+    exitsBy = new Map();
+    for (const it of ex.exits || []) {
+      if (!it.exec_id) continue;
+      if (!exitsBy.has(it.exec_id)) exitsBy.set(it.exec_id, []);
+      exitsBy.get(it.exec_id).push(it);
+    }
     draw();
   }
   tr.onChange(() => { win = null; load().catch(() => {}); });

@@ -689,7 +689,7 @@ func TestListAndDetail(t *testing.T) {
 	}
 	it := items[0]
 	if it.Category != model.ExitCrashNull || it.Title != "가짜: 죽은 곳 __memmove_avx+0x10 (libc.so.6)" || it.Confidence != "high" ||
-		it.FlowID != "market-open" || it.StepID != "start-matching" || it.SignalName != "SIGSEGV" || !it.CoreDumped || it.HasLLM {
+		it.FlowID != "market-open" || it.StepID != "start-matching" || it.SignalName != "SIGSEGV" || !it.CoreDumped || !it.Resident || it.HasLLM {
 		t.Errorf("목록 한 줄 %+v", it)
 	}
 	for q, want := range map[string]string{

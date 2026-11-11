@@ -12,9 +12,9 @@ const PAGES = {
   audit: './pages/audit.js', collect: './pages/collect.js',
   run: './pages/tm.js', alerts: './pages/alerts.js', risk: './pages/risk.js',
   'dev/flame': './pages/devflame.js',
-  exit: './pages/exit.js',
+  exit: './pages/exit.js', exits: './pages/exits.js',
 };
-const MENU = { dashboard: 'dashboard', hosts: 'hosts', host: 'hosts', collect: 'hosts', board: 'board', edit: 'board', biz: 'biz', runs: 'runs', run: 'runs', exit: 'runs' };
+const MENU = { dashboard: 'dashboard', hosts: 'hosts', host: 'hosts', collect: 'hosts', board: 'board', edit: 'board', biz: 'biz', runs: 'runs', run: 'runs', exit: 'runs', exits: 'runs' };
 
 let boards = new Set();
 let current = null;
