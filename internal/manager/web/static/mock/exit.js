@@ -257,9 +257,50 @@ const SYSTEM = [
   'evidence_ids에는 묶음의 evidence[].id만 쓴다.',
 ].join('\n');
 
+// ⑤ BATCH_JOB › start가 띄운 svr_b(자동 서비스, 06 §2.1)가 SIGSEGV로 끝남. mock 세계(w.batchRun·w.procs)의 종료 ID·시각을 그대로 쓴다.
+function svrbRec(w) {
+  const r = w.batchRun;
+  const p = (w.procs || []).find((x) => r && x.exec_id === r.exec_id && x.comm === 'svr_b' && x.exit_id);
+  if (!r || !p) return [];
+  const end = p.ended_at;
+  const frames = [
+    fr('parse_record', '+0x4c', 'svr_b', '0x000056201a40112c', 'record.c', 57),
+    fr('load_batch', '+0x1d2', 'svr_b', '0x000056201a4015e2', 'batch.c', 133),
+    fr('main', '+0x9a', 'svr_b', '0x000056201a400d4a', 'main.c', 41),
+    fr('__libc_start_call_main', '+0x80', 'libc.so.6', '0x00007f6b1c229d90'),
+    fr('_start', '+0x25', 'svr_b', '0x000056201a400a45'),
+  ];
+  const rep = report({
+    id: p.exit_id, host: p.host, exec_id: r.exec_id, service: 'svr_b', pid: p.pid, ppid: p.ppid, comm: 'svr_b', exe: p.exe,
+    build_id: '5d0b3e81a7c94f2263e1b0d9c8a7f6e5d4c3b2a1', cmdline: p.cmdline, started_at: p.started_at, ended_at: end,
+    how: 'signal', signal: 11, signal_name: 'SIGSEGV', core_dumped: true, max_rss_mb: 384.2, last_rss_mb: 380.6, last_cpu_pct: 52, threads: 4,
+    stdout: '/opt/batch/log/svr_b.out', stderr: '/opt/batch/log/svr_b.out',
+    output_tail: ['(I) 배치 레코드 읽기 128,000건', '(W) 레코드 길이 0: offset 51,203,904', '(I) 배치 레코드 읽기 129,000건'],
+    core: { path: `/var/lib/eum/core/core.svr_b.${p.pid}`, size_bytes: 9437184, truncated: false, analyzer: 'gdb', signal: 11, signal_name: 'SIGSEGV',
+      code: 1, code_name: 'SEGV_MAPERR', code_text: '없는 주소', fault_addr: '0x10', threads: 4, crash_tid: p.pid, frames, build_id_ok: true, notes: [] },
+    kernel: [`[903311.204551] svr_b[${p.pid}]: segfault at 10 ip 000056201a40112c sp 00007ffe2c1a9b30 error 4 in svr_b[56201a400000+4000]`],
+  });
+  const evidence = [
+    { id: 'exit', title: `svr_b(pid ${p.pid}) SIGSEGV · core 있음 · 상주 서비스`, ts: end,
+      lines: ['끝난 방식: 신호 SIGSEGV(11), core 씀 · 출처 wait4(에이전트가 부모)', `시작 ${hhmmss(p.started_at)} · 끝 ${hhmmss(end)}`] },
+    { id: 'core', title: '죽은 곳 parse_record+0x4c (svr_b)', ts: end, lines: frames.slice(0, 3).map((f, i) => `#${i} ${f.func}${f.offset} (${f.module}) ${f.addr}`) },
+    { id: 'job', title: 'RSS 371.4 → 380.6MB (최대 384.2)', ts: end, facts: { rss_first_mb: 371.4, rss_last_mb: 380.6, rss_max_mb: 384.2, cpu_last_pct: 52, span_s: 120 },
+      lines: ['RSS 처음 371.4MB → 마지막 380.6MB, 최대 384.2MB (점 120개)', 'CPU 마지막 52% · 최대 61%'] },
+    { id: 'output', title: '출력 끝 3줄', ts: end, lines: rep.output_tail },
+    { id: 'kernel', title: '커널 로그 1줄', ts: end, lines: rep.kernel },
+  ];
+  const rule = {
+    category: 'crash.segv', title: 'parse_record에서 잘못된 메모리 접근(주소 0x10)', confidence: 'high', by: 'rule', at: end + 2 * SEC,
+    detail: 'svr_b가 SIGSEGV(없는 주소)로 죽었습니다. 결함 주소 0x10은 NULL 근처라 비어 있는 레코드 포인터를 따라간 모양입니다. 직전 출력에 길이 0 레코드 경고가 있습니다.',
+    evidence_ids: ['exit', 'core', 'output', 'kernel'],
+    next_checks: ['record.c:57에서 길이 0 레코드 처리 확인', '같은 build-id의 실행 파일로 core 열기: gdb svr_b core.svr_b.' + p.pid, 'BATCH_JOB을 다시 실행해 svr_b만 다시 뜨는지 확인'],
+  };
+  return [{ pack: { version: 1, report: rep, flow_id: r.flow_id, step_id: r.step_id, run_status: r.status, evidence }, rule }];
+}
+
 function records(c) {
   const s = stOf(c.w);
-  return [crashRec(c.w, s, c.flags), oomRec(c.w, s), termRec(c.w, s), ...extRecs(c.w, s)].map((x) => ({ ...x, llm: s.llm.get(x.pack.report.id) || null }));
+  return [crashRec(c.w, s, c.flags), oomRec(c.w, s), termRec(c.w, s), ...extRecs(c.w, s), ...svrbRec(c.w)].map((x) => ({ ...x, llm: s.llm.get(x.pack.report.id) || null }));
 }
 const find = (c, id) => records(c).find((x) => x.pack.report.id === id);
 const llmOn = (c) => !c.flags.llmOff;
@@ -267,7 +308,7 @@ const llmOn = (c) => !c.flags.llmOff;
 function itemOf(x) {
   const r = x.pack.report;
   const o = {
-    id: r.id, ended_at: r.ended_at, host: r.host, exec_id: r.exec_id, flow_id: x.pack.flow_id, step_id: x.pack.step_id,
+    id: r.id, ended_at: r.ended_at, host: r.host, exec_id: r.exec_id, ...(r.service ? { service: r.service } : {}), flow_id: x.pack.flow_id, step_id: x.pack.step_id,
     pid: r.pid, comm: r.comm, how: r.how, category: x.rule.category, title: x.rule.title, confidence: x.rule.confidence,
   };
   if (r.signal_name) o.signal_name = r.signal_name;

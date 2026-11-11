@@ -6,7 +6,7 @@
 //                           그 전날 프로세스는 다음 기동 때 SIGTERM(③), 지금 프로세스는 오늘 start-matching(w.startRun)이 띄움
 //        matching@match-02  이음 밖에서 잠깐 띄웠다 끝난 것(감시 시간 밖이면 off, 안이면 down)
 //   시세 quote@feed-01      어제 OOM(②) 뒤 오늘 start-quote(w.quoteRun)가 다시 띄움 · quote@feed-02 2시간 전에 끝남(down, 서비스 미기동)
-//   자동 svr_a·svr_b·svr_c  batch-01에서 daily-settle › settle이 띄움(06 §2.1), svr_b는 끝남
+//   자동 svr_a·svr_b·svr_c  BATCH_JOB › start가 띄움(mock 세계의 w.batchRun·w.procs, 06 §2.1), svr_b는 끝남
 //
 // 서비스 주인 키("svc:<서비스>@<서버>")로 오는 /series·/profile·/logs, 서비스 패널의 /panels, /alerts·/exits는
 // 앞선 mock 모듈의 경로를 감싸서 받는다(ROUTES에서 services가 뒤라 정규식만으로는 먼저 받을 수 없다).
@@ -127,11 +127,17 @@ function story(c) {
   }
   P({ host: 'feed-02', pid: 30215, started_at: now - DAY - 4 * HOUR, ended_at: now - 2 * HOUR - 12 * MIN, comm: 'quote_svc', exe: '/opt/eum/demo/bin/quote_svc',
     cmdline: '/opt/eum/demo/bin/quote_svc --port 9200 --recv-rate 2000 --standby', service: 'quote', profile: true, threads: 3 });
-  const st = latestRun(w, 'daily-settle', 'settle');
+  // 자동 svr_a·svr_b·svr_c: mock 세계의 BATCH_JOB › start(w.batchRun)가 띄운 프로세스(w.procs)와 같은 pid·시각·종료.
+  // 세계에 없으면(예전 세계) daily-settle › settle로 대신한다.
+  const st = w.batchRun || latestRun(w, 'daily-settle', 'settle');
   if (st) {
-    AUTO.forEach((n, i) => P({ host: st.host, pid: 4101 + i, ppid: 4100, started_at: st.started_at + 300 + i * 40, comm: n, exe: `/app/batch/bin/${n}`,
-      cmdline: `/app/batch/bin/${n} --conf /app/batch/conf/${n}.conf`, ...fromRun(st), service: n, auto: true, threads: 2,
-      ended_at: n === 'svr_b' ? st.started_at + 3 * HOUR + 12 * MIN : 0 }));
+    const wp = (w.procs || []).filter((p) => p.exec_id === st.exec_id);
+    AUTO.forEach((n, i) => {
+      const x = wp.find((p) => p.comm === n) || {};
+      P({ host: x.host || st.host, pid: x.pid ?? 4101 + i, ppid: x.ppid ?? 4100, started_at: x.started_at ?? st.started_at + 300 + i * 40, comm: n,
+        exe: x.exe || `/opt/batch/bin/${n}`, cmdline: x.cmdline || `/opt/batch/bin/${n}`, ...fromRun(st), service: n, auto: true, threads: x.threads || 2,
+        ended_at: x.ended_at ?? (n === 'svr_b' ? st.started_at + 3 * HOUR + 12 * MIN : 0), ...(x.exit_id ? { exit_id: x.exit_id } : {}) });
+    });
   }
   // 직전 측정 값
   for (const p of procs) {
