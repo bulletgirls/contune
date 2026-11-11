@@ -25,10 +25,12 @@ type pushSample struct {
 	pushLine
 }
 
-// push는 업무 프로세스가 UDP로 보낸 지표를 모았다가 Collect 때 내보낸다.
+// push는 업무 프로세스가 UDP로 보낸 지표를 모았다가 Collect 때 내보낸다. 받은 줄은 바로 탭에도 올린다(카드 U §3).
 type push struct {
 	conn  net.PacketConn
 	owner string // service 설정이 있으면 그 서비스 주인 키(줄 끝 exec_id보다 우선)
+	host  string
+	tap   *Tap
 	mu    sync.Mutex
 	buf   []pushSample
 }
@@ -53,9 +55,20 @@ func newPush(cfg map[string]any, env Env) (*push, error) {
 	if ua, ok := conn.LocalAddr().(*net.UDPAddr); ok && !ua.IP.IsLoopback() {
 		slog.Warn("push이 루프백이 아닌 주소에서 듣는다", "listen", listen)
 	}
-	p := &push{conn: conn, owner: owner}
+	p := &push{conn: conn, owner: owner, host: env.Host, tap: defaultTap}
 	go p.readLoop()
 	return p, nil
+}
+
+// tapSource는 받은 줄의 탭 출처다: 서비스 주인 키, 없으면 서버·실행 ID.
+func (p *push) tapSource(execID string) string {
+	switch {
+	case p.owner != "":
+		return p.owner
+	case execID == "":
+		return p.host
+	}
+	return p.host + "/" + execID
 }
 
 func (p *push) Name() string   { return "push" }
@@ -75,6 +88,7 @@ func (p *push) readLoop() {
 		now := time.Now()
 		for _, l := range ParsePushLines(b[:n]) {
 			p.add(l, now)
+			p.tap.Put(l.Name, p.tapSource(l.ExecID), l.Value, now)
 		}
 	}
 }
