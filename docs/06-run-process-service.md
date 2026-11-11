@@ -90,7 +90,7 @@ flowchart LR
 # services/체결.yaml — 정의의 기준은 파일(플로우·패널과 같은 원칙). 누가 띄웠는지와 무관하게 이 규칙으로 찾는다.
 id: matching
 title: 체결
-group: 매매/체결              # 이 서버 묶음에서만 찾는다(서버 트리 경로)
+group: 매매체결               # 이 서버 묶음에서만 찾는다(서버 트리 경로)
 match:                         # 위에서부터, 하나라도 맞으면 이 서비스
   - env: EUM_SERVICE=matching  # 명시 표식: 스텝 YAML이나 systemd Environment=로 붙임(Datadog DD_SERVICE와 같은 방식)
   - exe: /app/bin/matching_svc # 실행 파일 경로(glob)
@@ -203,7 +203,7 @@ BATCH_JOB › start ──▶ start_job.sh ──── svr_b  ● 10:11부터 [
 | **P3** 서비스 운영 | `expect`(서비스 미기동 알림), 스텝 `starts:` 확인, 서비스 정지·재기동 조작(허용 목록 안), `서비스로 등록` 마법사 | 운영 완결 | 중 |
 
 - 이전 데이터: `exec_id`만 있는 지난 계열은 `service = ''`로 남고, 실행 타임머신으로 계속 본다. P2 이후 계열부터 서비스 화면에 나온다.
-- 시연은 오히려 쉬워진다: "체결 패널이 빨갛다 → 서비스 타임머신 → 시간축에 05:30 `start-matching` 기동 표시 → 재기동을 넘어 A·B → `book_insert`". 실행 ID의 가치(설정 없이 이어짐)는 자동 서비스와 사건 표시로 남는다.
+- 시연은 오히려 쉬워진다: "매매체결 패널이 빨갛다 → 서비스 타임머신 → 시간축에 05:30 `start-matching` 기동 표시 → 재기동을 넘어 A·B → `book_insert`". 실행 ID의 가치(설정 없이 이어짐)는 자동 서비스와 사건 표시로 남는다.
 
 ## 10. 정할 것
 
