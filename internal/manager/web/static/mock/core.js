@@ -6,6 +6,7 @@ import {
 } from './world.js';
 import {
   HOST_NAMES, ALL_NAMES, hostAt, serviceAt, batchJobAt, bizAt, logLevelsAt, riskAt, BIZ_NAMES, LOG_NAMES, JOB_NAMES,
+  QUOTE_NAMES, quoteAt, quoteServiceAt, quoteRate, quoteSurgeRange,
 } from './signal.js';
 
 const ok = (body, status = 200) => ({ status, body });
@@ -91,6 +92,7 @@ function runEnd(r, now) {
 
 function runValues(c, r, ts) {
   if (r === c.w.startRun) return { ...serviceAt(ts, c.sig), ...bizAt(ts, c.sig), ...logVals(ts, c.sig) };
+  if (r === c.w.quoteRun) return { ...quoteServiceAt(ts, c.sig), ...quoteAt(ts, c.sig), ...quoteLogVals(ts, c.sig) };
   if (r.service) return serviceAt(ts, { ...c.sig, surge: false });
   return batchJobAt(r, ts, c.sig);
 }
@@ -98,6 +100,19 @@ function runValues(c, r, ts) {
 function logVals(ts, sig) {
   const l = logLevelsAt(ts, sig);
   return { 'log.error.count': round(l.e / 5, 2), 'log.warn.count': round(l.w / 5, 2) };
+}
+
+// 시세 서비스 로그: 수신율 8000이면 5초마다 (E) DELAY·BACKLOG·GAP, 6000이면 가끔 (W)
+export function quoteLogVals(ts, sig) {
+  const r = quoteRate(ts, sig);
+  return { 'log.error.count': r >= 8000 ? 0.6 : 0, 'log.warn.count': r >= 6000 && r < 8000 ? 0.2 : 0 };
+}
+
+// 실행이 내는 업무 지표: 체결 서비스 실행은 biz.order.*, 시세 서비스 실행은 biz.quote.*, 나머지는 job.*만
+function ownNames(c, r) {
+  if (r === c.w.startRun) return (n) => !QUOTE_NAMES.includes(n);
+  if (r === c.w.quoteRun) return (n) => !BIZ_NAMES.includes(n);
+  return (n) => JOB_NAMES.includes(n);
 }
 
 function pointsGrid(from, to, stepMs) {
@@ -116,7 +131,7 @@ export function seriesQuery(c, p) {
   const grid = pointsGrid(from, Math.min(to, now), step * 1000);
   const names = expandNames(p.name);
   const hostNames = names.filter((n) => HOST_NAMES.includes(n) || n.startsWith('agent.'));
-  const jobNames = names.filter((n) => JOB_NAMES.includes(n) || BIZ_NAMES.includes(n) || LOG_NAMES.includes(n));
+  const jobNames = names.filter((n) => JOB_NAMES.includes(n) || BIZ_NAMES.includes(n) || QUOTE_NAMES.includes(n) || LOG_NAMES.includes(n));
   const entities = [];
 
   if (hostNames.length) {
@@ -140,7 +155,7 @@ export function seriesQuery(c, p) {
     if (p.exec_id) rs = c.w.runs.filter((r) => r.exec_id === p.exec_id);
     else {
       rs = c.w.runs.filter((r) => {
-        if (!(r === c.w.startRun || r.service || r.status === 'RUNNING')) return false;
+        if (!(r === c.w.startRun || r === c.w.quoteRun || r.service || r.status === 'RUNNING')) return false;
         if (p.host) return r.host === p.host;
         if (p.group) {
           const h = c.w.hosts.find((x) => x.id === r.host);
@@ -151,7 +166,7 @@ export function seriesQuery(c, p) {
     }
     for (const r of rs) {
       if (!r.started_at) continue;
-      const nm = jobNames.filter((n) => (r === c.w.startRun ? true : JOB_NAMES.includes(n)));
+      const nm = jobNames.filter(ownNames(c, r));
       if (!nm.length) continue;
       entities.push({
         host: r.host,
@@ -198,8 +213,10 @@ export function seriesQuery(c, p) {
       series.push({ host: '', name, exec_id: '', points });
     }
   }
-  for (const name of names) {
-    if (QUOTE_SERIES[name]) series = series.concat([{ host: '', name, exec_id: '', points: grid.map((t) => [t, QUOTE_SERIES[name](t, now)]) }]);
+  if (!p.exec_id) {
+    for (const name of names) {
+      if (VENDOR_SERIES[name]) series = series.concat([{ host: '', name, exec_id: '', points: grid.map((t) => [t, VENDOR_SERIES[name](t, now)]) }]);
+    }
   }
   return { from, to, step, series };
 }
@@ -222,64 +239,75 @@ function series(c) {
 
 // ---- 패널 ----
 
-export function tileValue(c, metric) {
+export function tileValue(c, metric, panel = 'matching') {
   const ex = { ...c.sig, exact: true };
   const ts = c.now;
   if (BIZ_NAMES.includes(metric)) return bizAt(ts, ex)[metric];
+  if (QUOTE_NAMES.includes(metric)) return quoteAt(ts, ex)[metric];
+  if (panel === 'quote' && metric.startsWith('log.')) return quoteLogVals(ts, ex)[metric];
   if (metric === 'log.error.count') return round(logLevelsAt(ts, ex).e / 5, 2);
   if (metric === 'log.warn.count') return round(logLevelsAt(ts, ex).w / 5, 2);
   if (metric === 'agent.profiler.cpu_pct') return 0.6;
   return null;
 }
 
+// 매니저 판정(query/panels.go)과 같은 순서: 높으면 위험 → 낮으면 위험(하한, reason low)
 export function tileState(t, v) {
   if (v === null || v === undefined) return 'none';
   if (t.crit !== undefined && v >= t.crit) return 'crit';
   if (t.warn !== undefined && v >= t.warn) return 'warn';
+  if (t.crit_below !== undefined && v <= t.crit_below) return 'crit';
+  if (t.warn_below !== undefined && v <= t.warn_below) return 'warn';
   return 'ok';
 }
+const lowReason = (t, v, state) => (state !== 'ok' && state !== 'none' && !(t.warn !== undefined && v >= t.warn) && !(t.crit !== undefined && v >= t.crit) ? 'low' : '');
 
-// 시세 패널(매매/시세): 하한 위험 · 값 끊김 · 시간 외 · 읽지 못한 파일을 한 화면에서 보인다.
-// 값 규칙: 매니저 판정(계약 1)이 낼 수 있는 모양만 쓴다.
-const QUOTE_SERIES = {
-  'biz.quote.count_1m': (t, now) => (t > now - 6 * MIN ? Math.round(4200 + (now - t) / 1000) : Math.round(71000 + 3000 * Math.sin(t / 90000))),
-  'biz.quote.tps': (t) => Math.round(1180 + 80 * Math.sin(t / 60000)),
+// 정보 벤더 시세 패널(매매/시세, feed-02~06): 운영자가 로그 숫자 뽑기로 붙인 패널(05 §18).
+// 하한 위험 · 값 끊김 · 시간 외 · 읽지 못한 파일을 한 화면에서 보인다. 시세 서비스(quote_svc, biz.quote.*)와 지표 이름이 겹치지 않게 biz.vendor.*.
+// 값 규칙: 매니저 판정(계약 1)이 낼 수 있는 모양만 쓴다. 로그 경로에 {exec_id}가 없어 실행 ID는 없다.
+const VENDOR_SERIES = {
+  'biz.vendor.count_1m': (t, now) => (t > now - 6 * MIN ? Math.round(4200 + (now - t) / 1000) : Math.round(71000 + 3000 * Math.sin(t / 90000))),
+  'biz.vendor.tps': (t) => Math.round(1180 + 80 * Math.sin(t / 60000)),
 };
-const QUOTE_PANEL = {
-  id: 'quote',
-  title: '시세',
+const VENDOR_PANEL = {
+  id: 'vendor',
+  title: '정보 벤더 시세',
   group: '매매/시세',
   tiles: [
-    { title: '1분 시세량', signal: 'traffic', metric: 'biz.quote.count_1m', agg: 'min', unit: '건/분', kpi: true, warn_below: 60000, crit_below: 10000, stale: '30s', active: 'mon-fri 09:00-15:30' },
-    { title: '시세 수신량', signal: 'traffic', metric: 'biz.quote.tps', agg: 'sum', unit: '건/초' },
-    { title: '호가 갱신', signal: 'traffic', metric: 'biz.quote.depth_1m', agg: 'min', unit: '건/분', kpi: true, warn_below: 3000, crit_below: 500, stale: '30s' },
-    { title: '장 마감 정산 건수', signal: 'other', metric: 'biz.quote.close_count', agg: 'sum', unit: '건', warn_below: 100, crit_below: 10, active: 'mon-fri 15:40-16:00' },
+    { title: '1분 시세량', signal: 'traffic', metric: 'biz.vendor.count_1m', agg: 'min', unit: '건/분', kpi: true, warn_below: 60000, crit_below: 10000, stale: '30s', active: 'mon-fri 09:00-15:30' },
+    { title: '시세 수신량', signal: 'traffic', metric: 'biz.vendor.tps', agg: 'sum', unit: '건/초' },
+    { title: '호가 갱신', signal: 'traffic', metric: 'biz.vendor.depth_1m', agg: 'min', unit: '건/분', kpi: true, warn_below: 3000, crit_below: 500, stale: '30s' },
+    { title: '장 마감 정산 건수', signal: 'other', metric: 'biz.vendor.close_count', agg: 'sum', unit: '건', warn_below: 100, crit_below: 10, active: 'mon-fri 15:40-16:00' },
   ],
-  charts: [{ title: '1분 시세량', unit: '건/분', agg: 'min', metrics: ['biz.quote.count_1m'] }],
+  charts: [{ title: '1분 시세량', unit: '건/분', agg: 'min', metrics: ['biz.vendor.count_1m'] }],
   log_levels: ['error', 'warn'],
 };
 let panelErrors = [{ file: '시세-호가.yaml', msg: '타일 "호가 갱신": crit_below는 warn_below보다 작아야 합니다' }];
 
-function quoteView(c) {
-  const exec = c.w.startRun.exec_id;
+function vendorView(c) {
   const mk = (t, f) => ({ ...t, value: null, state: 'none', exec_id: '', ts: c.now, reason: '', off: false, host: '', stale_since: 0, ...f });
-  const [a, b, d, e] = QUOTE_PANEL.tiles;
-  return { ...QUOTE_PANEL, tiles: [
-    mk(a, { value: 4200, state: 'crit', reason: 'low', host: 'feed-03', exec_id: exec }),
-    mk(b, { value: 2360, state: 'ok', exec_id: exec }),
-    mk(d, { value: null, state: 'crit', reason: 'stale', host: 'feed-01', stale_since: c.now - 45000 }),
+  const [a, b, d, e] = VENDOR_PANEL.tiles;
+  return { ...VENDOR_PANEL, tiles: [
+    mk(a, { value: 4200, state: 'crit', reason: 'low', host: 'feed-03' }),
+    mk(b, { value: 2360, state: 'ok' }),
+    mk(d, { value: null, state: 'crit', reason: 'stale', host: 'feed-02', stale_since: c.now - 45000 }),
     mk(e, { value: 0, state: 'ok', off: true }),
   ] };
 }
 
+// 패널 타일은 그 패널의 업무 프로세스 실행으로 이어진다: 체결 → start-matching, 시세 → start-quote
 export function panelsView(c) {
+  const runOf = { matching: c.w.startRun, quote: c.w.quoteRun };
   return PANELS.map((p) => ({
     ...p,
     tiles: p.tiles.map((t) => {
-      const value = tileValue(c, t.metric);
-      return { ...t, value, state: tileState(t, value), exec_id: value === null ? '' : c.w.startRun.exec_id, ts: c.now, reason: '', off: false, host: '', stale_since: 0 };
+      const value = tileValue(c, t.metric, p.id);
+      const state = tileState(t, value);
+      const run = runOf[p.id];
+      return { ...t, value, state, exec_id: value === null || !run ? '' : run.exec_id, ts: c.now, reason: lowReason(t, value, state), off: false,
+        host: t.agg === 'min' && value !== null && p.id === 'quote' ? 'feed-01' : '', stale_since: 0 };
     }),
-  })).concat([quoteView(c)]);
+  })).concat([vendorView(c)]);
 }
 
 function panels(c) {
@@ -314,17 +342,54 @@ export function profileShape(from, to, now, surge) {
   return surge && to > now - 4 * MIN && from < now ? SHAPE_B : SHAPE_A;
 }
 
+// 시세 서비스(quote_svc): 함수도 원인도 체결 서비스와 다르다. 값은 실제 perf 표본(deploy/demo.sh quote-surge 리허설)의 leaf 비중.
+// 평시에는 세션마다 다시 만드는 전문(encode_quote)이 절반이고, 수신 버퍼가 넘치면 평시에 없던 recover_gap 줄기가 생긴다.
+const Q = 'quote_svc;main;feed_poll;';
+const QUOTE_A = [
+  [Q + 'on_message;publish_quote;fanout_sessions;encode_quote', 50],
+  [Q + 'on_message;decode_packet', 26],
+  [Q + 'on_message;apply_quote;update_depth', 13],
+  ['quote_svc;main;build_snapshot', 6],
+  [Q + 'on_message;apply_quote;update_trade', 3],
+  [Q + 'check_seq', 2],
+];
+const QUOTE_B = [
+  [Q + 'on_message;publish_quote;fanout_sessions;encode_quote', 44],
+  [Q + 'on_message;decode_packet', 22],
+  [Q + 'recover_gap;rebuild_book', 17],
+  [Q + 'on_message;apply_quote;update_depth', 11],
+  [Q + 'recover_gap;request_snapshot', 2],
+  ['quote_svc;main;build_snapshot', 2],
+  [Q + 'on_message;apply_quote;update_trade', 2],
+];
+// 구간이 수신 버퍼가 넘친 때(수신율 8000)에 걸치면 B 모양
+export function quoteShape(from, to, sig) {
+  const r = quoteSurgeRange(sig);
+  return from < r.to && to > r.over ? QUOTE_B : QUOTE_A;
+}
+
+// shapeFor는 실행의 업무 프로세스에 맞는 [모양, CPU 비율(표본 수에 곱함)]이다. 함수 추적 스텝이 아니면 null.
+export function shapeFor(c, r, from, to) {
+  const flow = r && flowOf(c.w, r.flow_id);
+  const step = flow && flow.steps.find((s) => s.id === r.step_id);
+  if (!(step && step.profile)) return null;
+  if (r.step_id === 'start-quote') {
+    const sh = quoteShape(from, to, c.sig);
+    return [sh, sh === QUOTE_B ? 0.99 : 0.33];
+  }
+  return [profileShape(from, to, c.now, c.sig.surge), 1];
+}
+
 function profile(c) {
   const id = c.q.get('exec_id') || '';
   const r = c.w.runs.find((x) => x.exec_id === id);
   if (!r) return err(404, '실행을 찾을 수 없음');
   const to = num(c.q.get('to')) || c.now;
   const from = num(c.q.get('from')) || to - 20 * SEC;
-  const flow = flowOf(c.w, r.flow_id);
-  const step = flow && flow.steps.find((s) => s.id === r.step_id);
-  if (!(step && step.profile)) return ok({ exec_id: id, from, to, samples: 0, stacks: [] });
-  const total = Math.max(0, Math.round(((to - from) / 1000) * 49));
-  const shape = profileShape(from, to, c.now, c.sig.surge);
+  const got = shapeFor(c, r, from, to);
+  if (!got) return ok({ exec_id: id, from, to, samples: 0, stacks: [] });
+  const [shape, busy] = got;
+  const total = Math.max(0, Math.round(((to - from) / 1000) * 49 * busy));
   let left = total;
   const stacks = shape.map(([frames, pct], i) => {
     const n = i === shape.length - 1 ? left : Math.round((total * pct) / 100);

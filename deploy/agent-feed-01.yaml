@@ -1,0 +1,41 @@
+host: feed-01
+group: 매매/시세
+manager: http://manager:8080
+token: ${EUM_TOKEN}
+# ca: /etc/eum/ca.pem          # manager가 https://일 때 믿을 인증서(PEM). 비면 시스템 루트
+allow:                         # 에이전트 허용 목록(editor.allow와 같은 문법, ${VAR}를 펼치기 전 명령)
+  - '^eum burn( |$)'
+  - '^\$\{DEMO\}/scripts/[A-Za-z0-9_-]+\.sh( |$)'
+  - '^sleep [0-9]+$'
+  - '^echo( |$)'
+  - '^sh -c echo "\(E\) [^"$`\\]*"; exit [0-9]+$'
+interval: 1s
+probes:
+  - type: sim
+    profile: host
+    seed: 4
+  - type: push                 # 시세 서비스(quote_svc)가 1초마다 biz.quote.*를 보낸다
+    listen: 127.0.0.1:9102
+profiler:
+  type: perf
+  hz: 49
+  window: 10s
+  call_graph: dwarf
+  min_age: 5s
+log_dir: /var/lib/eum/logs
+work_dir: /var/lib/eum/work
+remote:                        # 로그 수집 설정을 매니저 화면(#collect)에서 받기(05 §17). 꺼져 있으면 아래 logs만 돈다
+  enabled: true
+  read_roots: [/var/lib/eum/logs]
+vars:
+  DEMO: /opt/eum-demo
+  PUSH: 127.0.0.1:9102
+logs:
+  - name: quote
+    path: "{log_dir}/quote_svc.{exec_id}.log"
+    match:
+      - { re: '^\(E\)', level: error }
+      - { re: '^\(W\)', level: warn }
+  - name: step
+    path: "{log_dir}/{exec_id}.log"
+    match: [{ re: '^\(E\)', level: error }]

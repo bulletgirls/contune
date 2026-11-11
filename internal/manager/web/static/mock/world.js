@@ -1,4 +1,5 @@
-// 결정적 세계: 서버 43대·그룹 8개, 플로우 39개·배치판 6개, 실행 이력, 장애 기록.
+// 결정적 세계: 서버 43대·그룹 8개, 플로우 40개·배치판 6개, 실행 이력, 장애 기록.
+// 업무 프로세스 둘: 체결(match-01 matching_svc, market-open → w.startRun), 시세(feed-01 quote_svc, quote-open → w.quoteRun).
 // 다른 mock 모듈은 이 파일이 만든 세계만 본다. 시각은 처음 만든 때(base)를 기준으로 상대 배치한다.
 import { hash32, rnd, ulid, mulberry32, MIN, HOUR, DAY, SEC } from './util.js';
 import { hostAt } from './signal.js';
@@ -15,7 +16,7 @@ export const ALLOW = [
 const GROUPS = [
   ['매매/주문접수', 'gw', 2, 6],
   ['매매/체결', 'match', 2, 8],
-  ['매매/시세', 'feed', 1, 6],
+  ['매매/시세', 'feed', 2, 6],
   ['사후처리/청산정산', 'settle', 1, 4],
   ['사후처리/배치', 'batch', 2, 4],
   ['대외정보/대외연계', 'ext', 1, 6],
@@ -26,7 +27,7 @@ const GROUPS = [
 const ID2 = (n) => String(n).padStart(2, '0');
 
 function buildHosts() {
-  const real = { 'match-01': '매매/체결', 'gw-01': '매매/주문접수', 'batch-01': '사후처리/배치' };
+  const real = { 'match-01': '매매/체결', 'gw-01': '매매/주문접수', 'batch-01': '사후처리/배치', 'feed-01': '매매/시세' };
   const list = [];
   for (const [group, prefix, from, to] of GROUPS) {
     const ids = [];
@@ -44,7 +45,7 @@ function buildHosts() {
         memMb: [16384, 32768][hash32(id + 'mm') % 2],
         period: 600 + 1200 * rnd(id + 'pe'),
         phase: 2 * Math.PI * rnd(id + 'ph'),
-        profiler: id === 'match-01' || id === 'batch-01',
+        profiler: id === 'match-01' || id === 'batch-01' || id === 'feed-01',
         silent: id === 'ext-04',
       });
     }
@@ -148,6 +149,17 @@ function buildFlows() {
       { id: 'check-ready', host: 'match-01', command: ['${DEMO}/scripts/check_ready.sh'], depends: ['start-matching'], timeout: '1h', retry: { count: 0, interval: '1m' }, profile: false },
     ],
   };
+  // 시세 개시: 체결과 따로 도는 시세 서비스(quote_svc)를 띄운다(flows/개장준비/quote-open.yaml)
+  const quoteOpen = {
+    id: 'quote-open',
+    board: '개장준비',
+    schedule: '50 7 * * 1-5',
+    on_missed: 'skip',
+    steps: [
+      { id: 'start-quote', host: 'feed-01', command: ['${DEMO}/scripts/start_quote.sh'], depends: [], timeout: '1h', retry: { count: 0, interval: '1m' }, profile: true },
+      { id: 'check-quote', host: 'feed-01', command: ['${DEMO}/scripts/check_quote.sh'], depends: ['start-quote'], timeout: '1h', retry: { count: 0, interval: '1m' }, profile: false },
+    ],
+  };
   const dailySettle = {
     id: 'daily-settle',
     board: '정산',
@@ -170,7 +182,7 @@ function buildFlows() {
       { id: 'confirm-send', host: 'ext-03', command: BURN(2), depends: ['send-margin'], timeout: '10m', retry: { count: 0, interval: '1m' }, profile: false },
     ],
   };
-  flows.push(marketOpen);
+  flows.push(marketOpen, quoteOpen);
   for (const a of AUX.filter((x) => x[0] === '개장준비')) flows.push(mkAux(a));
   for (const a of AUX.filter((x) => x[0] === '장중')) flows.push(mkAux(a));
   flows.push(dailySettle);
@@ -225,7 +237,7 @@ function newRun(w, fr, flow, step, attempt, o) {
     log_tail: '',
     job_cpu: 80 + 100 * rnd(exec_id + 'jc'),
     job_mem: 20 + 300 * rnd(exec_id + 'jm'),
-    service: /start_matching/.test((step.command || []).join(' ')),
+    service: /start_(matching|quote)/.test((step.command || []).join(' ')),
     plan: null,
     events: [],
     seq: idx,
@@ -278,7 +290,7 @@ function fillSucceeded(w, flow, fr, t0, opts = {}) {
 
 function buildHistory(w, flows, base) {
   for (const flow of flows) {
-    if (flow.id === 'market-open') continue;
+    if (flow.id === 'market-open' || flow.id === 'quote-open') continue;
     if (flow.id === 'ext-send-margin') continue;
     const state = flow.state || 'ok';
     if (state === 'prev') {
@@ -306,6 +318,17 @@ function buildHistory(w, flows, base) {
   w.startRun.peak_cpu_pct = 100;
   w.startRun.peak_rss_mb = 48.2;
   newRun(w, fr, mo, S('check-ready'), 1, { scheduledAt: t0 + 102500, startAt: t0 + 103500, endAt: t0 + 108000, status: 'SUCCEEDED' });
+
+  // quote-open: 시세 서비스를 띄운 실행. 체결 서비스보다 먼저 떠서 지금도 돈다(지난 시세 폭주는 signal.js QUOTE_SURGE)
+  const qo = flows.find((f) => f.id === 'quote-open');
+  const q0 = base - 110 * MIN;
+  const qfr = newFlowRun(w, qo, 'schedule', q0);
+  const QS = (id) => qo.steps.find((s) => s.id === id);
+  w.quoteRun = newRun(w, qfr, qo, QS('start-quote'), 1, { scheduledAt: q0, startAt: q0 + 1000, endAt: q0 + 2500, status: 'SUCCEEDED', log: '(I) quote_svc 기동\n(I) 수신율 2000\n' });
+  w.quoteRun.service = true;
+  w.quoteRun.peak_cpu_pct = 99.5;
+  w.quoteRun.peak_rss_mb = 5.1;
+  newRun(w, qfr, qo, QS('check-quote'), 1, { scheduledAt: q0 + 2500, startAt: q0 + 3500, endAt: q0 + 6500, status: 'SUCCEEDED' });
 
   // ext-send-margin: 시도 3회 모두 실패
   const ex = flows.find((f) => f.id === 'ext-send-margin');
@@ -378,7 +401,7 @@ function buildPast(w, flows) {
       }
     }
   }
-  // 지난 실행이 띄운 서비스는 이미 내려갔다(살아 있는 서비스는 w.startRun 하나).
+  // 지난 실행이 띄운 서비스는 이미 내려갔다(살아 있는 서비스는 w.startRun·w.quoteRun 둘).
   for (let i = from; i < w.runs.length; i++) w.runs[i].service = false;
 }
 
@@ -426,6 +449,31 @@ export const PANELS = [
     ],
     log_levels: ['error', 'warn'],
   },
+  // panels/호가시세.yaml과 같다(파일 이름 순서로 체결 뒤)
+  {
+    id: 'quote',
+    title: '시세',
+    group: '매매/시세',
+    tiles: [
+      { title: '시세 수신량', signal: 'traffic', metric: 'biz.quote.recv_tps', agg: 'sum', unit: '건/초', kpi: true },
+      { title: '시세 송출량', signal: 'traffic', metric: 'biz.quote.sent_tps', agg: 'sum', unit: '건/초' },
+      { title: '1분 시세량', signal: 'traffic', metric: 'biz.quote.count_1m', agg: 'min', unit: '건/분', warn_below: 60000, crit_below: 10000, stale: '30s' },
+      { title: '시세 지연 p99', signal: 'latency', metric: 'biz.quote.delay_p99_ms', agg: 'max', unit: 'ms', warn: 100, crit: 500, kpi: true },
+      { title: '평균 시세 지연', signal: 'latency', metric: 'biz.quote.delay_avg_ms', agg: 'max', unit: 'ms', warn: 50, crit: 250 },
+      { title: '시세 누락', signal: 'errors', metric: 'biz.quote.lost', agg: 'sum', unit: '건/초', warn: 1, crit: 100, kpi: true },
+      { title: '스냅샷 복구', signal: 'errors', metric: 'biz.quote.recover', agg: 'sum', unit: '회/초', warn: 1 },
+      { title: '오류 로그 발생률', signal: 'errors', metric: 'log.error.count', agg: 'sum', unit: '건/초', warn: 1, crit: 5 },
+      { title: '수신 대기', signal: 'saturation', metric: 'biz.quote.backlog', agg: 'sum', unit: '건', warn: 1000, crit: 3000 },
+      { title: '프로파일링 오버헤드', metric: 'agent.profiler.cpu_pct', agg: 'max', unit: '%', warn: 1 },
+    ],
+    charts: [
+      { title: '시세 처리량', unit: '건/초', agg: 'sum', metrics: ['biz.quote.recv_tps', 'biz.quote.sent_tps'] },
+      { title: '시세 지연', unit: 'ms', agg: 'max', metrics: ['biz.quote.delay_avg_ms', 'biz.quote.delay_p99_ms'] },
+      { title: '시세 누락', unit: '건/초', agg: 'sum', metrics: ['biz.quote.lost'] },
+      { title: '수신 대기', unit: '건', agg: 'sum', metrics: ['biz.quote.backlog'] },
+    ],
+    log_levels: ['error', 'warn'],
+  },
 ];
 
 let W = null;
@@ -451,6 +499,7 @@ export function getWorld(now) {
     audit: [],
     trainedAt: Math.floor(base / (10 * MIN)) * 10 * MIN,
     startRun: null,
+    quoteRun: null,
     extFail: null,
   };
   buildHistory(w, w.flows, base);

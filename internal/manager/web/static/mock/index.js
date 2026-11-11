@@ -47,7 +47,7 @@ export async function handle(path, opts = {}) {
     q,
     flags,
     method,
-    sig: { now, surge: flags.surge },
+    sig: { now, surge: flags.surge, base: w.base }, // base: 지난 시세 폭주처럼 세계에 고정된 시각의 기준
     text: () => (raw === undefined || raw === null ? '' : typeof raw === 'string' ? raw : JSON.stringify(raw)),
     json: () => {
       if (raw && typeof raw === 'object') return raw;

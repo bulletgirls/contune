@@ -2,7 +2,7 @@
 
 /* 요약 카드 */
 .cards { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
-.dcard { display:flex; flex-direction:column; text-decoration:none; background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:10px 12px; min-height:142px; min-width:0; }
+.dcard { display:flex; flex-direction:column; text-decoration:none; background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:10px 12px; min-height:142px; min-width:0; container-type:inline-size; }
 .dcard:hover { border-color:var(--accent); }
 .dc-t { font-size:13px; font-weight:600; color:var(--t2); margin-bottom:6px; }
 .dc-body { display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
@@ -11,6 +11,18 @@
 .dc-foot { display:flex; align-items:center; gap:8px; margin-top:6px; min-width:0; }
 .dc-small { font-size:12px; color:var(--t3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .allok { color:var(--ok); }
+.srv .dc-side, .bat .dc-side { flex:0 1 auto; }
+/* 카드가 넓을 때(330px~) 오른쪽 칸: 서버 카드는 이상 서버, 금일 배치 카드는 실패·실행 중·다음 예정 */
+.dc-list { display:none; flex-direction:column; gap:3px; flex:1.6; min-width:0; padding-left:12px; border-left:1px solid var(--line); font-size:12px; }
+.dl-row { display:flex; align-items:baseline; gap:5px; min-width:0; color:var(--t2); white-space:nowrap; }
+.dl-row b { font-weight:600; color:var(--t1); flex:none; }
+.dl-row .dl-t { min-width:0; overflow:hidden; text-overflow:ellipsis; color:var(--t3); }
+.dl-row:hover b { color:var(--accent); text-decoration:underline; }
+.dl-m { font-style:normal; font-size:11px; flex:none; width:12px; text-align:center; color:var(--t3); }
+.dl-m.crit, .bh.failed .dl-m { color:var(--crit); } .dl-m.warn { color:var(--warn); }
+.bh.running .dl-m { color:var(--st-running); } .bh.gated .dl-m { color:var(--st-gated); }
+.bh.failed .dl-t { color:var(--st-failed); }
+.dl-more { font-size:11px; color:var(--t3); padding-left:17px; }
 
 /* 게이지 */
 .gauge { width:104px; height:57px; flex:none; overflow:visible; }
@@ -25,7 +37,7 @@
 .facs { display:flex; flex-direction:column; gap:1px; min-width:0; }
 .fac { display:block; font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; color:var(--t2); }
 .gauge .gh { stroke:var(--t3); stroke-width:10; stroke-dasharray:2 2.5; opacity:.6; }
-/* 장애 위험도 카드: 미확인 수준 배지 + 전체·용인, 확인할 것 2줄, 진행 중 장애 */
+/* 장애 위험도 카드: 미확인 수준 배지 + 전체·용인, 확인할 것 2줄(넓으면 3줄), 진행 중 장애 */
 .rk-head { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .rk-total { font-size:12px; color:var(--t3); white-space:nowrap; font-variant-numeric:tabular-nums; }
 .facs .rk-item { display:grid; grid-template-columns:14px minmax(0,1fr); column-gap:4px; font-size:12px; line-height:1.35; min-width:0; max-width:100%; color:var(--t2); }
@@ -35,6 +47,7 @@
 .rk-item .rk-s { font-size:11px; color:var(--t3); }
 .rk-item.go:hover .rk-t { color:var(--accent); text-decoration:underline; }
 .rk-item + .rk-item { margin-top:3px; }
+.facs .rk-item:nth-child(3) { display:none; }
 .rk-ack { font-style:normal; font-size:11px; color:var(--accent); }
 .rk-none { font-size:12px; color:var(--t3); }
 .rk-inc { font-size:12px; font-weight:600; color:var(--crit); }
@@ -59,6 +72,19 @@
 .bk.wait i { border:1px dashed var(--t3); }
 .bk.failed b { color:var(--st-failed); }
 
+/* 카드 폭에 따라: 330px~ 오른쪽 칸·세 번째 요인·긴 꺾은선, 460px~ 게이지·고리를 키운다.
+   컨테이너 쿼리를 모르는 브라우저는 좁은 모습 그대로 */
+@container (min-width:330px) {
+  .dc-list { display:flex; }
+  .facs .rk-item:nth-child(3) { display:grid; }
+  .dc-foot .spark { flex:1; width:auto; max-width:220px; }
+}
+@container (min-width:460px) {
+  .gauge { width:128px; height:70px; }
+  .ring { width:100px; height:100px; }
+  .dc-body { gap:16px; }
+}
+
 /* 업무 지표 (불릿 그래프) */
 .kpi { display:flex; flex-direction:column; gap:3px; padding:3px 0; cursor:pointer; font-size:13px; }
 .kpi + .kpi { border-top:1px solid var(--line); }
@@ -70,8 +96,13 @@
 .bullet .bb.ok { fill:var(--line); opacity:.5; } .bullet .bb.warn { fill:var(--line); } .bullet .bb.crit { fill:var(--t3); opacity:.55; }
 .bullet .bv.ok { fill:var(--t1); } .bullet .bv.warn { fill:var(--warn); } .bullet .bv.crit { fill:var(--crit); }
 
+/* 아래쪽: 왼쪽에 서버 맵과 배치 시간대를 쌓고, 실시간 이벤트는 두 줄에 걸쳐 왼쪽 높이에 맞춘다(목록은 안에서 스크롤) */
+.lower { display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); grid-template-areas:"map ev" "tl ev"; gap:12px; align-items:start; }
+.lower .dmap { grid-area:map; } .lower .dtl { grid-area:tl; }
+.lower .dwatch { grid-area:ev; align-self:stretch; display:flex; flex-direction:column; }
+.lower .dwatch .wl { flex:1 1 0; min-height:160px; max-height:none; }
+
 /* 서버 맵 · 실시간 이벤트 */
-.mid { display:grid; grid-template-columns:2fr 1fr; gap:12px; align-items:start; }
 .dpanel { background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:10px 12px; min-width:0; }
 .dp-h { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
 .dp-h .sec { margin:0; flex:1; }
@@ -79,7 +110,7 @@
 .grow-row { display:flex; align-items:flex-start; gap:6px; margin:4px 0; }
 .gl { width:84px; flex:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; line-height:22px; }
 .gn { width:22px; flex:none; text-align:right; color:var(--t3); font-size:12px; line-height:22px; }
-.cells { display:flex; flex-wrap:wrap; gap:3px; min-width:0; }
+.cells { display:flex; flex-wrap:wrap; gap:3px; flex:1; min-width:0; }
 .c { display:inline-flex; align-items:center; justify-content:center; width:30px; height:22px; border-radius:3px; font-size:11px; font-weight:600; color:#fff; text-decoration:none; font-variant-numeric:tabular-nums; }
 .c.ok { color:var(--t1); border:1px solid var(--line); }
 .c.ok.l1 { background:var(--cpu1); } .c.ok.l2 { background:var(--cpu2); } .c.ok.l3 { background:var(--cpu3); }
@@ -87,6 +118,14 @@
 .c.warn { background:var(--warn); } .c.crit { background:var(--crit); } .c.silent { background:var(--silent); }
 .c.warn, .c.crit, .c.silent { font-size:13px; font-weight:700; }
 .c:hover { outline:2px solid var(--accent); }
+/* 칸 너비는 화면이 정한다(--cw, 30~120px). 88px 이상(.named)이면 칸 안에 서버 이름 + 값 */
+.cells .c { width:var(--cw, 30px); }
+.c .cn { display:none; }
+.named .cells .c { justify-content:space-between; gap:4px; height:24px; padding:0 6px; }
+.named .cells .c.warn, .named .cells .c.crit, .named .cells .c.silent { font-size:11px; }
+.named .c .cn { display:inline; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; opacity:.85; }
+.named .c .cv { flex:none; }
+.named .gl, .named .gn { line-height:24px; }
 .legend { display:flex; align-items:center; gap:2px; cursor:help; }
 .legend .c { width:14px; height:14px; font-size:10px; border-radius:2px; }
 .legend .lt { font-size:11px; color:var(--t3); margin-right:3px; }
@@ -130,6 +169,11 @@
 .tl-axis span { position:absolute; top:1px; transform:translateX(-50%); }
 .tl-axis span:first-child { transform:none; } .tl-axis span:last-child { transform:translateX(-100%); }
 
-@media (max-width:1100px) { .cards { grid-template-columns:repeat(2,minmax(0,1fr)); } .mid { grid-template-columns:1fr; } }
+@media (max-width:1100px) {
+  .cards { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .lower { grid-template-columns:minmax(0,1fr); grid-template-areas:"map" "ev" "tl"; }
+  .lower .dwatch .wl { flex:none; max-height:320px; }
+}
 .km-off { margin-left:6px; font-size:11px; color:var(--t3); border:1px solid var(--line); border-radius:9px; padding:0 6px; }
 .kpi .kstale { font-size:11px; color:var(--crit); font-weight:600; }
+

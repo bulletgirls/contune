@@ -10,7 +10,7 @@
 
 | 항목 | 결정 |
 |---|---|
-| 언어 | Go 단일 바이너리 `eum`(`manager`, `agent`, `dev`, `fleet`, `burn`, `sql`). 시연용 체결 서비스만 운영 환경과 같은 C |
+| 언어 | Go 단일 바이너리 `eum`(`manager`, `agent`, `dev`, `fleet`, `burn`, `sql`). 시연용 업무 프로세스 둘(체결 `matching_svc`, 시세 `quote_svc`)만 운영 환경과 같은 C |
 | 해커톤 | 하루, 2명. 코드는 당일 처음부터 작성(대회 규칙). 사전에는 설계 문서, 작업카드, AI 지시문만 준비. 본선은 외부망·상용 AI로 개발하고 사내 데이터·소스는 쓰지 않음 |
 | 심사 | 서류: 창의성 30, 업무 도구 실용성 30, 구현 가능성 20, 기대 효과 20 |
 | 산출물 | 새 스케줄러의 **개념 검증판**. 12:00에 1차 구조(시스템 정보 수집 + 작업 스케줄러), 15:00까지 개념 7개(스케줄, 원격 실행, 한 통로 수집, 실행 ID 연결, 함수 단위 추적, 데이터 주권, 보안 최소선)를 세 흐름(실행·연결·활용)으로 잇고 이후에는 넓히기만 함 |
@@ -23,7 +23,8 @@
 | 보안 (11-10) | **화면 로그인과 역할 3개**(조회·운영·관리), CSRF·보안 헤더, **감사 기록 조회 화면**(관리 계정, 실행 조작·로그인 실패까지 한 목록), **호스트별 에이전트 토큰**, **에이전트 쪽 명령 허용 목록**(매니저가 뚫려도 서버는 정해진 명령만), TLS. 인증 판단은 조립부 두 곳뿐(05 §16, 카드 [S](docs/cards/S-security.md)·[감사](docs/cards/S-audit.md)) |
 | 업무 지표 붙이기 (11-10) | 운영자가 새 업무 지표(예: 1분 시세량)를 붙이는 길: 로그 수집 화면의 **숫자 뽑기**(로그 줄의 숫자 → `biz.*` 지표, 이동 창), 타일의 **하한·값 끊김·감시 시간·min**, **패널 다시 읽기**(재시작 없이). 05 §18, 카드 [M](docs/cards/M-biz-metric.md) |
 | 운영 환경 | 업무는 온라인(체결) 중심, 배치는 개장 준비와 정산. 배치는 셸 스크립트, 스크립트가 띄우는 서비스는 C(자바 일부). 운영 서버는 perf 사용 가능 |
-| 시연 | Docker Compose: 매니저 1 + 에이전트 3 + 모의 서버 40대, 플로우 39개. 장애 장면은 주문량 폭주로 체결 처리가 밀리는 상황 |
+| 시연 | Docker Compose: 매니저 1 + 에이전트 4 + 모의 서버 39대, 플로우 40개. 장애 장면은 주문량 폭주로 체결 처리가 밀리는 상황과, **따로 도는 시세 서비스**에 시세가 몰려 수신 버퍼가 넘치고 시세가 늦는 상황(11-11) |
+| 업무 프로세스 분리 (11-11) | 체결(match-01 `matching_svc`, `market-open`)과 시세(feed-01 `quote_svc`, `quote-open`)는 서버·push 포트(9101·9102)·로그·실행 ID·패널(`체결`·`시세`)이 따로다. 밀리는 원인도 함수도 달라 플레임 그래프가 서로 다르다(`book_insert`가 커짐 vs 평시에 없던 `recover_gap → rebuild_book`이 생김). 타임머신의 업무 트랙은 실행이 낸 지표(`biz.order.*`·`biz.quote.*`)를 따른다. [demo/README.md](demo/README.md) |
 
 ## 문서
 
@@ -45,11 +46,14 @@
 
 **바로 해 보기 (Docker 없이):**
 
-    deploy/demo.sh setup     # 체결 서비스·eum 빌드, eum seed로 7일 이력과 장애 6건
-    deploy/demo.sh up        # eum dev --fleet: 매니저 + 에이전트 3 + 모의 서버 40 = 43대
+    deploy/demo.sh setup     # 체결·시세 서비스와 eum 빌드, eum seed로 7일 이력과 장애 6건
+    deploy/demo.sh up        # eum dev --fleet: 매니저 + 에이전트 4 + 모의 서버 39 = 43대
     deploy/demo.sh warmup    # 보조 플로우 12개(ext-send-margin은 일부러 실패)
     deploy/demo.sh run       # market-open: load-equity attempt 2, start-matching이 체결 서비스 기동
     deploy/demo.sh surge     # 접수율 3000 → 4500 → 6000 → 1500
+    deploy/demo.sh quote     # quote-open: feed-01에 시세 서비스(quote_svc) 기동, 수신율 2000
+    deploy/demo.sh quote-surge   # 시세 수신율 4000 → 6000 → 8000 → 2000 (시세 지연·누락, 체결은 그대로)
+    deploy/demo.sh quote-rate 0  # 시세 끊김 → 1분 시세량 하한 위험(되돌리기: quote-rate 2000)
     deploy/demo.sh settle    # daily-settle(대기 큐가 남아 있으면 HELD)
     deploy/demo.sh train; deploy/demo.sh sql; deploy/demo.sh status; deploy/demo.sh down
 
@@ -57,14 +61,19 @@
 
 **되는 것 (dev 모드 리허설로 확인):** 서버 43대·그룹 8개, `ext-04` 무응답·`dw-02` 메모리 위험, 플로우 39개·배치판 6개, 재시도·선후행·서버 넘기·중복 실행 409, `start-matching` 뒤에도 같은 `exec_id`로 `job.*`·`biz.*`·함수 표본 수집, 폭주 전·밀린 구간의 `book_insert` 비중 약 4% → 74%, 리소스 게이트 HELD → 해제, 강제 OK·허용 목록 밖 명령 저장 거절, 업무 로그 `(W)`·알림, 위험 모델 학습(AUC 0.99)·`eum sql` 질의 3개·CSV/접힌 스택/학습 데이터 내보내기, 재시작 뒤 실행 기록 유지(sqlite). **보안(11-10, 별도 포트 리허설로 확인):** 로그인 없이 API 401, 조회 계정의 실행·내보내기 403, 운영 계정의 삭제 403, 다른 Origin 403, 운영자 조작 actor `user:operator`, 에이전트 허용 목록 밖 명령(`sh -c id`)은 실행하지 않고 FAILED, CSP를 건 실제 서버에서 화면 정상. **감사 조회(11-10):** 운영 계정의 실행·재실행·강제 종료·강제 OK·알림 확인과 로그인 실패가 한 목록에, 조회·운영 계정은 403, CSV 수식 주입 방지. **장애 위험도(11-10, 별도 포트 리허설로 확인):** 지수 절편 보정으로 평시 0(평시 창 중 경고 0.07%), 요인마다 서버·평소 값·확인 질문, 요인 용인 → 미확인 지수만 내려가고 원래 지수는 그대로, 한도 초과 때 자동 해제와 알림 재발생, 재시작 뒤 용인 유지.
 
+**업무 프로세스 분리(11-11, 별도 포트 18095 리허설, 실제 perf):** 서버 43대(실제 4 + 모의 39), 플로우 40개. `quote-open` → feed-01에 `quote_svc`가 떠서 시세 패널 타일이 `start-quote` 실행 ID로, 체결 패널은 `start-matching` 실행 ID로 따로 이어짐. 평시 시세 플레임 그래프 `encode_quote` 51% · `decode_packet` 24% · `update_depth` 12% · `build_snapshot` 6%(체결은 `check_risk`·`price_cross` 중심). `quote-surge`의 8000건/초 구간: 시세 지연 p99 14 → 약 600ms, 시세 누락 초당 수천 건, `(E) GAP`·`(E) DELAY` 로그, 타일 위험 알림(시세 지연 p99·평균 지연·누락·수신 대기)과 해제, 플레임 그래프에 평시에 없던 `rebuild_book` 약 13~20% · `request_snapshot` 약 1~2%. 같은 시각 체결 p99는 최대 0.55ms로 그대로. `quote-rate 0` → 1분 만에 `1분 시세량` 하한 위험(`feed-01`). 타임머신은 실행이 낸 지표로 업무 트랙을 고른다(시세 실행이면 `시세 처리량·수신 대기·시세 지연`, 체결은 지금과 같음). 시세 실행의 A(평시)·B(8000) 비교는 `가장 늘어난 함수 rebuild_book 비중 0% → 13%`. 서비스를 띄우고 바로 끝나는 스텝은 구간을 고르기 전 그래프가 늘 비어 있었는데(스텝 길이 0초), 상주 프로세스가 살아 있으면 지금까지 보여 준다(`실행 전체(상주 프로세스 포함)`). `eum dev`만 다시 띄워도 두 서비스는 같은 실행 ID로 다시 잡힌다.
+
 **안 되거나 확인 못 한 것:**
 - compose 모드(`docker compose up`)는 이 PC에서 Docker 데몬이 돌지 않아 확인하지 못했습니다.
-- 브라우저 렌더링(차트·플레임 그래프·다크 모드)과 `node --check`는 브라우저·node가 없어 확인하지 못했습니다. 모든 화면 파일은 200으로 나가고 상대 import는 모두 실제 파일을 가리킵니다.
+- 브라우저 렌더링(차트·플레임 그래프·다크 모드)과 `node --check`는 브라우저·node가 없어 확인하지 못했습니다. 모든 화면 파일은 200으로 나가고 상대 import는 모두 실제 파일을 가리킵니다. (11-11: 다른 PC에서 `node --check` 전 파일 통과, 시세 타임머신은 Playwright로 실제 화면을 찍어 확인)
+- 업무 패널의 `오류 로그 발생률` 타일은 서비스 로그가 10분 넘게 자라지 않거나 에이전트를 다시 띄운 뒤에는 값이 없어 `서비스 미기동`으로 보입니다(로그 수집은 10분 안에 자란 파일만 활동 중으로 봅니다). 체결·시세 모두 같습니다.
+- 프로파일링 오버헤드 타일(`warn: 1`)은 실제 값이 약 3%라 체결·시세 패널 모두 경고가 열렸다 풀렸다를 되풀이합니다(11-11 리허설에서 각 7~8번). 기준을 실제 값에 맞출지는 정하지 않았습니다.
 - 체결 서비스의 폭주 강도는 CPU 속도에 달려 있습니다. 이 PC에서는 6000건/초에서 p99가 약 25ms, 대기 큐가 약 130건까지만 올라 `(E)` 로그와 위험 지수 경고·위험이 나오지 않았습니다. 시연 PC에서 `deploy/bin/matching_svc --stats`로 `COST_SCAN`을 맞춥니다(demo/README.md).
 - `agent.profiler.cpu_pct`는 평시 약 1~2%, 폭주 중 약 4%(dwarf 호출 그래프의 perf script 비용)로 설계 목표 1% 미만보다 큽니다. 화면에 실제 값을 띄우는 것으로 대신합니다.
-- 함수 스택은 `matching_svc;[unknown];main;handle_order;…`처럼 `main` 앞에 `[unknown]`(libc 시작 프레임)이 하나 끼어 있습니다.
+- 함수 스택은 `matching_svc;[unknown];main;handle_order;…`처럼 `main` 앞에 `[unknown]`(libc 시작 프레임)이 하나 끼어 있습니다. glibc 2.34+의 `__libc_start_main_impl`은 11-11에 시작 프레임으로 지웁니다(`quote_svc;main;…`).
 
 **시연 전 사람이 할 일:**
 - 함수 추적: `sudo sysctl -w kernel.perf_event_paranoid=1`(재부팅하면 되돌아가므로 시연 직전에 확인).
 - compose 시연을 하려면 Docker 데몬을 켜고 `deploy/demo.sh` 앞에 `EUM_MODE=compose`. 데몬이 없으면 dev 모드로 같은 장면을 보입니다.
 - 시연 PC에서 `surge`를 한 번 돌려 p99가 수백 ms까지 오르는지 보고, 모자라면 `COST_SCAN`을 올려 다시 빌드합니다.
+- 시세는 시작할 때 CPU 속도를 재 비용을 맞추므로 다시 빌드할 일이 적습니다. `quote-surge` 8000 구간에서 `(E) GAP`이 나오는지만 봅니다.

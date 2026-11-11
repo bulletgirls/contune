@@ -1,0 +1,14 @@
+# 시세 개시: 시세 서비스(quote_svc)를 띄운다. 체결(market-open의 matching_svc)과 따로 도는 업무 프로세스다.
+id: quote-open
+schedule: "50 7 * * 1-5"      # 평일 07:50(장 전 동시호가 전)
+on_missed: skip
+steps:
+  - id: start-quote
+    host: feed-01
+    command: ["${DEMO}/scripts/start_quote.sh"]
+    profile: true
+
+  - id: check-quote
+    host: feed-01
+    command: ["${DEMO}/scripts/check_quote.sh"]
+    depends: [start-quote]

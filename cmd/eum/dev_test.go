@@ -15,7 +15,7 @@ import (
 
 func TestDevFlags(t *testing.T) {
 	data := filepath.Join(t.TempDir(), "data")
-	s, err := parseDev([]string{"--fleet", "x", "--push-port", "19101", "--demo-dir", "d",
+	s, err := parseDev([]string{"--fleet", "x", "--push-port", "19101", "--quote-push-port", "19102", "--demo-dir", "d",
 		"--data", data, "--listen", "127.0.0.1:18081", "--store", "memory"}, false, io.Discard)
 	if err != nil {
 		t.Fatal(err)
@@ -32,8 +32,12 @@ func TestDevFlags(t *testing.T) {
 	if !mc.Editor.Enabled || len(mc.Editor.Allow) != 4 {
 		t.Errorf("editor %+v", mc.Editor)
 	}
-	want := []struct{ host, group string }{{"match-01", "매매/체결"}, {"gw-01", "매매/주문접수"}, {"batch-01", "사후처리/배치"}}
-	if len(s.Agents) != 3 {
+	// 업무 프로세스 둘은 서버·push 포트가 따로다: 체결(match-01, 19101), 시세(feed-01, 19102).
+	want := []struct{ host, group, push string }{
+		{"match-01", "매매/체결", "127.0.0.1:19101"}, {"gw-01", "매매/주문접수", "127.0.0.1:19101"},
+		{"batch-01", "사후처리/배치", "127.0.0.1:19101"}, {"feed-01", "매매/시세", "127.0.0.1:19102"},
+	}
+	if len(s.Agents) != len(want) {
 		t.Fatalf("agents %d", len(s.Agents))
 	}
 	for i, a := range s.Agents {
@@ -47,7 +51,7 @@ func TestDevFlags(t *testing.T) {
 		if !slices.Equal(a.Allow, devAgentAllow) || a.CA != "" {
 			t.Errorf("%s: allow %q ca %q", a.Host, a.Allow, a.CA)
 		}
-		if a.Vars["DEMO"] != demoAbs || a.Vars["PUSH"] != "127.0.0.1:19101" {
+		if a.Vars["DEMO"] != demoAbs || a.Vars["PUSH"] != w.push {
 			t.Errorf("%s vars %v", a.Host, a.Vars)
 		}
 		if a.LogDir != filepath.Join(data, "logs", w.host) || a.WorkDir != filepath.Join(data, "work", w.host) {
@@ -60,14 +64,23 @@ func TestDevFlags(t *testing.T) {
 			t.Errorf("%s: perf 없음인데 profiler %v", a.Host, a.Profiler)
 		}
 	}
-	m := s.Agents[0]
-	if len(m.Probes) != 2 || m.Probes[1]["type"] != "push" || m.Probes[1]["listen"] != "127.0.0.1:19101" {
-		t.Errorf("match-01 push %v", m.Probes)
+	for _, c := range []struct {
+		a          agent.Config
+		listen     string
+		name, path string
+	}{
+		{s.Agents[0], "127.0.0.1:19101", "matching", "{log_dir}/matching_svc.{exec_id}.log"},
+		{s.Agents[3], "127.0.0.1:19102", "quote", "{log_dir}/quote_svc.{exec_id}.log"},
+	} {
+		a := c.a
+		if len(a.Probes) != 2 || a.Probes[1]["type"] != "push" || a.Probes[1]["listen"] != c.listen {
+			t.Errorf("%s push %v", a.Host, a.Probes)
+		}
+		if len(a.Logs) != 2 || a.Logs[0].Name != c.name || a.Logs[0].Path != c.path || len(a.Logs[0].Match) != 2 || a.Logs[1].Name != "step" {
+			t.Errorf("%s logs %+v", a.Host, a.Logs)
+		}
 	}
-	if len(m.Logs) != 2 || m.Logs[0].Name != "matching" || m.Logs[1].Name != "step" {
-		t.Errorf("match-01 logs %+v", m.Logs)
-	}
-	for _, a := range s.Agents[1:] {
+	for _, a := range s.Agents[1:3] {
 		if len(a.Probes) != 1 || a.Logs != nil {
 			t.Errorf("%s: push·logs 없음이어야 함 %v %v", a.Host, a.Probes, a.Logs)
 		}
@@ -75,7 +88,7 @@ func TestDevFlags(t *testing.T) {
 	checkDevTokens(t, s, nil)
 }
 
-// checkDevTokens는 실제 에이전트 3대가 서로 다른 호스트별 토큰을 받고, 매니저 공유 토큰은 그대로(모의 서버용)인지 본다.
+// checkDevTokens는 실제 에이전트 4대가 서로 다른 호스트별 토큰을 받고, 매니저 공유 토큰은 그대로(모의 서버용)인지 본다.
 // fixed는 설정 파일에 적어 둔 토큰(host → token)이다.
 func checkDevTokens(t *testing.T, s devSetup, fixed map[string]string) {
 	t.Helper()
@@ -192,8 +205,8 @@ func TestDevFlagsPerfAndDefaults(t *testing.T) {
 	if s.Manager.Listen != "127.0.0.1:8080" || s.Manager.Store != "sqlite" || s.Manager.Data != "./data-dev" || s.Fleet != "" {
 		t.Errorf("기본값 %+v", s.Manager)
 	}
-	if s.Agents[0].Vars["PUSH"] != "127.0.0.1:9101" {
-		t.Errorf("push 기본 %v", s.Agents[0].Vars)
+	if s.Agents[0].Vars["PUSH"] != "127.0.0.1:9101" || s.Agents[3].Vars["PUSH"] != "127.0.0.1:9102" {
+		t.Errorf("push 기본 %v %v", s.Agents[0].Vars, s.Agents[3].Vars)
 	}
 	for _, a := range s.Agents {
 		hasProf := a.Profiler != nil && a.Profiler["type"] == "perf"
@@ -220,8 +233,10 @@ func TestDevFlagsConfig(t *testing.T) {
 	if s.Manager.AgentTokens["other-01"] != "other-token" {
 		t.Errorf("설정 파일의 다른 호스트 토큰은 그대로: %d개", len(s.Manager.AgentTokens))
 	}
-	if _, err := parseDev([]string{"--push-port", "0"}, false, io.Discard); err == nil {
-		t.Error("push-port 0은 에러")
+	for _, args := range [][]string{{"--push-port", "0"}, {"--quote-push-port", "70000"}, {"--push-port", "9102"}} {
+		if _, err := parseDev(args, false, io.Discard); err == nil {
+			t.Errorf("%q는 에러여야 함", args)
+		}
 	}
 }
 

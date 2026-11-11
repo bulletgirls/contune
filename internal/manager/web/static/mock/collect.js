@@ -12,8 +12,8 @@ const hex = (s, n = 8) => {
   return out.slice(0, n);
 };
 const QUOTE_METRICS = [
-  { name: 'biz.quote.tps', re: 'recv=([\\d,]+)', agg: 'sum' },
-  { name: 'biz.quote.count_1m', re: 'recv=([\\d,]+)', agg: 'sum', window: '60s' },
+  { name: 'biz.vendor.tps', re: 'recv=([\\d,]+)', agg: 'sum' },
+  { name: 'biz.vendor.count_1m', re: 'recv=([\\d,]+)', agg: 'sum', window: '60s' },
 ];
 const LOGW = [{ re: '^\\(E\\)', level: 'error' }, { re: '^\\(W\\)', level: 'warn' }];
 
