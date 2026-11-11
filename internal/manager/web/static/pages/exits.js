@@ -7,15 +7,17 @@ import { createTimeRange } from '../timerange.js';
 import { fmtDT } from './batch.js';
 import { runTabs } from './runs.js';
 import { CATEGORY_TEXT, EXIT_GROUPS, exitGroup, exitLevel, endBadge } from './exit.js';
+import { svcHash, serviceTitles } from './dashboard.js';
 
 const LIMIT = 1000;
 const q = encodeURIComponent;
 
 // ---- 순수 함수 ----
-export function matchExit(x, s) {
+// titles: 서비스 ID → 이름(서비스 이름으로도 찾는다)
+export function matchExit(x, s, titles) {
   if (!s) return true;
   const k = s.toLowerCase();
-  return [x.comm, x.host, x.title, x.flow_id, x.step_id, x.exec_id, String(x.pid ?? ''), x.signal_name]
+  return [x.comm, x.host, x.title, x.flow_id, x.step_id, x.exec_id, String(x.pid ?? ''), x.signal_name, x.service, x.service && titles && titles[x.service]]
     .some((v) => String(v || '').toLowerCase().includes(k));
 }
 export function groupCounts(items) {
@@ -41,6 +43,7 @@ export async function render(host, params, query = {}) {
 
   let hosts = [];
   try { hosts = (await api('/hosts')).hosts || []; } catch (e) { /* 거르기 목록 없이 진행 */ }
+  const titles = await serviceTitles();
 
   function keepQuery() {
     const [, qs = ''] = location.hash.slice(1).split('?');
@@ -52,7 +55,7 @@ export async function render(host, params, query = {}) {
   const hostSel = el('select', { 'aria-label': '서버', onchange: () => { f.host = hostSel.value; keepQuery(); load(); } },
     [['', '전체'], ...hosts.map((h) => [h.id, h.id])].map(([v, t]) => el('option', { value: v, text: t, selected: v === f.host })));
   if (f.host && !hosts.some((h) => h.id === f.host)) hostSel.append(el('option', { value: f.host, text: f.host, selected: true }));
-  const search = el('input', { type: 'search', class: 'rn-search', placeholder: '프로세스 · 원인 · 플로우 · pid 검색', value: f.q, 'aria-label': '검색' });
+  const search = el('input', { type: 'search', class: 'rn-search', placeholder: '프로세스 · 서비스 · 원인 · 플로우 · pid 검색', value: f.q, 'aria-label': '검색' });
   let timer = null;
   search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { f.q = search.value.trim(); keepQuery(); draw(); }, 200); });
   filters.append(el('label', { class: 'bt-filter' }, el('span', { text: '서버' }), hostSel), el('span', { class: 'grow' }), search);
@@ -88,7 +91,8 @@ export async function render(host, params, query = {}) {
         el('td', { class: 'num at', text: fmtDT(x.ended_at) }),
         el('td', { class: 'cut' }, el('a', { href: '#host/' + q(x.host) + '/proc', class: 'hostl', text: x.host || DASH, title: '이 서버의 프로세스 탭', onclick: (ev) => ev.stopPropagation() })),
         el('td', { class: 'proc' }, el('b', { text: x.comm || DASH }), el('span', { class: 'dim', text: ` · ${x.pid ?? DASH}` }),
-          x.resident ? el('span', { class: 'ex-b', text: '상주', title: '스텝이 끝난 뒤에도 살아 있던 서비스' }) : null),
+          x.resident ? el('span', { class: 'ex-b', text: '상주', title: '스텝이 끝난 뒤에도 살아 있던 서비스' }) : null,
+          x.service ? el('a', { class: 'exl-svc', href: svcHash(x.service, x.host, x.ended_at), text: titles[x.service] || x.service, title: '서비스 타임머신에서 끝난 시각 앞뒤 보기', onclick: (ev) => ev.stopPropagation() }) : null),
         el('td', { class: 'end' }, endBadge(x), x.core_dumped ? el('span', { class: 'ex-b on', text: 'core', title: 'core 파일 있음(서버에 남음)' }) : null),
         el('td', { class: 'why', title: x.title || '' }, el('span', { class: 'ex-cat', text: CATEGORY_TEXT[x.category] || x.category || DASH }), ' ', x.title || '',
           x.has_llm ? el('span', { class: 'ex-b', text: 'LLM', title: 'LLM 참고 초안 있음' }) : null),
@@ -105,7 +109,7 @@ export async function render(host, params, query = {}) {
   }
 
   function draw() {
-    const base = items.filter((x) => matchExit(x, f.q));
+    const base = items.filter((x) => matchExit(x, f.q, titles));
     drawHead(base);
     drawTable(base.filter((x) => !f.cat || exitGroup(x.category) === f.cat));
   }

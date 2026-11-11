@@ -142,3 +142,8 @@ body[data-page="exits"] #page { display:flex; flex-direction:column; }
 @media (max-width:900px) { .exl-tbl col.c-run { width:140px; } .exl-tbl col.c-proc { width:150px; } }
 body[data-page="exits"] .rn-listcard .bt-seg { max-width:100%; overflow-x:auto; }
 body[data-page="exits"] .rn-listcard .bt-seg button { flex:none; }
+
+/* 서비스(06, 카드 P-F): 머리 줄의 서비스 링크, 목록 프로세스 칸의 서비스 칩 */
+.ex-meta a.ex-svc { font-weight:600; }
+.exl-svc { margin-left:6px; font-size:12px; padding:0 8px; border-radius:9px; border:1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); color:var(--accent); background:color-mix(in srgb, var(--accent) 6%, var(--surface)); white-space:nowrap; text-decoration:none; }
+.exl-svc:hover { border-color:var(--accent); text-decoration:underline; }
