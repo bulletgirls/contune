@@ -281,13 +281,32 @@ func TestExampleBoards(t *testing.T) {
 			tiles[model.TileRef{Panel: p.ID, Tile: tl.Title}] = true
 		}
 	}
-	refs := 0
+	refs, flowNodes := 0, 0
 	for _, it := range items {
 		d, _, err := b.Get(it.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, w := range d.Widgets {
+			for _, n := range w.Nodes {
+				flowNodes++
+				found := false
+				for _, p := range panels {
+					found = found || p.ID == n.Panel
+				}
+				if !found {
+					t.Errorf("%s 위젯 %s: 업무 패널 %s 없음", d.ID, w.ID, n.Panel)
+					continue
+				}
+				for what, tile := range map[string]string{"in": n.In, "out": n.Out, "stock": n.Stock, "edge": n.Edge} {
+					if tile == "" || (what == "stock" && tile == model.FlowStockNone) {
+						continue
+					}
+					if !tiles[model.TileRef{Panel: n.Panel, Tile: tile}] {
+						t.Errorf("%s 위젯 %s: 패널 %s에 %s 타일 %q 없음", d.ID, w.ID, n.Panel, what, tile)
+					}
+				}
+			}
 			if w.Ref != nil {
 				refs++
 				if !tiles[*w.Ref] {
@@ -299,6 +318,7 @@ func TestExampleBoards(t *testing.T) {
 	if refs < 4 {
 		t.Errorf("trading의 체결·시세 타일 ref가 4개 이상이어야 함: %d", refs)
 	}
+	t.Logf("업무 흐름 상자 %d개 확인", flowNodes) // bizflow 예시 보드는 U5가 더한다: 없으면 0
 	ops, _, _ := b.Get("ops-wall")
 	tmpl := opsDash()
 	if ops.Title != "운영 벽면" || len(ops.Widgets) != len(tmpl.Widgets) {
