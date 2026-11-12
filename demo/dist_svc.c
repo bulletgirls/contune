@@ -39,7 +39,7 @@ static NOINL int encode_msg(session_t *s, const fl_rec_t *r) {
 static NOINL int fanout_sessions(const fl_rec_t *r) {
     int bytes = 0;
     for (int i = 0; i < NSESS; i++) bytes += encode_msg(&sess[i], r);
-    st_out += NSESS;
+    st_out++;                                  /* 송출량 = 내보낸 전문 수(세션 수를 곱하지 않는다: 흐름 보드에서 수신량과 견준다) */
     return bytes;
 }
 
