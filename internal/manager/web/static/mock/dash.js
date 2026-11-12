@@ -8,6 +8,7 @@
 //   GET    /dashboards/{id}         {dash, rev, editable} | 404 | 422(틀린 파일)
 //   PUT    /dashboards/{id}         {dash, rev} → {dash, rev} | 400 | 403(?editor=0) | 409 {error, rev}
 //   DELETE /dashboards/{id}?rev=    {} | 404 | 409 {error, rev} | 403
+//   POST   /assist/dash             {text, dash, prompt_only, yaml} → DashAssistResp | 400 | 403 | 502(카드 N, 아래 "AI 초안")
 //
 // 보드는 메모리에 둔다(처음 열 때 예시 넷 ops-wall · trading · settle · bizflow, reset()이면 처음으로). rev = 정의 JSON의 짧은 해시.
 // 지표 위젯 값은 카드 W "값 계산 규칙"을 mock 세계 값으로 흉내 낸다: 계열은 mock /series 처리기(services.js가 감싼 것 포함)에서,
@@ -710,8 +711,111 @@ function metrics(c) {
   return ok({ metrics: list });
 }
 
+// ---- AI 초안(카드 N): POST /assist/dash. 응답 규칙은 docs/cards/N-dash-assist.md §2 ----
+//   편집 꺼짐 403 · 빈 요청 400 · prompt_only → 고정 System + 받은 글·위젯 수가 보이는 Prompt(LLM이 없어도)
+//   yaml → LLM을 부르지 않는다: widgets:가 있으면 고정 초안(지어낸 지표 하나 → 검사 오류 하나), 없으면 읽지 못함
+//   ?llm=1이 아니면 available false · ?llm=1이면 1.5초 뒤 받은 정의 + 위젯 둘(대기 큐 값 · 시세 지연 시계열) + 첫 지표 위젯 제목 바꿈
+//   요청 글이 "502"면 1.5초 뒤 LLM 오류(화면 오류 줄 확인용. 로그인 mock의 비밀번호 'wrong'과 같은 약속)
+const LLM_NONE = 'LLM 연동 뒤 쓸 수 있습니다 (manager.yaml llm)';
+const ASSIST_SYSTEM = [
+  '이음(E:UM) 사용자 보드 작성 도우미입니다(mock).',
+  '요청을 보드 정의 YAML 하나로 답하세요: 무엇을 만들었는지/바꿨는지 한 줄, 그 아래 ```yaml 블록 하나.',
+  '지표·업무 패널·타일·서비스·서버 그룹은 아래 목록에 있는 이름만 씁니다. 한국어로 씁니다.',
+].join('\n');
+const later = (ms, v) => new Promise((resolve) => setTimeout(() => resolve(v), ms));
+function freeId(ws, id) {
+  const used = new Set(ws.map((w) => w.id));
+  let s = id;
+  for (let n = 2; used.has(s); n++) s = `${id}-${n}`;
+  return s;
+}
+// 응답 정의: id는 요청 정의의 id(없으면 ""), owner·updated_*는 비운다
+function draftOf(d, id) {
+  const o = normDash({ ...d, id });
+  delete o.owner;
+  delete o.updated_by;
+  delete o.updated_at;
+  return o;
+}
+// 형식(validate) + 참조(지표 이름 · ref 패널·타일). 할 일까지 쓴 한 줄씩, 중복 없이 20줄까지
+function checkDraft(c, d) {
+  const out = [];
+  const m = validate({ ...d, id: d.id || 'draft' });
+  if (m) out.push(m);
+  const names = new Set(metrics(c).body.metrics.map((x) => x.name));
+  const has = (n) => (n.endsWith('*') ? [...names].some((x) => x.startsWith(n.slice(0, -1))) : names.has(n));
+  const tiles = new Map(panelsOf(c).map((p) => [p.id, new Set((p.tiles || []).map((t) => t.title))]));
+  for (const w of d.widgets) {
+    for (const q of w.queries || []) if (q.metric && !has(q.metric)) out.push(`위젯 ${w.id}: 지표 ${q.metric} 없음 — 지표 목록의 이름으로 바꾸세요`);
+    if (w.ref && !tiles.has(w.ref.panel)) out.push(`위젯 ${w.id}: 업무 패널 ${w.ref.panel} 없음 — 패널 ID로 바꾸세요`);
+    else if (w.ref && !tiles.get(w.ref.panel).has(w.ref.tile)) out.push(`위젯 ${w.id}: 패널 ${w.ref.panel}에 타일 '${w.ref.tile}' 없음 — 그 패널의 타일 제목으로 바꾸세요`);
+  }
+  return [...new Set(out)].slice(0, 20);
+}
+function promptOf(c, text, base) {
+  const ms = metrics(c).body.metrics;
+  return [
+    `요청: ${text}`,
+    '',
+    base ? `지금 정의: ${base.title || base.id} · 위젯 ${base.widgets.length}개 (${base.widgets.map((w) => w.id).join(', ')})` : '지금 정의: 없음(새 보드)',
+    '',
+    `지표 ${ms.length}개 (이름 | 제목 | 단위 | 서비스, mock은 앞 20줄):`,
+    ...ms.slice(0, 20).map((x) => `${x.name} | ${x.title || ''} | ${x.unit || ''} | ${(x.services || []).join(',')}`),
+  ].join('\n');
+}
+function pasted(c, yaml, base) {
+  const fence = /```(?:ya?ml)?[^\n]*\n([\s\S]*?)```/.exec(yaml);
+  const body = fence ? fence[1] : yaml;
+  const explain = fence ? yaml.replace(fence[0], '').split('\n').map((s) => s.trim()).find(Boolean) || '' : '';
+  if (!/^\s*widgets\s*:/m.test(body)) return { yaml: body, errors: ['YAML을 읽지 못했습니다: widgets가 없습니다'] };
+  const d = draftOf({
+    title: '체결 지연', desc: '체결 RT·TAT와 매매 서버 CPU', range: '1h',
+    widgets: [
+      { id: 'rt', type: 'stat', ref: { panel: 'matching', tile: 'RT p99' } },
+      { id: 'tat', type: 'stat', ref: { panel: 'matching', tile: 'TAT p99' } },
+      { id: 'rttat', type: 'timeseries', title: '체결 RT · TAT', w: 6, h: 2, unit: 'ms', scope: { service: 'matching' },
+        queries: [{ metric: 'biz.order.latency_p99_ms', label: 'RT p99', agg: 'max' }, { metric: 'biz.order.tat_p99_ms', label: 'TAT p99', agg: 'max' }] },
+      { id: 'cpu', type: 'bar', title: '매매 서버 CPU', w: 6, h: 2, unit: '%', scope: { group: '매매체결' }, warn: 70, crit: 90,
+        queries: [{ metric: 'host.cpu.usage', label: 'CPU', by: 'host' }] }, // 지어낸 이름(실제는 host.cpu.pct)
+    ],
+  }, base ? base.id : '');
+  return { yaml: body, dash: d, errors: checkDraft(c, d), explain };
+}
+function llmDraft(c, base) {
+  const d = draftOf(base || { title: '매매 대기 · 시세 지연', widgets: [] }, base ? base.id : '');
+  const first = d.widgets.find((w) => METRIC_TYPES.has(w.type));
+  const old = first ? first.title || (first.ref && first.ref.tile) || first.id : '';
+  if (first) first.title = `${old} (AI)`;
+  d.widgets.push(W({ id: freeId(d.widgets, 'queue'), type: 'stat', title: '체결 대기 큐', w: 3, h: 1, ref: { panel: 'matching', tile: '대기 큐' } }));
+  d.widgets.push(W({ id: freeId(d.widgets, 'quote-delay'), type: 'timeseries', title: '시세 지연', w: 6, h: 2, unit: 'ms', warn: 100, crit: 500,
+    scope: { service: 'quote' }, queries: [{ metric: 'biz.quote.delay_p99_ms', label: 'p99', agg: 'max' }, { metric: 'biz.quote.delay_avg_ms', label: '평균', agg: 'max' }] }));
+  const explain = first ? `체결 대기 큐 값과 시세 지연 추이를 더하고 '${old}' 제목을 바꿨습니다` : '체결 대기 큐 값과 시세 지연 추이로 보드를 만들었습니다';
+  return { yaml: JSON.stringify(d, null, 2), dash: d, errors: checkDraft(c, d), explain, tries: 1 };
+}
+function assistDash(c) {
+  if (!editable(c)) return err(403, READONLY);
+  const b = c.json();
+  if (!b || typeof b !== 'object' || Array.isArray(b)) return err(400, '본문은 JSON {text, dash, prompt_only, yaml}입니다');
+  const text = str(b.text).trim(), yaml = str(b.yaml);
+  if (!text && !yaml.trim()) return err(400, '요청 글(text)이나 붙여 넣을 답(yaml)이 필요합니다');
+  let base = null;
+  try {
+    if (b.dash) base = normDash(b.dash);
+  } catch (e) {
+    if (e instanceof Bad) return err(400, e.message);
+    throw e;
+  }
+  const head = { available: !!c.flags.llm, provider: c.flags.llm ? 'openai' : 'none' };
+  if (b.prompt_only) return ok({ ...head, system: ASSIST_SYSTEM, prompt: promptOf(c, text, base), errors: [] });
+  if (yaml.trim()) return ok({ ...head, ...pasted(c, yaml, base) });
+  if (!c.flags.llm) return ok({ ...head, message: LLM_NONE, errors: [] });
+  if (text === '502') return later(1500, err(502, 'LLM 응답을 받지 못했습니다: mock 시간 초과'));
+  return later(1500, ok({ ...head, ...llmDraft(c, base) }));
+}
+
 // /templates · /metrics · /data를 /{id}보다 앞에
 export const routes = [
+  ['POST', /^\/assist\/dash$/, assistDash],
   ['GET', /^\/dashboards$/, list],
   ['GET', /^\/dashboards\/templates$/, templates],
   ['GET', /^\/dashboards\/metrics$/, metrics],

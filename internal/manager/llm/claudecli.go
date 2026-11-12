@@ -25,14 +25,18 @@ func init() {
 // 설정(manager.yaml llm, 모두 선택):
 //
 //	type: claude-cli
-//	bin: claude          # PATH에서 찾거나 절대 경로
+//	command: claude      # PATH에서 찾거나 절대 경로(bin이라고 써도 된다)
 //	model: ""            # 비면 CLI 기본(별칭 opus·sonnet이나 전체 이름)
-//	timeout: 300s        # 한 번 묻는 시간 한도(도구 탐색은 한 번 묻기마다라 maxSteps배)
-//	effort: ""           # low | medium | high | xhigh | max, 비면 CLI 기본
+//	timeout: 180s        # 한 번 묻는 시간 한도(도구 탐색은 한 번 묻기마다라 maxSteps배)
+//	effort: low          # 한 번 묻기: low(기본) | medium | high | xhigh | max
 //	tools_effort: ""     # 도구 탐색(CompleteTools)의 effort, 비면 CLI 기본
 //
 // api_key·max_tokens·fallbacks 등 다른 키는 무시한다(시연 설정의 llm 줄을 두고 type만 바꿔 켜려고).
 // Request.MaxTokens·Temperature는 CLI에 넘길 길이 없어 쓰지 않는다.
+//
+// 카드 N(보드 AI 초안)과 카드 Q(종료 보고서)가 따로 만든 것을 하나로 합쳤다: 설정 이름 command·기본 effort low·동시 2개는 N,
+// 도구 탐색·컨테이너 토큰은 Q. 한 번 묻기는 --safe-mode(CLAUDE.md·스킬·플러그인·hook·MCP 끔)까지 붙이고,
+// 도구 탐색은 MCP를 써야 해서 붙이지 않는다.
 //
 // CLI는 한 번 부를 때마다 빈 임시 폴더에서 띄우고, 내장 도구·설정 파일·사용자 MCP·스킬·세션 저장을 모두 끈다:
 // 이 저장소의 CLAUDE.md·메모리·hook이 섞이지 않고, 도구 탐색은 매니저가 내준 도구로만 한다(읽은 범위 기록·경로 가두기가 그대로).
@@ -42,11 +46,15 @@ type claudeCLI struct {
 	effort      string
 	toolsEffort string
 	timeout     time.Duration
+	sem         chan struct{} // 동시에 도는 CLI 수(2). nil이면 제한 없음
 }
 
 func newClaudeCLI(cfg map[string]any) (LLM, error) {
 	str := func(k string) string { s, _ := cfg[k].(string); return strings.TrimSpace(s) }
-	c := &claudeCLI{bin: str("bin"), model: str("model")}
+	c := &claudeCLI{bin: str("command"), model: str("model"), effort: "low", sem: make(chan struct{}, 2)}
+	if b := str("bin"); b != "" {
+		c.bin = b
+	}
 	if c.bin == "" {
 		c.bin = "claude"
 	}
@@ -60,7 +68,7 @@ func newClaudeCLI(cfg map[string]any) (LLM, error) {
 			}
 		}
 	}
-	t, err := cfgDuration(cfg["timeout"], 300*time.Second)
+	t, err := cfgDuration(cfg["timeout"], 180*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("llm claude-cli: timeout: %w", err)
 	}
@@ -76,7 +84,7 @@ var _ ToolLLM = (*claudeCLI)(nil)
 func (c *claudeCLI) Name() string { return "claude-cli" }
 
 func (c *claudeCLI) Complete(ctx context.Context, req Request) (string, error) {
-	return c.run(ctx, c.timeout, c.args(req, c.effort), req.Prompt, nil)
+	return c.run(ctx, c.timeout, append(c.args(req, c.effort), "--safe-mode"), req.Prompt, nil)
 }
 
 // CompleteTools는 호출 동안만 127.0.0.1에 MCP 서버(이름 eum)를 열어 tools를 내주고 CLI가 그 도구만 쓰게 한다.
@@ -179,6 +187,14 @@ func (c *claudeCLI) run(ctx context.Context, limit time.Duration, args []string,
 	if err != nil {
 		return "", err
 	}
+	if c.sem != nil {
+		select {
+		case c.sem <- struct{}{}:
+			defer func() { <-c.sem }()
+		case <-ctx.Done():
+			return "", fmt.Errorf("llm claude-cli: 앞 요청이 끝나기를 기다리다 취소됨")
+		}
+	}
 	dir, err := os.MkdirTemp("", "eum-claude-cli-")
 	if err != nil {
 		return "", fmt.Errorf("llm claude-cli: 임시 폴더를 만들지 못했습니다: %w", err)
@@ -263,7 +279,7 @@ func (c *claudeCLI) findBin() (string, error) {
 }
 
 func cliNotFound(bin string) error {
-	return fmt.Errorf("llm claude-cli: claude CLI를 찾지 못했습니다(%s) — 설치하거나 manager.yaml llm.bin에 경로를 적으세요", bin)
+	return fmt.Errorf("llm claude-cli: claude CLI를 찾지 못했습니다(%s) — Claude Code를 설치하거나 manager.yaml llm.command에 전체 경로를 적으세요", bin)
 }
 
 // cliResult는 `claude -p --output-format json`의 결과 줄이다(필요한 칸만).

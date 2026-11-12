@@ -1,8 +1,9 @@
 // 보드 편집기(07, 카드 W-E): #dashedit/<id> 고치기 · #dashedit/?from=<템플릿 ID> 새 보드.
 // 머리(보드 칸 · 저장 · 취소 · 삭제 · 정의) · 가운데 mountBoard 미리보기(틀을 끌어 순서) · 오른쪽 폼(고른 위젯, 없으면 위젯 목록).
 // 정의(model.Dash, json 이름)를 그대로 고치고, 바뀔 때마다 미리보기에 복사본을 넘긴다(board.setDash).
+// AI 초안(카드 N): POST /assist/dash가 준 정의로 갈아 끼우고(저장 안 함) 되돌리기를 둔다. 검사 오류는 문제 칸에.
 import { api, ApiError } from '../api.js';
-import { el, toast, confirmBox, DASH } from '../ui.js';
+import { el, toast, confirmBox, info, DASH } from '../ui.js';
 import { can, roleName } from '../auth.js';
 import { WIDGETS, TYPE_ORDER, KIND_TEXT, AGGS, BYS, REDUCES, RANGES, sized, widgetTitle } from '../widgets/index.js';
 import { mountBoard } from './dash.js';
@@ -266,6 +267,44 @@ export function toYAML(dash) {
   return out.join('\n') + '\n';
 }
 
+// ---- AI 초안(카드 N) ----
+// 위젯 scope는 늘 객체로 둔다(폼이 바로 고친다). 불러올 때와 초안을 받을 때 같게.
+export function fixDash(d) {
+  if (!Array.isArray(d.widgets)) d.widgets = [];
+  for (const w of d.widgets) if (!w.scope || typeof w.scope !== 'object') w.scope = {};
+  return d;
+}
+const widgetSig = (w) => { const out = []; yamlMap(w || {}, WIDGET_KEYS, '', out); return out.join('\n'); };
+const BOARD_FIELDS = [['title', '제목'], ['desc', '설명'], ['range', '기본 구간'], ['group', '보드 그룹']];
+const boardVal = (d, k) => String((d && d[k]) || (k === 'range' ? '1h' : ''));
+// 초안 전후를 위젯 id로 견준다: add·del·chg는 위젯 id, board는 바뀐 보드 칸. 순서만 바뀐 것은 세지 않는다.
+export function draftDiff(before, after) {
+  const a = new Map(((before && before.widgets) || []).map((w) => [w.id, w]));
+  const b = new Map(((after && after.widgets) || []).map((w) => [w.id, w]));
+  return {
+    add: [...b.keys()].filter((id) => !a.has(id)),
+    del: [...a.keys()].filter((id) => !b.has(id)),
+    chg: [...b.keys()].filter((id) => a.has(id) && widgetSig(a.get(id)) !== widgetSig(b.get(id))),
+    board: BOARD_FIELDS.filter(([k]) => boardVal(before, k) !== boardVal(after, k)).map(([, t]) => t),
+  };
+}
+// 한 줄 "위젯 +2 −1 · 바뀜 3"(0인 것은 뺀다. 바뀜은 위젯과 보드 칸을 함께 센다)
+export function diffText(d) {
+  const n = d.chg.length + d.board.length;
+  const w = [d.add.length ? `+${d.add.length}` : '', d.del.length ? `−${d.del.length}` : ''].filter(Boolean).join(' ');
+  return [w ? `위젯 ${w}` : '', n ? `바뀜 ${n}` : ''].filter(Boolean).join(' · ') || '바뀐 것 없음';
+}
+export function diffTitle(d) {
+  return [d.add.length ? `더함: ${d.add.join(', ')}` : '', d.del.length ? `뺌: ${d.del.join(', ')}` : '',
+    d.chg.length || d.board.length ? `바뀜: ${[...d.chg, ...d.board].join(', ')}` : ''].filter(Boolean).join('\n');
+}
+// 검사 오류 한 줄 → {wid, text}. "위젯 <id>: …"면 그 위젯을 가리킨다.
+export function problemOf(line) {
+  const s = String(line ?? '');
+  const m = /^위젯 (?:"([^"]*)"|([^\s:]+)):\s*([\s\S]*)$/.exec(s);
+  return m ? { wid: m[1] ?? m[2], text: m[3] } : { wid: '', text: s };
+}
+
 // ---- 화면 ----
 let alive = false;
 let gen = 0;
@@ -309,9 +348,7 @@ export async function render(page, params = {}, query = {}) {
     return;
   }
   if (!live()) return;
-  const d = st.dash;
-  if (!Array.isArray(d.widgets)) d.widgets = [];
-  for (const w of d.widgets) if (!w.scope || typeof w.scope !== 'object') w.scope = {};
+  const d = fixDash(st.dash);
 
   if (!can('operator') || !st.editable) {
     page.replaceChildren(el('div', { class: 'de-off' },
@@ -353,7 +390,8 @@ const grp = (label, kids) => el('div', { class: 'de-f', role: 'group', 'aria-lab
 
 function mount(page, st, refs, ctx) {
   const dash = st.dash;
-  const ui = { sel: null, dirty: false, yaml: false, scrollTo: null };
+  // assist: GET /assist · draft: 받은 초안 {before, dirty, note, diff}(되돌리기용) · aiErrs: 초안 검사 오류 · aiText·aiYaml: 모달 입력
+  const ui = { sel: null, dirty: false, yaml: false, scrollTo: null, assist: null, draft: null, aiErrs: [], aiText: '', aiYaml: '' };
   const metricInfo = new Map();
   const widgetOf = (id) => dash.widgets.find((w) => w.id === id) || null;
 
@@ -363,16 +401,29 @@ function mount(page, st, refs, ctx) {
   const msg = el('div', { class: 'de-msg', role: 'alert', hidden: true });
   const showMsg = (t) => { msg.textContent = t || ''; msg.hidden = !t; };
   const addBtn = el('button', { type: 'button', class: 'de-add', text: '+ 위젯', 'aria-haspopup': 'menu', onclick: () => openAddMenu(addBtn) });
+  const aiBtn = el('button', { type: 'button', class: 'de-tbtn', text: 'AI 초안', 'aria-haspopup': 'dialog', onclick: () => openAssist() });
   const yamlBtn = el('button', { type: 'button', class: 'de-tbtn', text: '정의', title: '저장될 모양(YAML)', 'aria-pressed': 'false', onclick: () => setYaml(!ui.yaml) });
   const delBtn = st.isNew ? null : el('button', { type: 'button', class: 'de-del', text: '삭제', onclick: () => del() });
   const saveBtn = el('button', { type: 'button', class: 'de-save', text: '저장', onclick: () => save() });
+  const draftTag = el('span', { class: 'de-draft', text: '초안 · 검토 뒤 저장 ⓘ', tabindex: '0' });
+  const diffEl = el('span', { class: 'de-diff' });
+  const draftEl = el('span', { class: 'de-dr', hidden: true }, draftTag, diffEl,
+    el('button', { type: 'button', class: 'de-link', text: '되돌리기', title: '초안 받기 전 정의로', onclick: () => revertDraft() }));
   const bar = el('div', { class: 'de-bar' },
     el('span', { class: 'de-tt' }, el('span', { class: 'de-kicker', text: st.isNew ? '새 보드' : '보드 편집' }), titleEl, dirtyEl),
-    el('span', { class: 'de-grow' }), addBtn, yamlBtn, delBtn,
+    draftEl, el('span', { class: 'de-grow' }), addBtn, aiBtn, yamlBtn, delBtn,
     el('button', { type: 'button', text: '취소', onclick: () => cancel() }), saveBtn, msg);
   const drawBar = () => {
     titleEl.textContent = dash.title || st.id || DASH;
     dirtyEl.hidden = !ui.dirty;
+  };
+  const drawDraft = () => {
+    const d = ui.draft;
+    draftEl.hidden = !d;
+    if (!d) return;
+    draftTag.title = d.note;
+    diffEl.textContent = diffText(d.diff);
+    diffEl.title = diffTitle(d.diff);
   };
 
   const idIn = st.isNew ? el('input', { type: 'text', class: 'de-mono', value: st.id, maxlength: '64', spellcheck: 'false', autocomplete: 'off',
@@ -390,7 +441,8 @@ function mount(page, st, refs, ctx) {
   // ---- 가운데: 미리보기 · 오른쪽: 폼 ----
   const stage = el('div', { class: 'de-stage' });
   const side = el('aside', { class: 'de-side', 'aria-label': '위젯 속성' });
-  page.append(el('div', { class: 'de' }, bar, meta, el('div', { class: 'de-body' }, stage, side)));
+  const probs = el('div', { class: 'de-probs', role: 'region', 'aria-label': '초안 검사', hidden: true });
+  page.append(el('div', { class: 'de' }, bar, meta, probs, el('div', { class: 'de-body' }, stage, side)));
 
   const hooked = new WeakSet();
   let dragId = null;
@@ -460,6 +512,7 @@ function mount(page, st, refs, ctx) {
     drawBar();
     if (redraw) board.setDash(previewOf(dash));
     if (ui.yaml) drawSide();
+    if (ui.aiErrs.length) drawProbs(); // 지운 위젯의 줄은 더 가리키지 않는다
   }
   function select(wid, scroll) {
     ui.sel = wid && widgetOf(wid) ? wid : null;
@@ -913,6 +966,213 @@ function mount(page, st, refs, ctx) {
     (b && !b.disabled ? b : side.querySelector('[data-act]:not([disabled])') || side).focus();
   }
 
+  // ---- AI 초안(카드 N): 요청 → 초안(저장 안 함) · 프롬프트 복사 · 답 붙여넣기 ----
+  const assistP = api('/assist').then((a) => a || { available: false }).catch(() => ({ available: false })).then((a) => {
+    ui.assist = a;
+    aiBtn.title = a.available ? `LLM ${a.provider || ''}`.trim() : 'LLM 연동 전 — 프롬프트 복사 · 답 붙여넣기';
+    return a;
+  });
+  let aiModal = null, aiSeq = 0, aiTick = null;
+  function closeAssist() {
+    aiSeq++; // 기다리던 응답은 버린다(api에 끊기가 없어 결과를 무시한다)
+    clearInterval(aiTick);
+    aiTick = null;
+    if (!aiModal) return;
+    aiModal.remove();
+    aiModal = null;
+    if (alive) aiBtn.focus();
+  }
+  cleanups.push(closeAssist);
+  const aiErrText = (e) => {
+    if (e instanceof ApiError && e.status === 403) return e.need ? `편집 권한 없음 (${roleName(e.need)} 이상)` : e.error || OFF_TEXT;
+    if (e instanceof ApiError && e.status === 502) return `${e.error || 'LLM 응답 없음'}\n다시 누르거나, 프롬프트 복사 뒤 다른 LLM의 답을 붙여 넣으세요`;
+    return errText(e);
+  };
+  const noDash = (r, todo) => [...((r && r.errors) || []), todo].join('\n');
+
+  function openAssist() {
+    closeAssist();
+    closeMenu();
+    const fix = dash.widgets.length > 0; // 위젯이 있으면 고치기(지금 정의를 같이 보낸다), 없으면 새로 만들기
+    let paste = false;
+    const ta = el('textarea', { rows: '5', class: 'ed-nl de-ain', 'aria-label': '요청',
+      oninput: () => { if (paste) ui.aiYaml = ta.value; else ui.aiText = ta.value; },
+      onkeydown: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !goBtn.hidden && !goBtn.disabled) { e.preventDefault(); goBtn.click(); } } });
+    const msg = el('div', { class: 'ed-nlmsg de-aimsg', role: 'status', 'aria-live': 'polite' });
+    const out = el('textarea', { class: 'de-aiout', rows: '6', readonly: true, hidden: true, spellcheck: 'false', 'aria-label': '프롬프트' });
+    const copyBtn = el('button', { type: 'button', text: '프롬프트 복사', title: 'LLM에 보낼 글 그대로(다른 LLM에 넣을 때)', onclick: () => copyPrompt() });
+    const pasteBtn = el('button', { type: 'button', class: 'de-tbtn', text: '답 붙여넣기', 'aria-pressed': 'false', onclick: () => setPaste(!paste) });
+    const goBtn = el('button', { type: 'button', class: 'de-save', onclick: () => (paste ? loadYaml() : makeDraft()) });
+    const noLlm = info('LLM 연동 전 — 프롬프트를 복사해 다른 LLM에 넣고 답을 붙여 넣으세요');
+    const say = (t, bad) => { msg.textContent = t || ''; msg.classList.toggle('bad', !!bad); };
+    const busy = (on) => { for (const b of [copyBtn, pasteBtn, goBtn]) b.disabled = on; ta.readOnly = on; };
+    const mine = () => { const my = ++aiSeq; return () => alive && my === aiSeq; };
+    const reqOf = (text) => (fix ? { text, dash: { ...clone(dash), id: st.id } } : { text });
+    const drawMode = () => {
+      ta.placeholder = paste ? 'LLM 답(YAML)'
+        : fix ? '예: 시세 지연 추이를 더하고, CPU 막대는 매매체결 그룹만' : '예: 매매체결 대기 큐·체결 처리량, 시세 지연 추이, 매매 서버 CPU 막대';
+      ta.spellcheck = !paste;
+      goBtn.textContent = paste ? '불러오기' : '초안 만들기';
+      const none = !paste && !!ui.assist && !ui.assist.available;
+      goBtn.hidden = none;
+      noLlm.hidden = !none;
+      pasteBtn.classList.toggle('on', paste);
+      pasteBtn.setAttribute('aria-pressed', String(paste));
+    };
+    const setPaste = (on) => {
+      paste = on;
+      ta.value = paste ? ui.aiYaml : ui.aiText;
+      out.hidden = true;
+      say('');
+      drawMode();
+      ta.focus();
+    };
+
+    async function makeDraft() {
+      const text = ui.aiText.trim();
+      if (!text) { say('만들 보드를 문장으로 쓰세요', true); ta.focus(); return; }
+      const cur = mine();
+      busy(true);
+      out.hidden = true;
+      const t0 = Date.now();
+      const tick = () => say(`만드는 중… ${Math.round((Date.now() - t0) / 1000)}초`);
+      tick();
+      aiTick = setInterval(tick, 1000);
+      try {
+        const r = await api('/assist/dash', { method: 'POST', body: reqOf(text) });
+        if (!cur()) return;
+        if (r && r.dash) { applyDraft(r); return; }
+        if (r && r.available === false) {
+          ui.assist = { available: false, provider: r.provider || 'none' };
+          drawMode();
+          say(`${r.message || 'LLM 연동 전'} · 지금은 프롬프트 복사 → 답 붙여넣기`, true);
+          return;
+        }
+        say(noDash(r, '다시 누르거나 요청을 바꿔 보세요'), true);
+      } catch (e) {
+        if (cur()) say(aiErrText(e), true);
+      } finally {
+        if (cur()) { clearInterval(aiTick); aiTick = null; busy(false); }
+      }
+    }
+    async function copyPrompt() {
+      const text = ui.aiText.trim();
+      if (!text) { if (paste) setPaste(false); say('요청을 먼저 쓰세요', true); ta.focus(); return; }
+      const cur = mine();
+      busy(true);
+      say('프롬프트 받는 중…');
+      try {
+        const r = await api('/assist/dash', { method: 'POST', body: { ...reqOf(text), prompt_only: true } });
+        if (!cur()) return;
+        const full = `${(r && r.system) || ''}\n\n${(r && r.prompt) || ''}`;
+        const okCopy = await copyText(full, out);
+        if (!cur()) return;
+        if (okCopy) say(`복사했습니다(${full.length.toLocaleString()}자) — 다른 LLM의 답은 [답 붙여넣기]로`);
+        else say('복사하지 못함 — 아래 글을 골라 복사하세요(Ctrl+A, Ctrl+C)', true);
+      } catch (e) {
+        if (cur()) say(aiErrText(e), true);
+      } finally {
+        if (cur()) busy(false);
+      }
+    }
+    async function loadYaml() {
+      const y = ui.aiYaml.trim();
+      if (!y) { say('LLM 답을 붙여 넣으세요', true); ta.focus(); return; }
+      const cur = mine();
+      busy(true);
+      say('읽는 중…');
+      try {
+        const r = await api('/assist/dash', { method: 'POST', body: { ...reqOf(ui.aiText.trim()), yaml: y } });
+        if (!cur()) return;
+        if (r && r.dash) { ui.aiYaml = ''; applyDraft(r); return; }
+        say(noDash(r, 'LLM 답의 ```yaml 블록이나 정의 YAML 전체를 붙여 넣으세요'), true);
+      } catch (e) {
+        if (cur()) say(aiErrText(e), true);
+      } finally {
+        if (cur()) busy(false);
+      }
+    }
+
+    const bg = el('div', { class: 'modal-bg de-mbg', onclick: (e) => { if (e.target === bg) closeAssist(); },
+      onkeydown: (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeAssist(); } } },
+      el('div', { class: 'modal ed-modal de-ai', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'AI 초안' },
+        el('div', { class: 'de-sh' }, el('b', { text: 'AI 초안' }),
+          info(fix ? '지금 정의를 바탕으로 고친 정의 전체를 받습니다. 저장은 미리보기로 검토한 뒤에' : '문장으로 쓰면 보드 정의 초안을 채웁니다. 저장은 미리보기로 검토한 뒤에')),
+        ta, msg, out,
+        el('div', { class: 'btns de-aibtns' }, copyBtn, pasteBtn, el('span', { class: 'de-grow' }),
+          el('button', { type: 'button', text: '취소', onclick: closeAssist }), goBtn, noLlm)));
+    aiModal = bg;
+    ta.value = ui.aiText;
+    drawMode();
+    document.body.append(bg);
+    ta.focus();
+    if (!ui.assist) assistP.then(() => { if (aiModal === bg) drawMode(); });
+  }
+
+  // 초안은 정의를 갈아 끼우고 저장 안 한 변경으로 둔다. 되돌리기는 첫 초안 전 정의로(초안을 거듭 받아도).
+  const META = ['id', 'owner', 'updated_by', 'updated_at']; // 초안은 이 칸을 비워 온다: 지금 것을 둔다
+  function replaceDash(next) {
+    const keep = META.filter((k) => k in dash).map((k) => [k, dash[k]]);
+    for (const k of Object.keys(dash)) delete dash[k];
+    Object.assign(dash, clone(next) || {});
+    for (const k of META) delete dash[k];
+    for (const [k, v] of keep) dash[k] = v;
+    fixDash(dash);
+  }
+  function afterReplace() {
+    ui.sel = null;
+    markSel();
+    titleIn.value = dash.title || '';
+    descIn.value = dash.desc || '';
+    setSel(rangeSel, dash.range || '1h');
+    setSel(groupSel, dash.group || '');
+    drawSide(); drawDraft(); drawProbs();
+  }
+  function applyDraft(r) {
+    const before = ui.draft ? ui.draft.before : clone(dash);
+    const dirty = ui.draft ? ui.draft.dirty : ui.dirty;
+    replaceDash(r.dash);
+    const note = [r.explain || '', r.tries > 1 ? `검사에 걸려 한 번 더 물음(${r.tries}번)` : '', '미리보기로 확인하고 저장하세요'].filter(Boolean).join('\n');
+    const diff = draftDiff(before, dash);
+    ui.draft = { before, dirty, note, diff };
+    ui.aiErrs = Array.isArray(r.errors) ? r.errors.map(String) : [];
+    closeAssist();
+    afterReplace();
+    ui.scrollTo = diff.add[0] || null; // 미리보기를 처음 더한 위젯으로(새 틀이 그려질 때 onFrame이 스크롤)
+    touch();
+  }
+  function revertDraft() {
+    const d = ui.draft;
+    if (!d) return;
+    replaceDash(d.before);
+    ui.draft = null;
+    ui.aiErrs = [];
+    afterReplace();
+    touch();
+    ui.dirty = d.dirty;
+    drawBar();
+    toast('초안 전으로 되돌렸습니다');
+  }
+  // 문제 칸: 초안 검사 오류를 그대로(할 일까지 쓰여 온다). "위젯 <id>: …"는 누르면 그 위젯을 고른다.
+  function drawProbs() {
+    const n = ui.aiErrs.length;
+    probs.hidden = !n;
+    if (!n) { probs.replaceChildren(); return; }
+    const go = (wid) => select(wid, true);
+    probs.replaceChildren(
+      el('div', { class: 'de-sh' }, el('b', { text: `⚠ 초안 검사 ${n}` }),
+        el('span', { class: 'de-i', text: 'ⓘ', tabindex: '0', title: '초안을 받을 때 본 형식·이름 검사입니다. 고친 뒤에는 ✕로 닫으세요' }),
+        el('span', { class: 'de-grow' }),
+        el('button', { type: 'button', class: 'de-x', title: '닫기', text: '✕', onclick: () => { ui.aiErrs = []; drawProbs(); } })),
+      el('ul', {}, ui.aiErrs.map((line) => {
+        const p = problemOf(line);
+        const known = !!(p.wid && widgetOf(p.wid));
+        return el('li', known ? { class: 'link', tabindex: '0', title: '이 위젯 고르기', onclick: () => go(p.wid),
+          onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(p.wid); } } } : {},
+        p.wid ? el('code', { text: p.wid }) : null, el('span', { text: p.text }));
+      })));
+  }
+
   // ---- 저장 · 취소 · 삭제 ----
   async function save() {
     showMsg('');
@@ -930,6 +1190,8 @@ function mount(page, st, refs, ctx) {
       if (!alive) return;
       st.rev = (r && r.rev) || st.rev;
       ui.dirty = false;
+      ui.draft = null;
+      drawDraft();
       toast('저장했습니다');
       location.hash = viewHref(st.id);
     } catch (e) {
@@ -984,7 +1246,7 @@ function mount(page, st, refs, ctx) {
     }
   };
   const onKey = (e) => {
-    if (e.key === 'Escape' && !modal && !menu && ui.sel && !e.target.closest('input, textarea, select, .modal-bg')) select(null);
+    if (e.key === 'Escape' && !modal && !aiModal && !menu && ui.sel && !e.target.closest('input, textarea, select, .modal-bg')) select(null);
   };
   window.addEventListener('beforeunload', onBefore);
   document.addEventListener('click', onLink, true);
@@ -1006,6 +1268,22 @@ function mount(page, st, refs, ctx) {
 }
 
 // ---- 폼 부품 ----
+// 고르기 칸의 값을 바꾼다(목록에 없는 값이면 그 값을 더한다: sel()과 같게).
+function setSel(s, v) {
+  if (![...s.options].some((o) => o.value === v)) s.append(el('option', { value: v, text: v }));
+  s.value = v;
+}
+// 클립보드에 쓴다. 비보안(http) 주소면 navigator.clipboard가 없어, 글을 area에 보이고 골라 둔 채 execCommand로 한 번 더 해 본다.
+async function copyText(text, area) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* 아래로 */ }
+  area.value = text;
+  area.hidden = false;
+  area.focus();
+  area.select();
+  area.scrollTop = 0;
+  try { if (document.execCommand('copy')) { area.hidden = true; return true; } } catch (e) { /* 무시 */ }
+  return false;
+}
 function setStr(o, k, v) { if (v) o[k] = v; else delete o[k]; }
 function setNum(o, k, v) { if (v == null) delete o[k]; else o[k] = v; }
 function segBtn(text, on, onclick) {

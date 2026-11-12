@@ -256,8 +256,8 @@ logs:
   - **초안은 저장하지 않는다.** 화면은 초안을 편집기에 채우고, 사람이 고쳐서 저장한다(같은 허용 목록·감사).
 - `GET /api/v1/assist` → `{"available":bool,"provider":"none"}`.
 - 보드 초안(07 결정 13, 카드 N): `POST /api/v1/assist/dash {"text","dash"}` → 보드 정의 초안. `prompt_only`면 보낼 프롬프트만, `yaml`이면 LLM 없이 검사만(밖의 LLM 답 붙여넣기).
-- LLM 구현: `none` · `openai`(OpenAI 호환) · `anthropic`(Claude, 공식 Go SDK, 기본 `claude-opus-5-5`, effort·거절 대체). 시연 설정은 `EUM_LLM=anthropic`과 `ANTHROPIC_API_KEY`로 켠다.
-- `claude-cli`(카드 Q-F): API 키 없이 로그인된 Claude CLI(`claude -p`)를 부른다. 설정은 `EUM_LLM=claude-cli`. 컨테이너에서는 이미지에 CLI를 넣고(`EUM_CLAUDE_CLI=1`) `claude setup-token`으로 만든 토큰을 `CLAUDE_CODE_OAUTH_TOKEN`으로 넘긴다. 도구 탐색은 그 호출 동안만 여는 loopback MCP 서버로 같은 읽기 전용 도구를 내준다(CLI 내장 도구는 끔).
+- LLM 구현: `none` · `openai`(OpenAI 호환) · `anthropic`(Claude API, 공식 Go SDK, 기본 `claude-opus-5-5`, effort·거절 대체) · `claude-cli`(로그인된 Claude Code CLI, API 키 없이). 시연은 `EUM_LLM=claude-cli`(또는 `anthropic` + `ANTHROPIC_API_KEY`)로 켠다.
+- `claude-cli`(카드 N·Q-F): `claude -p`를 빈 임시 폴더에서 내장 도구·설정 없이 부른다. 컨테이너에서는 이미지에 CLI를 넣고(`EUM_CLAUDE_CLI=1`) `claude setup-token`으로 만든 토큰을 `CLAUDE_CODE_OAUTH_TOKEN`으로 넘긴다. 도구 탐색(카드 Q)은 그 호출 동안만 여는 loopback MCP 서버로 같은 읽기 전용 도구를 내준다.
 
 ## 10. API 추가
 

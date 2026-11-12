@@ -25,7 +25,7 @@ export function needOf(method, pathname) {
     || (method === 'DELETE' && /^\/risk\/holds\/[^/]+$/.test(pathname))
     || (method === 'POST' && /^\/exits\/[^/]+\/analyze$/.test(pathname))
     || (/^\/dashboards\/[^/]+$/.test(pathname) && (method === 'PUT' || method === 'DELETE'))
-    || ['/flows/validate', '/flows/reload', '/assist/flow'].includes(pathname);
+    || ['/flows/validate', '/flows/reload', '/assist/flow', '/assist/dash'].includes(pathname);
   if (method === 'POST' && pathname === '/dashboards/data') return 'viewer'; // 편집기 미리보기(07)
   return op ? 'operator' : 'admin';
 }

@@ -87,4 +87,25 @@
 
 ## 4. 결과
 
-(진행 뒤 채운다)
+진행: N0 계약(타입·경로 자리·역할·`llm.SplitYAML`)을 커밋하고 N-A(서버)·N-B(화면)를 워크트리 두 개로 동시에 돌렸다. 그동안 N-C(anthropic 구현·설정·문서)는 오케스트레이터가 직접 했다.
+
+| 확인 | 결과 |
+|---|---|
+| Go | `gofmt`·`go vet ./...`·`go test ./...` 통과. 새 테스트: 초안 10개(지시서 §3 N-A 7번 전부), anthropic 2개(헤더·본문·temperature 안 보냄·거절·잘림·401에 키 없음·설정 오류) |
+| 실제 매니저 + 가짜 Claude 서버 | anthropic SDK 경로 전체: 첫 답의 지어낸 지표(`host.cpu.usage`)가 참조 검사에 걸림 → 한 번 다시 물어 통과(`tries 2`, `errors []`, id 유지). 다시 묻는 프롬프트에 이전 답·오류 글. 요청 본문 `model claude-opus-5-5`·`max_tokens 16000`·`fallbacks default`·`effort low`·temperature 없음 |
+| 실제 매니저 API | `prompt_only` System 4.4천 자 + Prompt 5.5천 자(157줄, 새 데이터 기준), 붙여넣기 참조 오류 4종(지표·서비스·그룹·타일, 할 일까지), 조회 역할 403 |
+| 실제 매니저 화면(CDP) | 기존 보드 trading: AI 초안 → 꼬리표·`위젯 +1 −9 · 바뀜 4` → 미리보기 10→2 → 되돌리기 10, 붙여넣기 오류가 문제 칸에. 콘솔 오류 0 |
+| mock 화면(N-B) | 새·기존 보드 초안·되돌리기·저장, 붙여넣기, 프롬프트 복사, LLM 없음 ⓘ, 조회 역할, 502, 늦은 응답 버림, 밝음·어두움. 54개 확인, 콘솔 오류 0 |
+| compose | 매니저에만 `EUM_LLM`·`ANTHROPIC_API_KEY`(띄우는 셸 값, 없으면 빈 값 → none) |
+
+레인이 정한 것(카드에 없던 것):
+- N-A: 알려진 이름이 하나도 없는 종류(지표·그룹·서버·배치판·서비스)는 참조 검사를 건너뜀(패널은 늘 검사). 그룹 목록 = 서버 그룹 ∪ 패널 그룹(접두사 포함). 붙여넣기도 `SplitYAML`을 거쳐 LLM 답 통째로 붙여도 됨. 형식·위젯 15종·규칙·예시는 System(바뀌지 않음), 목록·지금 정의·요청은 Prompt. 오류 20줄 넘으면 19줄 + `… 외 N개`. 두 번째 묻기가 LLM 오류면 502.
+- N-B: 문제 칸을 보드 칸 아래에 두고 `위젯 <id>:` 줄을 누르면 그 위젯을 고름. 위젯이 없으면 `dash`를 보내지 않고 새 보드로 물음. 초안을 거듭 받아도 되돌리기는 첫 초안 전으로(저장 상태도). `바뀜`에 보드 칸 포함. 502 아래 할 일 한 줄. mock 붙여넣기 초안에 지어낸 지표 하나(검사 오류가 보이게).
+- N-C: anthropic은 공식 Go SDK(`anthropic-sdk-go/v2` v2.9.0), Beta Messages + 서버 쪽 거절 대체(`fallbacks: default`). Opus 5.5는 샘플링 값을 받지 않아 temperature를 보내지 않고, 생각이 늘 켜져 있어 `max_tokens` 하한 16000. effort 기본 `low`(시연 대기), 설정으로 바꿈. 설정 `llm.type`은 `${EUM_LLM}`(비면 none).
+
+남은 것:
+- Claude API(`anthropic`)는 키가 없어 실제 호출은 못 해 봤다(가짜 Messages 서버로 SDK 경로까지). 켜는 법: `EUM_LLM=anthropic ANTHROPIC_API_KEY=… deploy/demo.sh up`.
+- 추가(11-12, 사용자 요청 "API 키 없이 Claude CLI로"): LLM 구현 `claude-cli` — 이 PC에 로그인된 `claude -p`를 부른다(`--output-format json --tools "" --safe-mode --no-session-persistence --system-prompt … --model … --effort low`, 글은 표준 입력, 빈 임시 폴더, `CLAUDECODE` 뺌, 동시 2개, 기본 180s). `--bare`는 OAuth를 읽지 않아 쓰지 않는다. dev 모드(demo.sh 기본)는 설정 파일 없이 `EUM_LLM`(+`EUM_LLM_MODEL`·`EUM_LLM_EFFORT`·`EUM_LLM_URL`·`EUM_LLM_KEY`)으로 켠다: `EUM_LLM=claude-cli EUM_LLM_MODEL=claude-opus-5-5 deploy/demo.sh up`. compose 컨테이너 안 매니저는 호스트 CLI를 못 쓴다 — 이미지에 CLI를 넣고(`EUM_CLAUDE_CLI=1`) `claude setup-token` 토큰을 `CLAUDE_CODE_OAUTH_TOKEN`으로 넘기면 된다(카드 Q-F). 카드 Q가 같은 이름으로 따로 만든 구현과 하나로 합쳤다: 위 동작은 그대로이고 도구 탐색(`CompleteTools`)과 컨테이너 토큰이 더해졌다(`--safe-mode`는 한 번 묻기에만, 실행 파일 경로는 `command`·`bin` 둘 다).
+- **실제 Claude(CLI) 확인**: 기존 보드 trading 고치기("시세 지연 p99 시계열 추가, CPU 막대를 메모리로") 10초·한 번에 통과·요청한 두 가지만 바뀜(위젯 8개 그대로). 새 보드("지수산출 점검") 8초·한 번에 통과: 지수산출 패널 타일 ref 4·처리량/지연 시계열(scope.service index)·그룹 지수산출 서버별 CPU/메모리·서비스 로그.
+- 인터넷이 없는 곳: Claude 호출은 502(`Claude에 닿지 못했습니다…`)로 끝나고 프롬프트 복사·붙여넣기는 된다. 빌드는 SDK 의존성 때문에 `go mod download`(또는 `go mod vendor`해 둔 소스)가 필요하다.
+- 390px에서 머리 메뉴가 넘쳐 모달이 오른쪽으로 잘린다(전부터 있던 문제).

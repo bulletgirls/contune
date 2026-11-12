@@ -31,7 +31,8 @@ editor:
 collect:                       # 로그 수집(05 §17): 파일 하나 = 적용 대상 하나(all | group:<경로> | host:<id>). 화면 #collect에서 고친다
   dir: ./collect
   enabled: true                # 끄면 조회만. 에이전트는 자기 YAML의 remote.enabled가 켜져 있어야 받는다
-# AI 초안(05 §9·카드 N): EUM_LLM=anthropic이면 Claude(키는 ANTHROPIC_API_KEY), 비면 none(입력·프롬프트 복사·붙여넣기는 된다)
+# AI 초안(05 §9·카드 N): EUM_LLM=anthropic이면 Claude API(키는 ANTHROPIC_API_KEY), claude-cli면 이 PC에 로그인된 claude 명령(키 없이),
+# 비면 none(입력·프롬프트 복사·붙여넣기는 된다). claude-cli는 매니저가 호스트에서 돌 때만(컨테이너 안에는 claude가 없다)
 # 사내 OpenAI 호환이면 { type: openai, base_url: https://<주소>/v1, model: <모델>, api_key: "${EUM_LLM_KEY}" }
 llm: { type: "${EUM_LLM}", model: claude-opus-5-5, api_key: "${ANTHROPIC_API_KEY}", timeout: 120s, effort: low }
 # 업무 코드 저장소(카드 Q): 종료 보고서에 죽은 함수의 소스·최근 변경·버전을 붙인다. repos가 비면 꺼짐.

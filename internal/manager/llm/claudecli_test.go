@@ -76,8 +76,15 @@ const okJSON = `{"type":"result","subtype":"success","is_error":false,"result":"
 
 func TestClaudeCLIConfig(t *testing.T) {
 	c := buildCLI(t, map[string]any{})
-	if c.Name() != "claude-cli" || c.bin != "claude" || c.timeout != 300*time.Second || c.model != "" || c.effort != "" || c.toolsEffort != "" {
+	if c.Name() != "claude-cli" || c.bin != "claude" || c.timeout != 180*time.Second || c.model != "" || c.effort != "low" || c.toolsEffort != "" || cap(c.sem) != 2 {
 		t.Fatalf("기본값 %+v", c)
+	}
+	// 실행 파일 경로는 command(카드 N의 이름)와 bin 둘 다 받는다. 둘 다 있으면 bin.
+	if c := buildCLI(t, map[string]any{"command": "/usr/local/bin/claude"}); c.bin != "/usr/local/bin/claude" {
+		t.Fatalf("command %+v", c)
+	}
+	if c := buildCLI(t, map[string]any{"command": "/a/claude", "bin": "/b/claude"}); c.bin != "/b/claude" {
+		t.Fatalf("bin 우선 %+v", c)
 	}
 	// 시연 설정의 llm 줄 그대로(type만 바뀜): 모르는 키는 무시
 	c = buildCLI(t, map[string]any{"model": "claude-opus-5-5", "api_key": "${ANTHROPIC_API_KEY}", "timeout": "120s", "effort": "low",
@@ -121,7 +128,7 @@ func TestClaudeCLIComplete(t *testing.T) {
 		t.Fatalf("got %q %v", got, err)
 	}
 	want := []string{"-p", "--output-format", "json", "--system-prompt", "시스템 글", "--tools", "", "--setting-sources", "",
-		"--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence", "--model", "opus", "--effort", "low"}
+		"--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence", "--model", "opus", "--effort", "low", "--safe-mode"}
 	if args := readArgs(t, rec); !reflect.DeepEqual(args, want) {
 		t.Fatalf("인자\n got %q\nwant %q", args, want)
 	}
@@ -152,13 +159,13 @@ func TestClaudeCLIComplete(t *testing.T) {
 		t.Fatalf("임시 폴더가 남음: %v", err)
 	}
 
-	// model·effort를 비우면 CLI 기본(인자 없음), System을 비우면 짧은 기본 글
+	// model을 비우면 CLI 기본(인자 없음), effort를 비우면 low, System을 비우면 짧은 기본 글
 	c = buildCLI(t, map[string]any{"bin": bin})
 	if _, err := c.Complete(context.Background(), Request{Prompt: "p"}); err != nil {
 		t.Fatal(err)
 	}
 	args := strings.Join(readArgs(t, rec), " ")
-	if strings.Contains(args, "--model") || strings.Contains(args, "--effort") || !strings.Contains(args, "--system-prompt 묻는 말에 답한다.") {
+	if strings.Contains(args, "--model") || !strings.Contains(args, "--effort low") || !strings.Contains(args, "--system-prompt 묻는 말에 답한다.") {
 		t.Fatalf("인자 %q", args)
 	}
 }
@@ -199,7 +206,7 @@ func TestClaudeCLIErrors(t *testing.T) {
 		t.Setenv("PATH", t.TempDir())
 		for _, b := range []string{"claude", "/nonexistent/claude"} {
 			_, err := buildCLI(t, map[string]any{"bin": b}).Complete(context.Background(), Request{Prompt: "p"})
-			if err == nil || !strings.Contains(err.Error(), "claude CLI를 찾지 못했습니다("+b+") — 설치하거나 manager.yaml llm.bin에 경로를 적으세요") {
+			if err == nil || !strings.Contains(err.Error(), "claude CLI를 찾지 못했습니다("+b+") — Claude Code를 설치하거나 manager.yaml llm.command에 전체 경로를 적으세요") {
 				t.Fatalf("%s: %v", b, err)
 			}
 		}

@@ -23,6 +23,7 @@ import (
 	"eum/internal/agent/profile"
 	"eum/internal/fleet"
 	"eum/internal/manager"
+	"eum/internal/manager/coderepo"
 	"eum/internal/manager/collect"
 	"eum/internal/manager/editor"
 	"eum/internal/manager/webauth"
@@ -204,6 +205,8 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 	if *cfgPath == "" {
 		// 수집 설정(05 §17): dev는 데이터 폴더 안에 두고 화면에서 고칠 수 있게 켠다.
 		cfg.Collect = collect.Config{Dir: filepath.Join(cfg.Data, "collect"), Enabled: true}
+		cfg.LLM = devLLM(os.Getenv) // AI 초안(카드 N): 설정 파일 없이 띄울 때는 환경변수로 켠다
+		cfg.Code = devCode(os.Getenv) // 소스 근거(카드 Q): 작업 폴더의 demo/를 업무 코드 저장소로
 	}
 
 	// 호스트별 토큰(보안 S3): 실제 에이전트 7대는 시작할 때 만든 난수 토큰, 모의 서버는 공유 토큰(cfg.Token).
@@ -422,4 +425,41 @@ func waitListening(ctx context.Context, addr string, mgrDone <-chan struct{}) er
 		case <-tick.C:
 		}
 	}
+}
+
+// devCode는 설정 파일 없이 띄운 dev의 업무 코드 저장소다(카드 Q): 작업 폴더의 demo/(시연 업무 코드)와 demo/build.sh가
+// deploy/bin에 남긴 build-id 표. demo 폴더가 없으면 꺼짐. EUM_CODE_LLM(off | snippets | tools, 비면 tools)이 LLM에 코드를 보내는 범위다.
+func devCode(env func(string) string) coderepo.Config {
+	if st, err := os.Stat("demo"); err != nil || !st.IsDir() {
+		return coderepo.Config{}
+	}
+	mode := env("EUM_CODE_LLM")
+	if mode == "" {
+		mode = coderepo.ModeTools
+	}
+	return coderepo.Config{
+		Repos:  []coderepo.RepoConfig{{ID: "demo", Path: ".", Include: []string{"demo/**"}}},
+		Builds: filepath.Join("deploy", "bin", "builds.json"),
+		LLM:    mode,
+	}
+}
+
+// devLLM은 설정 파일 없이 띄운 dev의 LLM 설정이다. EUM_LLM(claude-cli | anthropic | openai, 비면 none)과
+// EUM_LLM_MODEL·EUM_LLM_EFFORT·EUM_LLM_URL·EUM_LLM_KEY(없으면 ANTHROPIC_API_KEY)를 읽는다. 구현마다 아는 칸만 쓴다.
+func devLLM(env func(string) string) map[string]any {
+	kind := env("EUM_LLM")
+	if kind == "" {
+		return map[string]any{"type": "none"}
+	}
+	cfg := map[string]any{"type": kind}
+	key := env("EUM_LLM_KEY")
+	if key == "" {
+		key = env("ANTHROPIC_API_KEY")
+	}
+	for k, v := range map[string]string{"model": env("EUM_LLM_MODEL"), "effort": env("EUM_LLM_EFFORT"), "base_url": env("EUM_LLM_URL"), "api_key": key} {
+		if v != "" {
+			cfg[k] = v
+		}
+	}
+	return cfg
 }
