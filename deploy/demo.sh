@@ -5,6 +5,7 @@
 #          EUM_COMPOSE(compose 파일, 기본 deploy/docker-compose.yml) EUM_DEV_FLAGS(eum dev에 더 넘길 플래그)
 #          EUM_HOSTS(up이 기다리는 호스트 수, 기본 43) EUM_BIN(eum 실행 파일, 기본 deploy/bin/eum) EUM_TOKEN(기본 dev)
 #          EUM_USER·EUM_PASS(화면 로그인 계정, 기본 admin/eum-admin. 로그인이 꺼져 있으면 쓰지 않음)
+#          EUM_SURGE_PEAK(surge가 6000건/초를 유지하는 초, 기본 60)
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -138,12 +139,19 @@ cmd_run() {
   [ "$code" = 201 ] || die "market-open 실행 실패(HTTP $code)"
 }
 
+# 6000은 EUM_SURGE_PEAK초(기본 60) 유지한다: 빠른 PC에서는 6000을 15~40초 받아야 처리가 밀려 체결 알림(p99·대기 큐)이 뜬다.
 cmd_surge() {
-  say surge "접수율 3000 -> 4500 -> 6000 -> 1500, 20초 간격 (장면 5)"
+  peak="${EUM_SURGE_PEAK:-60}"
+  case "$peak" in *[!0-9]*|'') die "EUM_SURGE_PEAK는 초(정수): '$peak'" ;; esac
+  say surge "접수율 3000 -> 4500 -> 6000(${peak}초 유지) -> 1500, 20초 간격 (장면 5)"
   for r in 3000 4500 6000 1500; do
     set_rate "$r"
     echo "  $(date +%H:%M:%S) 접수율 $r"
-    [ "$r" = 1500 ] || sleep 20
+    case "$r" in
+      1500) ;;
+      6000) sleep "$peak" ;;
+      *) sleep 20 ;;
+    esac
   done
 }
 
