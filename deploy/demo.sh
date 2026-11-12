@@ -236,7 +236,11 @@ print(m.group(1) if m else "")') || seq=""
   say trace "주문 $seq 의 경로"
   get "logs?q=seq%3D$seq+hop%3D&level=info&limit=50" | python3 -c '
 import sys,json,re,time
-ev=sorted(json.load(sys.stdin)["events"], key=lambda e: e["ts"])
+# 로그 시각은 초 단위라 순서가 섞인다: 줄에 적힌 "접수부터 걸린 시간"으로 줄 세운다
+def e2e_of(e):
+    m=re.search(r"e2e_ms=([0-9.]+)", e["message"])
+    return float(m.group(1)) if m else 1e18
+ev=sorted(json.load(sys.stdin)["events"], key=e2e_of)
 if not ev:
     print("  (찾지 못함: 최근 1시간의 TRACE 줄에 이 번호가 없습니다)")
 for e in ev:
