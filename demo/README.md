@@ -1,13 +1,66 @@
-# 시연용 업무 프로세스: 체결 matching_svc · 시세 quote_svc
+# 시연용 업무 프로세스 여섯: 채널 · 체결 · 시세 · 지수산출 · 분배 · 매매통계
 
-제품이 아니라 추적 대상이다. 업무 프로세스 둘은 **서버·push 포트·로그·실행 ID가 따로**이고, 처리가 밀리는 원인도 함수도 다르다.
+제품이 아니라 추적 대상이다. 업무 프로세스 여섯은 **서버·push 포트·로그·실행 ID가 따로**이고, 처리가 밀리는 원인도 함수도 다르다.
+주문 하나가 채널에서 분배까지 **저널 파일**로 실제로 넘어가므로(아래) 한 업무가 밀리면 못 읽은 양이 그 업무의 적체로 쌓이고, 뒤 업무는 받는 만큼만 일한다.
+
+    채널 → 매매체결 → 시세 → 지수산출 → 분배
+               └→ 매매통계    └──────────→ 분배
+
+| 업무 | 프로그램 | 서버 · 플로우 | push | 읽는 저널 → 쓰는 저널 | 하는 일 | 지표 |
+|---|---|---|---|---|---|---|
+| 채널 | `channel_svc` | gw-01 · `market-open`의 `start-channel` | 9103 | — → `orders` | 접수율대로 주문을 만들어 세션 확인(8µs)·검증(10µs, 0.4% 거부)·라우팅(6µs) | `biz.channel.*` |
+| 매매체결 | `matching_svc` | match-01 · `market-open`의 `start-matching` | 9101 | `orders` → `fills` | 위험 확인 → 체결 또는 호가 등록 | `biz.order.*` |
+| 시세 | `quote_svc` | feed-01 · `quote-open`의 `start-quote` | 9102 | `fills` → `quotes` | 체결·호가를 시세로 바꿔 10단계 호가 갱신, 1초마다 스냅샷 | `biz.quote.*` |
+| 지수산출 | `index_svc` | idx-01 · `quote-open`의 `start-index` | 9105 | `quotes` → `index` | 체결가 시세로 종목 가격 갱신, 20건마다 구성 종목 200개로 지수 재계산 | `biz.index.*` |
+| 분배 | `dist_svc` | feed-02 · `quote-open`의 `start-dist` | 9106 | `quotes`·`index` → — | 시세·지수를 구독 세션 8개에 전문으로 만들어 송출 | `biz.dist.*` |
+| 매매통계 | `stats_svc` | dw-01 · `market-open`의 `start-stats` | 9104 | `fills` → — | 체결을 OHLCV·거래량에 반영, 1초마다 통계 표 쓰기, 1분마다 분 마감 | `biz.stats.*` |
+
+받는 쪽부터 연다: `quote-open`은 분배 → 지수산출 → 시세, `market-open`은 통계 → 체결 → 채널. 로그는 `{log_dir}/<프로그램>.{exec_id}.log`.
+
+## 저널과 공통 헤더 `flow.h`
+
+업무 사이는 소켓이 아니라 **파일**이다. 저널 `<bus>/<이름>.jnl`(`orders`·`fills`·`quotes`·`index`)에 64바이트 레코드(`seq` 번호, `t0_ns` 채널 접수 시각, `t_ns` 앞 업무가 끝낸 시각, `kind`, 종목·가격·수량 …)를
+덧붙이기만 한다. 쓰는 쪽은 하나, 읽는 쪽은 여럿이고 저마다 위치 파일(`<이름>.<읽는 쪽>.pos`)을 가진다.
+
+- **적체 = 못 읽은 레코드 수**(`fl_lag`). 읽는 쪽은 1초마다 이 값을 `biz.<업무>.queue`로 보낸다.
+- **죽었다 살아나면 읽던 자리부터 따라잡는다.** 그동안의 지연은 그대로 RT·TAT·적체로 보인다.
+- 저널 폴더는 에이전트 변수 `BUS`. dev는 `<데이터 폴더>/bus`, compose는 공유 볼륨 `eum-bus`(`/var/lib/eum/bus`).
+- `flow.h`는 저널 외에도 push(`fl_push_*`), 로그, 접수율·결함 스위치 파일(`fl_rate`·`fl_fault`), 고정 비용(`fl_burn`), 지연 통계(`fl_lat`), 경로 추적(`fl_trace`)을 담은 한 헤더다. 프로그램은 모두 같은 명령행을 쓴다.
+
+      <프로그램> --bus <저널 폴더> --rate <rate 파일> --push <host:port> [--stats]
+
+- 한 바퀴는 1ms: 저널 읽기 → 처리 → 쓰기를 `fl_flush` → 비었으면 잔다. 1초마다 push·경고 로그·위치 저장, 5초마다 `(I) … STAT in=… out=… lag=… p99_ms=…`.
+- **경로 추적**: seq가 10,000의 배수인 주문만 업무마다 `(I) … TRACE seq=… hop=<업무> e2e_ms=…` 한 줄을 남긴다. `deploy/demo.sh trace [seq]`가 그 줄들을 시간순으로 이어 주문 하나의 경로를 보인다(평시 한 주문: 채널 0.6ms → 체결 1.3ms → 통계·시세 2.4ms → 지수 3.2ms → 분배 3.5ms).
+- 체결·시세는 `--bus` 없이 띄우면 **예전 단독 동작 그대로**(스스로 입력을 만든다). 다만 `--bus`로 띄우면 시세 수신이 체결 처리량을 따르므로 `quote-surge`·`quote-rate`는 단독 실행에서만 뜻이 있다.
+
+## RT · TAT
+
+- **RT**(응답 시간) = 체결 엔진이 주문을 받은 때 → 처리 끝. 지표 `biz.order.latency_*`, 타일 `RT 평균`·`RT p99`.
+- **TAT**(turn-around time) = 채널 접수(`t0`) → 체결 처리 끝. 지표 `biz.order.tat_*`, 타일 `TAT 평균`·`TAT p99`. `--bus` 없이 띄운 체결은 TAT = RT.
+- **TAT − RT = 채널 구간.** TAT만 오르면 채널(`channel-slow`), 둘 다 오르면 체결(`surge`).
+
+## 결함 스위치 (rate 파일)
+
+작업 폴더의 `rate` 파일은 1초마다 다시 읽는다. 정수 = 접수율(채널만 뜻이 있다), 낱말 = 결함. 빈 값이면 결함 없음.
+
+| 낱말 | 프로그램 | 일어나는 일 | 화면 | 명령 · 되돌리기 |
+|---|---|---|---|---|
+| `crash` | `matching_svc` | `book_insert`가 NULL 호가 줄 머리를 따라가 SIGSEGV | 종료 보고서 `crash.null` | `crash` · `run` |
+| `crash` | `index_svc` | `recalc_index`가 제수 0으로 나눠 SIGFPE | 종료 보고서 `crash.signal`, 분배의 지수 수신만 0 | `index-crash` · `quote` |
+| `slow` | `channel_svc` | `check_session`이 세션 표를 처음부터 훑어 700µs(한계 약 1,400건/초) | 전달 대기·지연 오름, TAT만 오름 | `channel-slow` · `channel-ok` |
+
+접수율은 채널(gw-01)의 `rate`가 정한다(`surge`·`run`이 쓴다). 통계 적체는 결함 스위치가 아니라 정보계 적재 `dw_load` 8개(`deploy/scripts/dw_load.sh`, `deploy/demo.sh load`)가
+dw-01의 코어 하나를 `stats_svc`와 나눠 써서 만든다(dev는 `taskset`, compose는 컨테이너 `cpus: 1`).
+
+## 체결과 시세는 원인도 함수도 다르다
+
 한쪽을 폭주시켜도 다른 쪽 지표와 플레임 그래프는 그대로다(리허설에서 시세 폭주 중 체결 p99 최대 0.55ms).
 
 | | 체결 `matching_svc` | 시세 `quote_svc` |
 |---|---|---|
 | 서버 · 플로우 | match-01 · `market-open`의 `start-matching` | feed-01 · `quote-open`의 `start-quote` |
 | 하는 일 | 합성 주문 접수 → 위험 확인 → 체결 또는 호가 등록 | 거래소 시세 수신 → 종목별 10단계 호가 갱신 → 구독 세션 8개에 송출 |
-| 조절 | 접수율 `rate`(기본 1500건/초), `deploy/demo.sh surge` | 수신율 `rate`(기본 2000건/초), `deploy/demo.sh quote-surge`·`quote-rate <n>` |
+| 조절 | 접수율 `rate`(기본 1500건/초, 흐름에서는 채널 gw-01의 `rate`), `deploy/demo.sh surge` | 수신율 `rate`(기본 2000건/초, 단독 실행에서만), `deploy/demo.sh quote-surge`·`quote-rate <n>` |
 | 밀리는 원인 | 체결 안 되는 지정가가 늘어 호가가 깊어지고 `book_insert`(선형 탐색)가 무거워짐 | 처리 한계(약 6,000건/초)를 넘으면 수신 버퍼(4,096건)가 넘쳐 순번이 빠지고, 빠질 때마다 스냅샷 복구 |
 | 플레임 그래프 | `matching_svc;main;handle_order;match_order;book_insert` 비중이 커짐 | 평시에 없던 `quote_svc;main;feed_poll;recover_gap;rebuild_book` 줄기가 생김 |
 | push 지표 | `biz.order.*` → 127.0.0.1:9101 | `biz.quote.*` → 127.0.0.1:9102 |
@@ -15,10 +68,12 @@
 
 ## 빌드
 
-    sh demo/build.sh                 # deploy/bin/matching_svc, deploy/bin/quote_svc (gcc -O2, strip 안 함)
+    sh demo/build.sh                 # deploy/bin/<프로그램 여섯> (demo/*_svc.c 전부, gcc -O2 -Wall, strip 안 함)
     sh demo/build.sh /tmp/x          # 출력 폴더 지정
 
 ## 체결 서비스 matching_svc
+
+(아래 설명은 `--bus` 없는 단독 실행 기준. `--bus`면 주문을 만들지 않고 `orders`를 읽고 처리한 주문마다 `fills`에 쓴다.)
 
     echo 1500 > .run/rate
     deploy/bin/matching_svc --rate .run/rate --push 127.0.0.1:9101 --stats
