@@ -15,6 +15,7 @@ import (
 	"github.com/oklog/ulid/v2"
 
 	"eum/internal/manager/alert"
+	"eum/internal/manager/coderepo"
 	"eum/internal/manager/exitdiag"
 	"eum/internal/manager/llm"
 	"eum/internal/manager/procs"
@@ -34,6 +35,8 @@ type Deps struct {
 	Ask     func(ctx context.Context, l llm.LLM, p model.ExitPack) (model.ExitDiagnosis, error)
 	// Procs는 프로세스 기록(06, 카드 P-C)이다. 보고서를 저장하면 LinkExit로 그 프로세스에 보고서 ID를 붙인다. nil이면 하지 않는다.
 	Procs *procs.Registry
+	// Code는 업무 코드 저장소(카드 Q)다. nil이거나 Enabled가 거짓이면 소스 근거를 넣지 않는다.
+	Code coderepo.Set
 }
 
 const (

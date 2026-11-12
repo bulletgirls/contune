@@ -21,6 +21,7 @@ import (
 
 	"eum/internal/manager/alert"
 	"eum/internal/manager/assist"
+	"eum/internal/manager/coderepo"
 	"eum/internal/manager/collect"
 	"eum/internal/manager/dash"
 	"eum/internal/manager/editor"
@@ -157,7 +158,11 @@ func New(cfg Config) (*Manager, error) {
 	alertCfg.MinNotify = cfg.Notify.MinLevel
 	engine := m.engine
 	// 종료 보고서(카드 T3): 수신·근거 묶음·API, 알림 감시자에게 종료 목록을 준다.
-	ex := exits.New(exits.Deps{Metrics: m.metrics, State: m.state, LLM: lm, TZ: loc, Now: now, NewID: newID, Procs: pr})
+	code, err := coderepo.New(cfg.Code)
+	if err != nil {
+		return nil, fmt.Errorf("code: %w", err)
+	}
+	ex := exits.New(exits.Deps{Metrics: m.metrics, State: m.state, LLM: lm, TZ: loc, Now: now, NewID: newID, Procs: pr, Code: code})
 	m.watcher = alert.New(alert.Deps{
 		Metrics: m.metrics, State: m.state, Live: lv, Flows: reg.List,
 		Panels: panels, Thresholds: cfg.HostState, Notifiers: notifiers,
