@@ -4,24 +4,36 @@
 # 체결 → dw-01 매매통계)은 저널 볼륨 eum-bus를 같이 쓰고, 컨테이너 한도(cpus·mem_limit)가 곧 서버 용량이다(cgroup 수집기).
 # 모의 서버 39대는 fleet 컨테이너 하나. 합계 46대.
 
+# 이미지는 manager 서비스가 한 번만 만든다(build는 거기에만). 나머지는 같은 이미지 eum을 쓴다:
+# 서비스마다 build를 두면 같은 이미지를 아홉 번 만들어 빌드 캐시가 수십 GB가 된다(11-12 리허설).
 x-eum: &eum
   image: eum
-  build:
-    context: ..
-    dockerfile: deploy/Dockerfile
+  pull_policy: never             # eum은 레지스트리에 없다(받으려 하지 않게)
   env_file: .env
+  # PC 사용자 uid로 돈다(바인드 마운트한 flows·collect·dashboards에 쓰려면). demo.sh가 EUM_UID·EUM_GID를 채우고, 직접 띄우면 1000.
+  user: "${EUM_UID:-1000}:${EUM_GID:-1000}"
+  environment:
+    HOME: /tmp
+    TZ: Asia/Seoul               # 업무 로그·에이전트 로그 시각을 화면(매니저 tz)과 같게
 
 # 흐름 서버 공통: perf(함수 추적), 저널 볼륨, 메모리 한도. cpus는 서버마다.
 # perf가 컨테이너에서 막히면(기본 seccomp가 perf_event_open을 거절) 시연용으로만 security_opt: [seccomp=unconfined]를 켠다.
 x-flow: &flow
   <<: *eum
   cap_add: [PERFMON]
+  # perf의 표본 버퍼는 사용자별 한도(perf_event_mlock_kb × CPU 수)를 넘으면 RLIMIT_MEMLOCK에서 빌린다. 컨테이너 기본값(64KB)으로는
+  # 같은 uid의 컨테이너 여럿이 동시에 perf record를 돌릴 때 "perf record: exit status 255"로 실패한다(11-12 리허설).
+  ulimits:
+    memlock: { soft: -1, hard: -1 }
   mem_limit: 512m
   depends_on: [manager]
 
 services:
   manager:
     <<: *eum
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
     command: [manager, --config, /etc/eum/manager.yaml]
     ports: ["8080:8080"]
     volumes:
@@ -85,6 +97,8 @@ services:
     <<: *eum
     command: [agent, --config, /etc/eum/agent-batch-01.yaml]
     cap_add: [PERFMON]
+    ulimits:
+      memlock: { soft: -1, hard: -1 }   # perf 표본 버퍼(x-flow와 같은 이유)
     # security_opt: [seccomp=unconfined]   # 흐름 서버와 같은 이유
     volumes:
       - ./agent-batch-01.yaml:/etc/eum/agent-batch-01.yaml:ro

@@ -125,4 +125,5 @@
 | `deploy/`, `flows/`, `panels/` | E2, E3, E4 (`deploy/bin/`은 빌드 산출물) |
 | `pipeline/reports/<ID>.md` | 각 카드 자신 |
 | 카드 U(11-12, [U-bizflow.md](U-bizflow.md)) | 업무 흐름 위젯·업무 시뮬레이터(`internal/agent/probe/stage.go`)·서버 구성(`deploy/fleet.yaml`)·업무 패널 일곱(`panels/`)·예시 보드 `dashboards/bizflow.yaml`: 레인 U0~U9가 파일을 나눠 쓴다(카드 §6) |
+| 카드 V(11-12, [V-realflow.md](V-realflow.md)) | 실제 업무 흐름: 업무 여섯(채널 → 매매체결 → 시세 → 지수산출 → 분배, 매매체결 → 매매통계)이 저널(`demo/flow.h`)로 실제 주문을 넘긴다. 체결 RT·TAT, 통계 처리 적체, cgroup 수집기, compose 확인. 청산·rds 패널과 stage 구성은 뺌 | 병합됨(`card-v`) |
 | `README.md`, `docs/` | Z1만(현재 상태 갱신) |

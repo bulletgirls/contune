@@ -1,0 +1,17 @@
+# 이미지 빌드 컨텍스트에서 뺄 것(deploy/Dockerfile의 컨텍스트는 저장소 루트).
+# 리허설 데이터·워크트리·빌드 산출물이 딸려 들어가면 빌드마다 수백 MB가 캐시에 쌓인다(11-12: /var 32GB가 찼다).
+.git
+.claude
+.run
+data-dev
+out
+deploy/bin
+deploy/.env
+docs
+pipeline
+specs
+dag_state.json*
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/perf*.data*
