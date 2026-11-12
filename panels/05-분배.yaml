@@ -1,0 +1,20 @@
+id: dist
+title: 분배
+group: 정보분배
+service: dist
+# 분배 서비스(dist_svc, feed-02)가 1초마다 push하는 지표 biz.dist.*(카드 V). 시세와 지수를 저널에서 읽어 세션에 송출한다.
+# signal: 골든 시그널 묶음(traffic 트래픽 · latency 지연 시간 · errors 오류 · saturation 포화도). 없으면 기타(05 §14.10).
+tiles:
+  - { title: 시세 수신량,       signal: traffic,    metric: biz.dist.in_tps,         agg: sum, unit: 건/초 }
+  - { title: 지수 수신량,       signal: traffic,    metric: biz.dist.index_tps,      agg: sum, unit: 건/초 }
+  - { title: 송출량,            signal: traffic,    metric: biz.dist.out_tps,        agg: sum, unit: 건/초 }
+  - { title: 평균 송출 지연,    signal: latency,    metric: biz.dist.latency_avg_ms, agg: max, unit: ms, warn: 20, crit: 100 }
+  - { title: 송출 지연 p99,     signal: latency,    metric: biz.dist.latency_p99_ms, agg: max, unit: ms, warn: 50, crit: 200 }
+  - { title: 주문 → 분배 p99,   signal: latency,    metric: biz.dist.e2e_p99_ms,     agg: max, unit: ms, warn: 150, crit: 600 }
+  - { title: 오류 로그 발생률,  signal: errors,     metric: log.error.count,         agg: sum, unit: 건/초, warn: 1, crit: 5 }
+  - { title: 송출 대기,         signal: saturation, metric: biz.dist.queue,          agg: sum, unit: 건, warn: 2000, crit: 10000 }
+charts:
+  - { title: 처리량,    unit: 건/초, agg: sum, metrics: [biz.dist.in_tps, biz.dist.out_tps] }
+  - { title: 송출 지연, unit: ms,    agg: max, metrics: [biz.dist.latency_avg_ms, biz.dist.latency_p99_ms, biz.dist.e2e_p99_ms] }
+  - { title: 송출 대기, unit: 건,    agg: sum, metrics: [biz.dist.queue] }
+log_levels: [error, warn]

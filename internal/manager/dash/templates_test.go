@@ -120,8 +120,8 @@ func TestTemplatePanel(t *testing.T) {
 			t.Errorf("모르는 위젯: %+v", w)
 		}
 	}
-	if refs != 8 || charts != 4 || logs != 1 {
-		t.Fatalf("체결 패널 → 타일 ref 8 · 차트 4 · 로그 1: %d %d %d", refs, charts, logs)
+	if refs != 10 || charts != 4 || logs != 1 {
+		t.Fatalf("체결 패널 → 타일 ref 10 · 차트 4 · 로그 1: %d %d %d", refs, charts, logs)
 	}
 }
 
@@ -143,7 +143,7 @@ func TestTemplatesHTTP(t *testing.T) {
 	for _, tp := range out.Templates {
 		ids = append(ids, tp.ID)
 	}
-	if strings.Join(ids, ",") != "blank,ops,panel:channel,panel:matching,panel:stats,panel:quote,panel:index,panel:clearing,panel:rds" {
+	if strings.Join(ids, ",") != "blank,ops,panel:channel,panel:matching,panel:quote,panel:index,panel:dist,panel:stats" {
 		t.Fatalf("템플릿 순: %v", ids)
 	}
 	if !strings.Contains(rec.Body.String(), `"widgets":[]`) {
