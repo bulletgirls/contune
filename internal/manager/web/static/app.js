@@ -20,6 +20,7 @@ const MENU = { dashboard: 'dashboard', hosts: 'hosts', host: 'hosts', collect: '
 
 let boards = new Set();
 let current = null;
+let currentPath = ''; // current를 불러온 PAGES 경로
 let seq = 0;
 
 // 종료 보고서 #exit/<id>는 트리의 경로 해석(parseRoute) 밖이라 여기서 먼저 본다.
@@ -34,17 +35,23 @@ function routeOf(hash) {
 async function route() {
   const my = ++seq;
   const r = routeOf(location.hash);
-  if (current && current.dispose) { try { current.dispose(); } catch (e) { console.error(e); } }
-  current = null;
-  stopScope();
   document.querySelectorAll('#menu a').forEach((a) => a.classList.toggle('on', a.dataset.m === MENU[r.name]));
   document.body.dataset.page = r.name;
+  // 같은 화면 파일 안의 이동(보드 고르기·뒤로 가기)은 그 화면의 reroute(params, query)가 true면 다시 그리지 않는다
+  if (current && current.reroute && currentPath === PAGES[r.name]) {
+    try { if (current.reroute(r.params, r.query)) return; } catch (e) { console.error(e); }
+  }
+  if (current && current.dispose) { try { current.dispose(); } catch (e) { console.error(e); } }
+  current = null;
+  currentPath = '';
+  stopScope();
   const page = document.getElementById('page');
   page.replaceChildren();
   try {
     const mod = await import(PAGES[r.name]);
     if (my !== seq) return;
     current = mod;
+    currentPath = PAGES[r.name];
     await mod.render(page, r.params, r.query);
   } catch (e) {
     console.error(e);
@@ -88,6 +95,7 @@ function askLogin(note) {
   stopScope();
   if (current && current.dispose) { try { current.dispose(); } catch (e) { console.error(e); } }
   current = null;
+  currentPath = '';
   document.getElementById('page').replaceChildren();
   relogin = (async () => {
     await showLogin(note);

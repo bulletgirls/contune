@@ -4,6 +4,7 @@
 import { api, poll } from '../api.js';
 import { el, esc, fmtNum, fmtClock, relTime, numUnit, badgeHTML, info, EMPTY, DASH, LEVEL_TEXT, parseOwner, shortExec } from '../ui.js';
 import { flowState } from '../tree.js';
+import { groupCmp, setGroupOrder } from '../grouporder.js';
 import { openValue, openLevel, acceptsOf, todoFactors, baselineText, placeText, factorHref, incidentText } from '../riskfmt.js';
 import { renderBrief, openTrace, traceable, AI_MARK } from '../ai.js';
 
@@ -36,7 +37,7 @@ export function groupRows(hosts) {
     if (!m.has(g)) m.set(g, []);
     m.get(g).push(h);
   }
-  return [...m.keys()].sort().map((g) => ({
+  return [...m.keys()].sort(groupCmp).map((g) => ({ // 업무 순서(grouporder.js), 패널 없는 그룹은 이름 순
     group: g, label: g.split('/').pop(), hosts: m.get(g).sort((a, b) => (a.id < b.id ? -1 : 1)),
   }));
 }
@@ -650,6 +651,7 @@ export function render(el0, params, query) {
     renderBrief(briefSlot, bf, { alertHref: (x) => alertTarget(x, allPanels), onTrace: (id) => openTrace(id, { alertHref: (x) => alertTarget(x, allPanels) }) });
     const hs = hostsInScope(h.hosts || [], g);
     const ids = new Set(hs.map((x) => x.id));
+    setGroupOrder(p.panels || []);
     const panels = panelsInScope(p.panels || [], g);
     const flows = f.flows || [];
     const alerts = alertsInScope(a.alerts || [], g, ids);

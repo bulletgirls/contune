@@ -23,10 +23,21 @@ export const QUOTE_NAMES = [
   'biz.quote.recover',
   'biz.quote.count_1m',
 ];
+// 업무 시뮬레이터(카드 U §3, type: stage): 새 업무 다섯이 앞 업무 값을 따라가며 낸다. 이름은 biz.<name>.in_tps·out_tps·queue·latency_avg_ms·latency_p99_ms(+error_tps).
+// 설정은 deploy/fleet.yaml stages와 같다. from: 체결 유입(in) · 체결 처리량(tps) · 다른 stage의 out.
+export const STAGES = {
+  channel: { from: ['biz.order.in_tps'], gain: 1.004, loss: 0.004, cap: 20000, ratio: 1, lat: 3 },
+  stats: { from: ['biz.order.tps'], gain: 1, loss: 0, cap: 9000, ratio: 1, lat: 40 },
+  index: { from: ['biz.order.tps'], gain: 1, loss: 0, cap: 12000, ratio: 0.05, lat: 15 },
+  clearing: { from: ['biz.order.tps'], gain: 1, loss: 0, cap: 7000, ratio: 1, lat: 60 },
+  rds: { from: ['biz.stats.out_tps', 'biz.clearing.out_tps'], gain: 1, loss: 0, cap: 30000, ratio: 1, lat: 4 },
+};
+export const STAGE_NAMES = Object.entries(STAGES).flatMap(([n, st]) =>
+  ['in_tps', 'out_tps', 'queue', 'latency_avg_ms', 'latency_p99_ms', ...(st.loss > 0 ? ['error_tps'] : [])].map((m) => `biz.${n}.${m}`));
 export const LOG_NAMES = ['log.error.count', 'log.warn.count'];
 export const AGENT_NAMES = ['agent.profiler.cpu_pct', 'agent.profiler.errors'];
 export const RISK_NAMES = ['risk.index'];
-export const ALL_NAMES = [...HOST_NAMES, ...JOB_NAMES, ...BIZ_NAMES, ...QUOTE_NAMES, ...LOG_NAMES, ...AGENT_NAMES, ...RISK_NAMES];
+export const ALL_NAMES = [...HOST_NAMES, ...JOB_NAMES, ...BIZ_NAMES, ...QUOTE_NAMES, ...STAGE_NAMES, ...LOG_NAMES, ...AGENT_NAMES, ...RISK_NAMES];
 
 // 폭주: 지금 − 4분에 시작해 계속된다. 표의 키는 [지금으로부터 몇 초 전, 값].
 const T_IN = [[250, 1500], [240, 1500], [235, 3000], [180, 3000], [175, 4500], [120, 4500], [115, 6000], [0, 6000]];
@@ -58,6 +69,31 @@ export function bizAt(ts, ctx) {
     'biz.order.latency_p99_ms': round(p99, 1),
     'biz.order.histbuf_pct': round(hist, 1),
   };
+}
+
+// 업무 시뮬레이터 한 칸의 값(§3 식을 정상 상태로): in = 앞 업무 × gain, 처리 한계(cap)를 넘으면 넘친 만큼 쌓인다.
+// 체결이 폭주해도 cap에 못 미치면 대기는 0이고 처리량·지연이 앞 업무를 따라간다. 처리 안 한 만큼이 쌓일 때 지연이 늘어난다.
+export function stageAt(name, ts, ctx) {
+  const st = STAGES[name];
+  const src = { ...bizAt(ts, { ...ctx, exact: true }) };
+  for (const n of Object.keys(STAGES)) if (n !== name && st.from.some((f) => f.startsWith(`biz.${n}.`))) Object.assign(src, stageAt(n, ts, ctx));
+  const u = st.from.reduce((a, f) => a + (src[f] || 0), 0);
+  const k = (key, amp) => 1 + nz(`${name}${key}`, ts, ctx, amp);
+  const inT = Math.max(0, u * st.gain * k('i', 0.01));
+  const rej = inT * st.loss;
+  const acc = inT - rej;
+  const done = Math.min(acc, st.cap);
+  const queue = Math.max(0, acc - st.cap) * 30;
+  const wait = (queue / st.cap) * 1000;
+  const o = {
+    [`biz.${name}.in_tps`]: round(inT, 0),
+    [`biz.${name}.out_tps`]: round(done * st.ratio, 0),
+    [`biz.${name}.queue`]: round(queue, 0),
+    [`biz.${name}.latency_avg_ms`]: round((st.lat + wait / 2) * k('a', 0.01), 1),
+    [`biz.${name}.latency_p99_ms`]: round((st.lat * 2.5 + wait) * k('p', 0.01), 1),
+  };
+  if (st.loss > 0) o[`biz.${name}.error_tps`] = round(rej, 0);
+  return o;
 }
 
 // 5초 단위 (E)·(W) 줄 수 (queue·p99·히스토리 버퍼의 기준 초과)

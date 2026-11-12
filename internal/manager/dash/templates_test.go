@@ -89,7 +89,7 @@ func TestTemplatePanel(t *testing.T) {
 	}
 	tp := panelTemplate(m)
 	d := tp.Dash
-	if tp.ID != "panel:matching" || d.Title != "체결 보드" || tp.Title != "체결 보드" || d.Group != m.Group {
+	if tp.ID != "panel:matching" || d.Title != "매매체결 보드" || tp.Title != "매매체결 보드" || d.Group != m.Group {
 		t.Fatalf("패널 템플릿 머리: %+v", tp)
 	}
 	var refs, charts, logs int
@@ -143,7 +143,7 @@ func TestTemplatesHTTP(t *testing.T) {
 	for _, tp := range out.Templates {
 		ids = append(ids, tp.ID)
 	}
-	if strings.Join(ids, ",") != "blank,ops,panel:matching,panel:quote" {
+	if strings.Join(ids, ",") != "blank,ops,panel:channel,panel:matching,panel:stats,panel:quote,panel:index,panel:clearing,panel:rds" {
 		t.Fatalf("템플릿 순: %v", ids)
 	}
 	if !strings.Contains(rec.Body.String(), `"widgets":[]`) {

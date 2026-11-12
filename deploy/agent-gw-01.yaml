@@ -1,5 +1,5 @@
 host: gw-01
-group: 매매/주문접수
+group: 채널
 manager: http://manager:8080
 token: ${EUM_TOKEN}
 # ca: /etc/eum/ca.pem          # manager가 https://일 때 믿을 인증서(PEM). 비면 시스템 루트

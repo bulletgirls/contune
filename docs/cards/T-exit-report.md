@@ -123,7 +123,7 @@ sqlite 표 `exits(id TEXT PRIMARY KEY, ended_at, host, exec_id, pid, comm, how, 
 | 8 | (TERM·KILL·INT·HUP, 또는 상주 서비스의 종료 코드 0·143 — SIGTERM을 받고 깨끗이 끝남) + `runs.nearest_before_s ≤ 10` | `killed.run` | medium | `같은 서버의 market-open/start-matching 시작 2초 뒤 종료(기동 스크립트의 pkill 등)` |
 | 9 | SIGKILL + (`rss_last ≥ 1.5×rss_first`이고 `rss_last ≥ 100MB`, 또는 `mem_used_pct_max ≥ 95`) | `oom` | medium | `메모리 부족 의심(커널 로그 없음, RSS 120 → 1,830MB)` |
 | 10 | TERM·KILL·INT·HUP 그 밖 | `killed.other` | low | `밖에서 SIGKILL로 종료(보낸 쪽 모름)` |
-| 11 | 종료 코드 ≠ 0 | `exit.error` | high | `종료 코드 3 — (E) CONFIG port in use` (출력·로그의 마지막 (E) 줄, 없으면 마지막 줄) |
+| 11 | 종료 코드 ≠ 0 | `exit.error` | high | `종료 코드 3 — (E) CONFIG port in use` (출력·로그의 마지막 (E) 줄, 없으면 마지막 줄. 로그는 근거의 줄이 모두 이 프로세스의 것(실행 ID·서비스 주인 키, `own_errors`·`own_warns`)일 때만. 같은 서버의 다른 실행 줄이 섞이면 제목에 쓰지 않고 "같은 서버의 업무 로그"로만 알림, 11-11 리허설) |
 | 12 | 종료 코드 0 | `exit.ok` | high | `스스로 정상 종료(종료 코드 0)` |
 | 13 | 그 밖 | `unknown` | low | `종료 상태를 모름 — 에이전트가 부모가 아니고 core·커널 로그 없음` |
 

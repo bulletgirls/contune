@@ -1,0 +1,16 @@
+id: rds
+title: rds
+group: rds
+# 업무 시뮬레이터(에이전트 probe type: stage)가 앞 업무의 실제 값을 받아 내는 지표 biz.rds.*(카드 U). 앞 업무 값이 15초 넘게 없으면 값 없음.
+# signal: 골든 시그널 묶음(traffic 트래픽 · latency 지연 시간 · errors 오류 · saturation 포화도). 없으면 기타(05 §14.10).
+tiles:
+  - { title: 쓰기 요청,      signal: traffic,    metric: biz.rds.in_tps,         agg: sum, unit: 건/초 }
+  - { title: 커밋 완료,      signal: traffic,    metric: biz.rds.out_tps,        agg: sum, unit: 건/초 }
+  - { title: 평균 커밋 지연, signal: latency,    metric: biz.rds.latency_avg_ms, agg: max, unit: ms, warn: 20, crit: 100 }
+  - { title: 커밋 지연 p99,  signal: latency,    metric: biz.rds.latency_p99_ms, agg: max, unit: ms, warn: 50, crit: 200 }
+  - { title: 쓰기 대기,      signal: saturation, metric: biz.rds.queue,          agg: sum, unit: 건, warn: 5000, crit: 20000 }
+charts:
+  - { title: 처리량,    unit: 건/초, agg: sum, metrics: [biz.rds.in_tps, biz.rds.out_tps] }
+  - { title: 커밋 지연, unit: ms,    agg: max, metrics: [biz.rds.latency_avg_ms, biz.rds.latency_p99_ms] }
+  - { title: 쓰기 대기, unit: 건,    agg: sum, metrics: [biz.rds.queue] }
+log_levels: [error, warn]

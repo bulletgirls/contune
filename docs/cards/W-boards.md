@@ -162,7 +162,7 @@
 | 쓰는 경로 | `web/static/pages/dash.js`, `web/static/css/dash.css` |
 | 읽을 것 | 계약 절, `widgets/index.js`, `pages/dash.js` stub(시그니처·격자 DOM 계약), `api.js`(api·poll·stopScope), `auth.js`(역할 알기), `timerange.js`, `ui.js`, `pages/biz.js`·`pages/svc.js`의 화면 머리 모양, `style.css`, 병합된 `pages/dashboard.js`·`widgets/*.js`(읽기만) |
 
-- **`#dashes`**: `GET /dashboards` 목록(제목·설명·위젯 수·마지막 저장 사람·상대 시각). 머리 `+ 새 보드`(템플릿 고르기: `GET /dashboards/templates` → `#dashedit/?from=<id>`), 줄마다 `편집`(운영 이상이고 editable일 때만). 읽지 못한 파일은 위에 경고 상자. 보드가 없으면 빈 상태 + 새 보드 안내.
+- **`#dashes`**: `GET /dashboards` 목록(제목·설명·위젯 수·마지막 저장 사람·상대 시각). 머리 `+ 새 보드`(템플릿 고르기: `GET /dashboards/templates` → `#dashedit/?from=<id>`), 줄마다 `편집`(운영 이상이고 editable일 때만). 읽지 못한 파일은 위에 경고 상자. 보드가 없으면 빈 상태 + 새 보드 안내. — **11-11 뒤 바뀜**: 목록 화면을 없애고 보기 머리의 고르기 칸으로(07 결정 11).
 - **`#dash/<id>`**: 머리(제목·설명 ⓘ, 구간 고르기 `RANGES` + 고른 구간이면 `지금으로`, `편집`, `벽면`(→ `?tv=1`)), 몸통 `mountBoard`. 구간은 지표 위젯만 따른다(운영 위젯은 늘 지금 — 머리에 ⓘ로). URL `?from=&to=`로 고른 구간을 남긴다.
 - **`mountBoard`**: 계약 시그니처와 격자 DOM 그대로. 위젯마다 `sized` → 틀(`.dw-h`: `widgetTitle`, 지표 위젯이면 오른쪽에 작은 상태), 몸통 `render` 결과. 갱신(기본 5초, 구간이 고정이면 지표 값은 다시 묻지 않음): 지표 값 한 요청(id면 GET `{id}/data`, preview면 POST) + `needs` 합집합의 `SHARED` + 위젯 `fetch`를 한 번에(`Promise.all`, optional 실패는 null). 입력이 그대로인 위젯은 다시 그리지 않고, 바뀌면 `update`가 있으면 그것, 없으면 몸통 교체. `data.error`는 몸통에 그 문구.
   `edit`면 틀에 `editing`·선택 테두리, 틀 클릭 → `onSelect(id)`, 몸통 안 링크·클릭 이동을 capture 단계에서 막음, 틀을 그릴 때마다 `onFrame(frame, w)`. `setDash`는 300ms 묶어 다시 그림(바뀐 위젯만이면 더 좋음). `dispose`는 갱신·차트·관찰자를 모두 끊는다.

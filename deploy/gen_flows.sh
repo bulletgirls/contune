@@ -37,10 +37,10 @@ TABLE='개장준비|open-ref-01|0 4 * * 1-5|feed-01|2
 정보계적재|dw-load-06|0 21 * * 1-5|dw-01|3
 정보계적재|dw-load-07|30 21 * * 1-5|dw-02|1
 정보계적재|dw-load-08|0 23 * * 1-5|dw-03|2
-주간월간|weekly-ops-01|0 2 * * 6|ops-01|2
-주간월간|weekly-ops-02|30 2 * * 6|ops-02|1
-주간월간|monthly-ops-01|0 3 1 * *|ops-03|3
-주간월간|monthly-ops-02|30 3 1 * *|ops-04|2'
+주간월간|weekly-ops-01|0 2 * * 6|rds-01|2
+주간월간|weekly-ops-02|30 2 * * 6|rds-02|1
+주간월간|monthly-ops-01|0 3 1 * *|rds-03|3
+주간월간|monthly-ops-02|30 3 1 * *|rds-04|2'
 
 # 만들어 두었던 보조 플로우만 지우고 다시 만든다(시연 플로우 market-open·daily-settle은 건드리지 않음).
 echo "$TABLE" | while IFS='|' read -r board id sched host n; do

@@ -124,4 +124,5 @@
 | `demo/` | E1 |
 | `deploy/`, `flows/`, `panels/` | E2, E3, E4 (`deploy/bin/`은 빌드 산출물) |
 | `pipeline/reports/<ID>.md` | 각 카드 자신 |
+| 카드 U(11-12, [U-bizflow.md](U-bizflow.md)) | 업무 흐름 위젯·업무 시뮬레이터(`internal/agent/probe/stage.go`)·서버 구성(`deploy/fleet.yaml`)·업무 패널 일곱(`panels/`)·예시 보드 `dashboards/bizflow.yaml`: 레인 U0~U9가 파일을 나눠 쓴다(카드 §6) |
 | `README.md`, `docs/` | Z1만(현재 상태 갱신) |

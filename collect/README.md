@@ -8,7 +8,7 @@
 - 에이전트는 자기 YAML에 `remote.enabled: true`가 있어야 받는다. `remote.read_roots` 밖의 파일은 읽지 않는다.
 
 ```yaml
-scope: group:매매/체결
+scope: group:매매체결
 logs:
   - name: matching
     path: "{log_dir}/matching_svc.{exec_id}.log"

@@ -86,10 +86,10 @@ type devHost struct {
 // devHosts는 실제 에이전트 4대다. 업무 프로세스 둘은 서버·push 포트·로그·실행 ID를 따로 쓴다:
 // match-01의 체결 서비스(matching_svc, market-open), feed-01의 시세 서비스(quote_svc, quote-open).
 var devHosts = []devHost{
-	{host: "match-01", group: "매매/체결", seed: 1, push: "push-port", service: "matching", logs: matchingLogs, profile: true},
-	{host: "gw-01", group: "매매/주문접수", seed: 2},
-	{host: "batch-01", group: "사후처리/배치", seed: 3, profile: true},
-	{host: "feed-01", group: "매매/시세", seed: 4, push: "quote-push-port", service: "quote", logs: quoteLogs, profile: true},
+	{host: "match-01", group: "매매체결", seed: 1, push: "push-port", service: "matching", logs: matchingLogs, profile: true},
+	{host: "gw-01", group: "채널", seed: 2},
+	{host: "batch-01", group: "청산결제", seed: 3, profile: true},
+	{host: "feed-01", group: "정보분배", seed: 4, push: "quote-push-port", service: "quote", logs: quoteLogs, profile: true},
 }
 
 // parseDev는 dev 플래그를 해석해 매니저·에이전트 설정을 만든다(파일은 --config만 읽는다).

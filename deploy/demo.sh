@@ -3,7 +3,7 @@
 # 업무 프로세스 둘: 체결(match-01 matching_svc, run·surge), 시세(feed-01 quote_svc, quote·quote-surge·quote-rate)
 # 환경변수: EUM_URL(기본 http://localhost:8080) EUM_MODE(dev|compose, 기본 dev) EUM_DATA(기본 ./data-dev)
 #          EUM_COMPOSE(compose 파일, 기본 deploy/docker-compose.yml) EUM_DEV_FLAGS(eum dev에 더 넘길 플래그)
-#          EUM_HOSTS(up이 기다리는 호스트 수, 기본 43) EUM_BIN(eum 실행 파일, 기본 deploy/bin/eum) EUM_TOKEN(기본 dev)
+#          EUM_HOSTS(up이 기다리는 호스트 수, 기본 46) EUM_BIN(eum 실행 파일, 기본 deploy/bin/eum) EUM_TOKEN(기본 dev)
 #          EUM_USER·EUM_PASS(화면 로그인 계정, 기본 admin/eum-admin. 로그인이 꺼져 있으면 쓰지 않음)
 #          EUM_SURGE_PEAK(surge가 6000건/초를 유지하는 초, 기본 60)
 #          EUM_LLM(up이 eum dev에 넘길 LLM 종류: claude-code면 관제 AI를 Claude Code로. 먼저 `claude auth login`) EUM_LLM_MODEL(그 모델)
@@ -17,9 +17,7 @@ EUM_MODE="${EUM_MODE:-dev}"
 EUM_DATA="${EUM_DATA:-./data-dev}"
 EUM_COMPOSE="${EUM_COMPOSE:-deploy/docker-compose.yml}"
 EUM_DEV_FLAGS="${EUM_DEV_FLAGS:-}"
-EUM_LLM="${EUM_LLM:-}"
-EUM_LLM_MODEL="${EUM_LLM_MODEL:-}"
-EUM_HOSTS="${EUM_HOSTS:-43}"   # up이 기다리는 호스트 수
+EUM_HOSTS="${EUM_HOSTS:-46}"   # up이 기다리는 호스트 수
 EUM_BIN="${EUM_BIN:-deploy/bin/eum}"
 export EUM_TOKEN="${EUM_TOKEN:-dev}"
 export EUM_USER="${EUM_USER:-admin}"
@@ -82,7 +80,7 @@ cmd_setup() {
 }
 
 cmd_up() {
-  say up "시연 환경을 띄우고 /hosts가 43대가 될 때까지 기다립니다 (장면 2)"
+  say up "시연 환경을 띄우고 /hosts가 ${EUM_HOSTS}대가 될 때까지 기다립니다 (장면 2)"
   if [ "$EUM_MODE" = compose ]; then
     compose up -d --build
   else
@@ -145,19 +143,14 @@ cmd_run() {
   [ "$code" = 201 ] || die "market-open 실행 실패(HTTP $code)"
 }
 
-# 6000은 EUM_SURGE_PEAK초(기본 60) 유지한다: 빠른 PC에서는 6000을 15~40초 받아야 처리가 밀려 체결 알림(p99·대기 큐)이 뜬다.
+# 6000은 60초: 위험도는 최근 60초 특징으로 매기므로 6000이 20초뿐이면 0 그대로다(11-11 리허설: 약 50초 유지해야 오름).
 cmd_surge() {
-  peak="${EUM_SURGE_PEAK:-60}"
-  case "$peak" in *[!0-9]*|'') die "EUM_SURGE_PEAK는 초(정수): '$peak'" ;; esac
-  say surge "접수율 3000 -> 4500 -> 6000(${peak}초 유지) -> 1500, 20초 간격 (장면 5)"
-  for r in 3000 4500 6000 1500; do
+  say surge "접수율 3000(20초) -> 4500(20초) -> 6000(60초) -> 1500 (장면 5)"
+  for step in 3000:20 4500:20 6000:60 1500:0; do
+    r=${step%:*}
     set_rate "$r"
     echo "  $(date +%H:%M:%S) 접수율 $r"
-    case "$r" in
-      1500) ;;
-      6000) sleep "$peak" ;;
-      *) sleep 20 ;;
-    esac
+    sleep "${step#*:}"
   done
 }
 
@@ -247,15 +240,23 @@ cmd_sql() {
   done
 }
 
+# export <주인>: 실행 ID 또는 서비스 주인 키. 체결·시세 서비스의 지표·프로파일·로그는 서비스 주인 키로 쌓인다(06 §12):
+#   deploy/demo.sh export svc:matching@match-01
 cmd_export() {
-  [ $# -ge 1 ] || die "사용법: demo.sh export <exec_id>"
+  [ $# -ge 1 ] || die "사용법: demo.sh export <exec_id | svc:<서비스>@<서버>>  (체결은 svc:matching@match-01)"
   id="$1"
+  enc=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$id")
+  name=$(printf '%s' "$id" | tr ':@*/' '____')   # 파일 이름에 쓸 수 없는 글자(Windows의 :) 빼기
   mkdir -p out
-  say export "exec_id=$id 의 원자료를 ./out/ 에 내려받습니다 (장면 7)"
-  acurl -fsS "$API/export/samples?exec_id=$id" -o "out/samples-$id.csv"
-  acurl -fsS "$API/export/profile?exec_id=$id" -o "out/profile-$id.folded"
-  acurl -fsS "$API/export/logs?exec_id=$id" -o "out/logs-$id.csv"
-  ls -l "out/samples-$id.csv" "out/profile-$id.folded" "out/logs-$id.csv"
+  say export "$id 의 원자료를 ./out/ 에 내려받습니다 (장면 7)"
+  acurl -fsS "$API/export/samples?exec_id=$enc" -o "out/samples-$name.csv"
+  acurl -fsS "$API/export/profile?exec_id=$enc" -o "out/profile-$name.folded"
+  acurl -fsS "$API/export/logs?exec_id=$enc" -o "out/logs-$name.csv"
+  ls -l "out/samples-$name.csv" "out/profile-$name.folded" "out/logs-$name.csv"
+  [ -s "out/profile-$name.folded" ] || case "$id" in
+    svc:*) ;;
+    *) echo "  프로파일이 비었습니다. 서비스로 옮겨 간 프로세스면 서비스 주인 키로: demo.sh export svc:<서비스>@<서버>" ;;
+  esac
 }
 
 cmd_status() {

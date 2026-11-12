@@ -173,3 +173,78 @@ func manyQ(n int, by string) []WidgetQuery {
 	}
 	return out
 }
+
+func flowDash(nodes ...FlowNode) Dash {
+	return Dash{ID: "f", Title: "흐름", Widgets: []Widget{{ID: "flow", Type: WidgetBizflow, Nodes: nodes}}}
+}
+
+func TestValidateBizflow(t *testing.T) {
+	n := func(p string, from ...string) FlowNode { return FlowNode{Panel: p, In: "in", Out: "out", From: from} }
+	many := func(c int) []FlowNode {
+		var ns []FlowNode
+		for i := 0; i < c; i++ {
+			ns = append(ns, n("p"+strconv.Itoa(i)))
+		}
+		return ns
+	}
+	type tc struct {
+		name  string
+		nodes []FlowNode
+		want  string
+	}
+	cases := []tc{
+		{"정상 사슬", []FlowNode{n("a"), n("b", "a"), n("c", "a", "b")}, ""},
+		{"상자 하나", []FlowNode{n("a")}, ""},
+		{"상자 20개", many(20), ""},
+		{"상자 21개", many(21), "상자(nodes) 1~20"},
+		{"상자 없음", nil, "상자(nodes) 1~20"},
+		{"panel 없음", []FlowNode{{In: "x"}}, "panel"},
+		{"panel 64자", []FlowNode{n(strings.Repeat("a", 64))}, ""},
+		{"panel 65자", []FlowNode{n(strings.Repeat("a", 65))}, "64자"},
+		{"panel 겹침", []FlowNode{n("a"), n("a")}, "상자 a: panel이 겹"},
+		{"title 81자", []FlowNode{{Panel: "a", Title: strings.Repeat("가", 81)}}, "상자 a: title"},
+		{"stock 81자", []FlowNode{{Panel: "a", Stock: strings.Repeat("가", 81)}}, "상자 a: stock"},
+		{"edge 80자", []FlowNode{{Panel: "a", Edge: strings.Repeat("가", 80)}}, ""},
+		{"stock none과 빈 값", []FlowNode{{Panel: "a", Stock: FlowStockNone}, {Panel: "b"}}, ""},
+		{"from 없는 상자", []FlowNode{n("a"), n("b", "idx")}, "상자 b: from의 'idx'는 이 위젯의 상자가 아닙니다"},
+		{"from 자기 자신", []FlowNode{n("a", "a")}, "자기 자신"},
+		{"from 중복", []FlowNode{n("a"), n("b", "a", "a")}, "겹칩니다"},
+		{"순환 둘", []FlowNode{n("a", "b"), n("b", "a")}, "b → a → b"},
+		{"순환 셋", []FlowNode{n("a"), n("b", "a", "d"), n("c", "b"), n("d", "c")}, "c → d → b → c"},
+		{"마름모는 순환 아님", []FlowNode{n("a"), n("b", "a"), n("c", "a"), n("d", "b", "c")}, ""},
+		{"at 정상", []FlowNode{{Panel: "a", At: []int{0, 0}}, {Panel: "b", At: []int{11, 7}}}, ""},
+		{"at 하나", []FlowNode{{Panel: "a", At: []int{1}}}, "[열, 줄]"},
+		{"at 셋", []FlowNode{{Panel: "a", At: []int{1, 2, 3}}}, "[열, 줄]"},
+		{"열 12", []FlowNode{{Panel: "a", At: []int{12, 0}}}, "열은 0~11"},
+		{"열 음수", []FlowNode{{Panel: "a", At: []int{-1, 0}}}, "열은 0~11"},
+		{"줄 8", []FlowNode{{Panel: "a", At: []int{0, 8}}}, "줄은 0~7"},
+		{"같은 칸", []FlowNode{{Panel: "a", At: []int{2, 1}}, {Panel: "b", At: []int{2, 1}}}, "같은 칸"},
+		{"at 없는 상자는 칸 겹침 없음", []FlowNode{{Panel: "a", At: []int{0, 0}}, {Panel: "b"}}, ""},
+	}
+	for _, c := range cases {
+		err := ValidateDash(flowDash(c.nodes...))
+		switch {
+		case c.want == "" && err != nil:
+			t.Errorf("%s: 통과해야 하는데 %v", c.name, err)
+		case c.want != "" && err == nil:
+			t.Errorf("%s: 오류여야 함", c.name)
+		case c.want != "" && !strings.Contains(err.Error(), c.want):
+			t.Errorf("%s: 오류 %q에 %q가 없음", c.name, err, c.want)
+		}
+	}
+	d := flowDash(n("a"))
+	d.Widgets[0].Queries = []WidgetQuery{{Metric: "a"}}
+	if err := ValidateDash(d); err == nil || !strings.Contains(err.Error(), "bizflow 위젯은 queries") {
+		t.Errorf("bizflow에 queries: %v", err)
+	}
+	d = flowDash(n("a"))
+	d.Widgets[0].Ref = &TileRef{Panel: "p", Tile: "t"}
+	if err := ValidateDash(d); err == nil {
+		t.Error("bizflow에 ref는 오류")
+	}
+	d = okDash()
+	d.Widgets[5].Nodes = []FlowNode{n("a")}
+	if err := ValidateDash(d); err == nil || !strings.Contains(err.Error(), "nodes는 업무 흐름 위젯") {
+		t.Errorf("text에 nodes: %v", err)
+	}
+}

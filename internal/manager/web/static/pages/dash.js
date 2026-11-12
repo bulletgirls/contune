@@ -1,4 +1,4 @@
-// 사용자 보드(07, 카드 W-C): #dashes 목록 · #dash/<id> 보기(?tv=1 벽면) · mountBoard(편집기 미리보기도 씀).
+// 사용자 보드(07, 카드 W-C): #dash/<id> 보기(머리의 고르기 칸으로 보드 바꾸기, ?tv=1 벽면) · #dashes는 마지막에 본 보드 · mountBoard(편집기 미리보기도 씀).
 import { api, poll } from '../api.js';
 import { can } from '../auth.js';
 import { el, info, relTime, fmtNum, DASH, LEVEL_TEXT, openDrawer, closeDrawer } from '../ui.js';
@@ -436,77 +436,238 @@ export function mountBoard(host, dash, opts = {}) {
 }
 
 // ---- 화면 ----
+// #dashes → 마지막에 본 보드(없거나 사라졌으면 첫 보드) · #dash/<id> → 그 보드(?tv=1 벽면). 목록 화면은 따로 없다.
+// 머리의 고르기 칸으로 보드를 바꾸면 주소만 바뀐다(뒤로 가기·즐겨찾기 그대로). app.js가 hashchange 때 먼저 reroute에 묻고,
+// 여기서는 고르기 칸과 머리를 둔 채 보드 칸(제목·ⓘ·구간·단추·격자)만 갈아 그린다.
 let gen = 0;
 let view = null; // 지금 화면의 정리 함수
+let here = null; // 보드 보기 중이면 {tv, show(id, query)}: reroute가 쓴다
+
+const LAST_KEY = 'eum.dash.last';
+const NEW_PICK = '+new'; // 고르기 칸의 '+ 새 보드…'(보드 id 규칙 밖의 값)
+function lastSeen() { try { return localStorage.getItem(LAST_KEY) || ''; } catch (e) { return ''; } }
+function rememberSeen(id) { try { localStorage.setItem(LAST_KEY, id); } catch (e) { /* 편의 기능 */ } }
+
+// 처음 보일 보드: 마지막에 본 보드가 목록에 있으면 그것, 아니면 첫 보드. 보드가 없으면 ''
+export function defaultBoard(items, last) {
+  const ids = (items || []).map((d) => d && d.id).filter(Boolean);
+  return ids.includes(last) ? last : ids[0] || '';
+}
+// 보드 주소. 다른 보드로 갈 때: 고정 구간(from·to)·트리 그룹(g)·벽면(tv)은 이어 가고, 실시간 구간은 새 보드의 기본 구간으로
+export function boardHash(id, query) {
+  const q = query || {}, p = new URLSearchParams();
+  if (q.g) p.set('g', q.g);
+  const f = Number(q.from), t = Number(q.to);
+  if (q.from && q.to && f > 0 && t > f) { p.set('from', String(q.from)); p.set('to', String(q.to)); }
+  if (q.tv === '1') p.set('tv', '1');
+  const s = p.toString();
+  return '#dash/' + encodeURIComponent(id) + (s ? '?' + s : '');
+}
+// 고르기 칸 글자: 제목(없으면 id). 제목이 겹치면 뒤에 id
+export function pickLabels(items) {
+  const n = new Map();
+  const t = (d) => d.title || d.id;
+  for (const d of items || []) n.set(t(d), (n.get(t(d)) || 0) + 1);
+  return (items || []).map((d) => (n.get(t(d)) > 1 && t(d) !== d.id ? `${t(d)} · ${d.id}` : t(d)));
+}
+const hashQuery = () => Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || ''));
 
 export function dispose() {
   gen++;
+  here = null;
   const v = view;
   view = null;
   if (v) { try { v(); } catch (e) { console.error(e); } }
 }
 
-// render: params.id가 없으면 목록, 있으면 그 보드.
+// render: 보드 보기(id가 없으면 마지막에 본 보드)
 export function render(host, params, query) {
   dispose();
   const my = gen;
   const offs = [];
   view = () => { for (const f of offs.splice(0)) f(); };
+  return renderPage(host, (params && params.id) || '', query || {}, my, offs);
+}
+
+// app.js: 같은 화면(dash.js) 안에서 주소가 바뀜(고르기 칸·뒤로 가기·메뉴 '보드'). 보드 보기 중이고 벽면 여부가 같으면
+// 보드 칸만 바꾸고 true, 아니면 false(화면을 새로 그린다)
+export function reroute(params, query) {
   const q = query || {};
-  if (params && params.id) return renderBoard(host, params.id, q, my, offs);
-  return renderList(host, q, my, offs);
+  if (!here || here.tv !== (q.tv === '1')) return false;
+  here.show((params && params.id) || '', q);
+  return true;
 }
 
-// ---- #dashes 목록 ----
-async function renderList(host, query, my, offs) {
-  const head = el('div', { class: 'ds-head' }, el('h2', { class: 'sec', text: '보드' }));
-  const body = el('div', { class: 'ds-body' });
-  host.append(head, body);
-  offs.push(() => closeDrawer());
-  let r;
-  try { r = await api('/dashboards'); } catch (e) {
-    if (my === gen) body.append(el('p', { class: 'empty', text: DASH }));
-    return;
-  }
-  if (my !== gen) return;
-  const items = (r && r.dashboards) || [], errs = (r && r.errors) || [];
-  const editable = !!(r && r.editable);
-  const canEdit = editable && can('operator');
-  const newBtn = () => el('button', { type: 'button', class: 'primary', text: '+ 새 보드', onclick: () => pickTemplate(my) });
-  head.append(el('span', { class: 'ds-n num', text: fmtNum(items.length) }), el('span', { class: 'grow' }));
-  if (!editable && can('operator')) head.append(offNote());
-  if (canEdit) head.append(newBtn());
-
-  if (errs.length) {
-    body.append(el('details', { class: 'ds-errs', role: 'alert' },
-      el('summary', { text: `읽지 못한 보드 파일 ${fmtNum(errs.length)}개` }),
-      el('ul', {}, errs.map((e) => el('li', {}, el('code', { text: e.file || DASH }), ` — ${e.msg || ''}`)))));
-  }
-  if (!items.length) {
-    body.append(el('div', { class: 'ds-empty' }, el('p', { class: 'empty', text: '보드 없음' }), canEdit ? newBtn() : null));
-    return;
-  }
-  const now = Date.now();
-  const rows = items.map((d) => {
-    const href = '#dash/' + encodeURIComponent(d.id);
-    const who = actorName(d.updated_by || d.owner);
-    const tr = el('tr', { class: 'click' },
-      el('td', { class: 'ds-name' },
-        el('a', { class: 'ds-t', href, text: d.title || d.id }),
-        d.title && d.title !== d.id ? el('span', { class: 'ds-id', text: d.id }) : null,
-        d.desc ? el('div', { class: 'ds-desc', text: d.desc, title: d.desc }) : null),
-      el('td', { class: 'num', text: fmtNum(d.widgets ?? 0) }),
-      el('td', { class: 'ds-who', title: d.updated_at ? new Date(d.updated_at).toLocaleString('ko-KR') : '' },
-        d.updated_at || who ? `${who || DASH} · ${relTime(d.updated_at, now)}` : DASH),
-      el('td', { class: 'ds-act' }, canEdit ? el('a', { class: 'ds-edit', href: '#dashedit/' + encodeURIComponent(d.id), text: '편집' }) : null));
-    tr.addEventListener('click', (e) => { if (!e.target.closest('a')) location.hash = href; });
-    return tr;
-  });
-  body.append(el('div', { class: 'ds-card' }, el('table', { class: 'tbl ds-tbl' },
-    el('thead', {}, el('tr', {}, el('th', { text: '보드' }), el('th', { class: 'num', text: '위젯' }), el('th', { text: '마지막 저장' }), el('th', {}))),
-    el('tbody', {}, rows))));
-}
 const offNote = () => el('span', { class: 'ds-off', title: '설정 dashboards_readonly 또는 dashboards 폴더' }, '편집 꺼짐');
+const editHref = (id) => '#dashedit/' + encodeURIComponent(id);
+
+// 읽지 못한 보드 파일: 고르기 칸 옆 ⚠ n, 올리면 파일과 까닭
+function fileErrs(errs) {
+  if (!errs.length) return null;
+  const n = `읽지 못한 보드 파일 ${fmtNum(errs.length)}개`;
+  return el('span', { class: 'tip dv-errs', tabindex: '0', 'aria-label': n }, `⚠ ${fmtNum(errs.length)}`,
+    el('span', { class: 'tipbox' },
+      el('b', { text: n }),
+      el('ul', {}, errs.map((e) => el('li', {}, el('code', { text: e.file || DASH }), ` — ${e.msg || ''}`))),
+      el('span', { class: 'dv-fix', text: 'dashboards 폴더의 그 파일을 고치면 다음에 열 때 고르기 칸에 나옵니다' })));
+}
+// 보드를 못 읽었을 때 보드 칸
+function noneBox(e, id) {
+  const st = e && e.status;
+  return el('div', { class: 'dv-none' },
+    el('p', { class: 'empty', text: st === 404 ? '보드 없음' : st === 422 ? '보드 파일 오류' : st === 403 ? '권한 없음' : '응답 없음' }),
+    st === 422 && e.error ? el('p', { class: 'dv-why', text: e.error }) : null,
+    st === 422 ? el('p', { class: 'dv-why', text: `dashboards 폴더의 ${id}.yaml 파일을 고치면 바로 보입니다` }) : null);
+}
+// ⓘ의 마지막 저장 줄
+function savedLine(item, now) {
+  if (!item || !(item.updated_at || item.updated_by || item.owner)) return '';
+  const who = actorName(item.updated_by || item.owner);
+  return `마지막 저장 ${who || DASH}${item.updated_at ? ` · ${relTime(item.updated_at, now)}` : ''}`;
+}
+
+async function renderPage(host, id, query, my, offs) {
+  const tv = query.tv === '1';
+  if (tv) enterTv(host, offs);
+  offs.push(() => closeDrawer());
+  let list = null;
+  try { list = await api('/dashboards'); } catch (e) { /* 목록 없이도 주소의 보드는 보인다(고르기 칸만 빠짐) */ }
+  if (my !== gen) return;
+  const items = (list && list.dashboards) || [], errs = (list && list.errors) || [];
+  const editable = !!(list && list.editable);
+  const canNew = editable && can('operator');
+  const errMark = !tv && can('operator') ? fileErrs(errs) : null;
+
+  if (!id) {
+    id = defaultBoard(items, lastSeen());
+    if (id) history.replaceState(null, '', boardHash(id, query));
+  }
+  if (!id) { // 보드가 없거나 목록을 못 읽음
+    host.append(el('div', { class: 'dv-head' },
+      el('div', { class: 'dv-tt' }, el('h2', { class: 'sec dv-t', text: '보드' }), errMark),
+      el('div', { class: 'dv-act dv-end' }, list && !editable && can('operator') ? offNote() : null)),
+    el('div', { class: 'ds-empty' }, el('p', { class: 'empty', text: list ? '보드 없음' : '응답 없음' }),
+      canNew ? el('button', { type: 'button', class: 'primary', text: '+ 새 보드', onclick: () => pickTemplate(my) }) : null));
+    return;
+  }
+
+  // 머리: 고르기 칸(벽면·목록 못 읽음이면 제목) · 설명 ⓘ · ⚠ · 구간 · 편집 · 벽면
+  const pick = tv || !list ? null : el('select', { class: 'dv-pick', 'aria-label': '보드' },
+    pickLabels(items).map((t, i) => el('option', { value: items[i].id, text: t })),
+    canNew ? el('option', { value: NEW_PICK, text: '+ 새 보드…' }) : null);
+  const title = el('h2', { class: 'sec dv-t' });
+  const tip = el('span', { class: 'dv-tip' });
+  const rng = el('div', { class: 'trange dv-range' });
+  const acts = el('div', { class: 'dv-act' });
+  const body = el('div', { class: 'dv-body' });
+  host.append(el('div', { class: 'dv-head' }, el('div', { class: 'dv-tt' }, pick || title, tip, errMark), rng, acts), body);
+
+  let cur = '', atHash = '', extra = null, board = null, bseq = 0;
+  offs.push(() => { bseq++; if (board) board.dispose(); board = null; });
+  const setHash = (h) => { history.replaceState(null, '', h); atHash = location.hash; };
+  // 목록에 없는 보드(틀린 파일·지워짐)도 고르기 칸에 그 id로 보인다. 다른 보드로 가면 뺀다
+  function setPick(v) {
+    if (!pick) return;
+    if (extra && extra.value !== v) { extra.remove(); extra = null; }
+    if (![...pick.options].some((o) => o.value === v)) {
+      extra = el('option', { value: v, text: v });
+      pick.insertBefore(extra, [...pick.options].find((o) => o.value === NEW_PICK) || null);
+    }
+    pick.value = v;
+  }
+  if (pick) pick.addEventListener('change', () => {
+    const v = pick.value;
+    if (v === NEW_PICK) { pick.value = cur; pickTemplate(my); return; }
+    if (v !== cur) location.hash = boardHash(v, hashQuery()); // hashchange → reroute → show
+  });
+
+  async function show(next, q) {
+    if (!next) { // 메뉴 '보드'(#dashes): 보던 보드 그대로(구간도)
+      if (cur) { setHash(atHash); return; }
+      next = defaultBoard(items, lastSeen());
+      if (!next) return;
+      setHash(boardHash(next, q));
+    }
+    if (next === cur && location.hash === atHash) return; // 같은 주소로 돌아옴
+    const my2 = ++bseq;
+    setPick(next);
+    let r = null, err = null;
+    try { r = await api('/dashboards/' + encodeURIComponent(next)); } catch (e) { err = e; }
+    if (my !== gen || my2 !== bseq) return;
+    // 새 보드 정의가 온 뒤에 갈아 그린다(그 사이엔 전 보드가 보인다)
+    cur = next;
+    atHash = location.hash;
+    if (board) { board.dispose(); board = null; }
+    body.replaceChildren(); rng.replaceChildren(); acts.replaceChildren(); tip.replaceChildren();
+    title.textContent = next; title.title = next;
+    if (err) { body.append(noneBox(err, next)); return; }
+    rememberSeen(next);
+    drawBoard(next, r, q, my2);
+  }
+
+  function drawBoard(id, r, query, my2) {
+    const dash = (r && r.dash) || { id, title: id, widgets: [] };
+    const canEdit = !!(r && r.editable) && can('operator');
+    const name = dash.title || id;
+    title.textContent = name; title.title = name;
+    const about = [dash.desc || '', savedLine(items.find((d) => d.id === id), Date.now())].filter(Boolean).join('\n');
+    if (about) tip.append(info(about));
+
+    const defKey = rangeKeyOf(dash);
+    let state = resolveRange(query, dash);
+    let lastKey = state.live ? state.key : defKey;
+    function writeRange() {
+      const patch = state.live ? { range: state.key === defKey ? null : state.key, from: null, to: null }
+        : { range: null, from: Math.round(state.from), to: Math.round(state.to) };
+      setHash(patchHash(patch));
+    }
+    function liveRange(key) {
+      if (my2 !== bseq) return;
+      const now = Date.now();
+      state = { from: now - parseDur(key), to: now, live: true, key };
+      lastKey = key;
+      writeRange();
+      drawRange();
+      if (board) board.setRange(state.from, state.to, true);
+    }
+    function drawRange() {
+      const seg = el('span', { class: 'trseg', role: 'group', 'aria-label': '구간' },
+        ...rangeKeys(dash).map((k) => el('button', {
+          type: 'button', class: state.live && state.key === k ? 'on' : '', 'aria-pressed': state.live && state.key === k ? 'true' : 'false',
+          text: rangeLabel(k), title: k === defKey ? '보드 기본 구간' : null, onclick: () => liveRange(k),
+        })));
+      const label = state.live
+        ? el('span', { class: 'trlabel' }, el('span', { class: 'trlive', text: '● 실시간' }))
+        : el('span', { class: 'trlabel' }, el('span', { class: 'num', text: fmtSpan(state.from, state.to) }),
+          el('button', { type: 'button', class: 'dv-now', text: '지금으로', onclick: () => liveRange(lastKey) }));
+      rng.replaceChildren(seg, label, info('구간은 지표 위젯과 로그에만. 그 밖의 운영 위젯은 늘 지금'));
+    }
+    drawRange();
+    acts.append(...[
+      canEdit ? el('button', { type: 'button', text: '편집', onclick: () => { location.hash = editHref(id); } })
+        : !(r && r.editable) && can('operator') ? offNote() : null,
+      el('button', { type: 'button', text: '벽면', title: '벽면 보기(위 막대·트리 숨김)', onclick: () => { location.hash = patchHash({ tv: '1' }); } }),
+    ].filter(Boolean));
+
+    if (!(dash.widgets || []).length) {
+      body.append(el('div', { class: 'ds-empty' }, el('p', { class: 'empty', text: '위젯 없음' }),
+        canEdit ? el('a', { class: 'ds-edit', href: editHref(id), text: '편집' }) : null));
+      return;
+    }
+    board = mountBoard(body, dash, {
+      id, g: query.g || '', range: { from: state.from, to: state.to, live: state.live },
+      onRange: (x) => {
+        if (my2 !== bseq) return;
+        state = { ...x, key: '' };
+        writeRange();
+        drawRange();
+      },
+    });
+  }
+
+  here = { tv, show };
+  await show(id, query);
+}
 
 // 새 보드: 템플릿 고르기 → #dashedit/?from=<템플릿 ID>
 async function pickTemplate(my) {
@@ -527,91 +688,13 @@ async function pickTemplate(my) {
   })));
 }
 
-// ---- #dash/<id> 보기 ----
-// 주소의 쿼리를 바꾼다(hashchange 없이: 화면을 다시 그리지 않음)
+// 주소의 쿼리를 바꾼 해시(hashchange 없이 쓰려면 history.replaceState로)
 function patchHash(patch) {
   const [path, qs = ''] = location.hash.slice(1).split('?');
   const p = new URLSearchParams(qs);
   for (const [k, v] of Object.entries(patch)) { if (v == null || v === '') p.delete(k); else p.set(k, String(v)); }
   const s = p.toString();
   return '#' + path + (s ? '?' + s : '');
-}
-
-async function renderBoard(host, id, query, my, offs) {
-  const tv = query.tv === '1';
-  if (tv) enterTv(host, offs);
-  let r;
-  try { r = await api('/dashboards/' + encodeURIComponent(id)); } catch (e) {
-    if (my !== gen) return;
-    const st = e && e.status;
-    host.append(el('div', { class: 'dv-none' },
-      el('p', { class: 'empty', text: st === 404 ? '보드 없음' : st === 422 ? '보드 파일 오류' : st === 403 ? '권한 없음' : '응답 없음' }),
-      st === 422 && e.error ? el('p', { class: 'dv-why', text: e.error }) : null,
-      el('a', { href: '#dashes', text: '보드 목록' })));
-    return;
-  }
-  if (my !== gen) return;
-  const dash = (r && r.dash) || { id, title: id, widgets: [] };
-  const editable = !!(r && r.editable);
-  const canEdit = editable && can('operator');
-  const defKey = rangeKeyOf(dash);
-  let state = resolveRange(query, dash);
-  let lastKey = state.live ? state.key : defKey;
-  let board = null;
-
-  // 머리: 제목 · 설명 ⓘ · 구간 · 지금으로 · 편집 · 벽면
-  const rng = el('div', { class: 'trange dv-range' });
-  function writeRange() {
-    const patch = state.live ? { range: state.key === defKey ? null : state.key, from: null, to: null }
-      : { range: null, from: Math.round(state.from), to: Math.round(state.to) };
-    history.replaceState(null, '', patchHash(patch));
-  }
-  function liveRange(key) {
-    const now = Date.now();
-    state = { from: now - parseDur(key), to: now, live: true, key };
-    lastKey = key;
-    writeRange();
-    drawRange();
-    if (board) board.setRange(state.from, state.to, true);
-  }
-  function drawRange() {
-    const seg = el('span', { class: 'trseg', role: 'group', 'aria-label': '구간' },
-      ...rangeKeys(dash).map((k) => el('button', {
-        type: 'button', class: state.live && state.key === k ? 'on' : '', 'aria-pressed': state.live && state.key === k ? 'true' : 'false',
-        text: rangeLabel(k), title: k === defKey ? '보드 기본 구간' : null, onclick: () => liveRange(k),
-      })));
-    const label = state.live
-      ? el('span', { class: 'trlabel' }, el('span', { class: 'trlive', text: '● 실시간' }))
-      : el('span', { class: 'trlabel' }, el('span', { class: 'num', text: fmtSpan(state.from, state.to) }),
-        el('button', { type: 'button', class: 'dv-now', text: '지금으로', onclick: () => liveRange(lastKey) }));
-    rng.replaceChildren(seg, label, info('구간은 지표 위젯과 로그에만. 그 밖의 운영 위젯은 늘 지금'));
-  }
-  drawRange();
-  const tvHash = () => patchHash({ tv: '1' });
-  const acts = el('div', { class: 'dv-act' },
-    canEdit ? el('button', { type: 'button', text: '편집', onclick: () => { location.hash = '#dashedit/' + encodeURIComponent(id); } })
-      : !editable && can('operator') ? offNote() : null,
-    el('button', { type: 'button', text: '벽면', title: '벽면 보기(위 막대·트리 숨김)', onclick: () => { location.hash = tvHash(); } }));
-  const head = el('div', { class: 'dv-head' },
-    el('div', { class: 'dv-tt' }, el('h2', { class: 'sec dv-t', text: dash.title || id, title: dash.title || id }), dash.desc ? info(dash.desc) : null),
-    rng, acts);
-  const body = el('div', { class: 'dv-body' });
-  host.append(head, body);
-
-  if (!(dash.widgets || []).length) {
-    body.append(el('div', { class: 'ds-empty' }, el('p', { class: 'empty', text: '위젯 없음' }),
-      canEdit ? el('a', { class: 'ds-edit', href: '#dashedit/' + encodeURIComponent(id), text: '편집' }) : null));
-    return;
-  }
-  board = mountBoard(body, dash, {
-    id, g: query.g || '', range: { from: state.from, to: state.to, live: state.live },
-    onRange: (x) => {
-      state = { ...x, key: '' };
-      writeRange();
-      drawRange();
-    },
-  });
-  offs.push(() => board.dispose());
 }
 
 // 벽면(?tv=1): 위 막대·트리를 숨기고 글자를 키운다. 오른쪽 위 ✕ 또는 Esc로 나간다(구간은 그대로)

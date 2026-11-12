@@ -83,7 +83,7 @@
 - 디스크는 전체 장치만 센다: 이름이 `^(sd[a-z]+|vd[a-z]+|xvd[a-z]+|hd[a-z]+|nvme\d+n\d+)$`인 줄(파티션·loop·ram·dm 제외).
 - 카탈로그 그룹: `{id, title, key[], charts[], metrics[]}`. 차트: `{id, title, stack?, max?, overview?, scope?}`. 항목: `{name, title, unit, chart, procfs, derived?, desc?}`. 한 차트의 항목은 **단위가 같아야** 한다(`model` 테스트가 확인).
 - `sim` 수집기는 카탈로그의 `host.*` 전부를 **서로 맞는 값**으로 낸다(CPU 사용률 = 사용자 + 시스템, 유휴 = 100 − 나머지, 사용+캐시 ≥ 사용). 화면은 데이터가 없는 차트를 "미수집"으로 둔다.
-- 서버당 `host.*`가 약 30개로 늘어 43대 × 1초면 초당 약 1,300행이다. 모의 서버(fleet)는 기본 `interval: 5s`로 둔다(실제 3대는 1초).
+- 서버당 `host.*`가 약 30개로 늘어 46대 × 1초면 초당 약 1,400행이다. 모의 서버(fleet)는 기본 `interval: 5s`로 둔다(실제 3대는 1초).
 
 ## 3. 실행 프로세스 지표 (`job.*` 확장, 서버 탭 "프로세스")
 
@@ -561,10 +561,10 @@ CREATE VIEW IF NOT EXISTS v_logs AS SELECT ts, host, source, exec_id, level, mes
 - 패널 YAML(§12 `Panel`). `signal`은 골든 시그널 묶음(`traffic` · `latency` · `errors` · `saturation`, 없으면 기타)이고 화면이 타일을 묶는 데만 쓴다. 다른 값이면 매니저가 패널을 읽지 않는다(오류).
 
 ```yaml
-# panels/체결.yaml
+# panels/02-매매체결.yaml (파일 이름의 번호가 업무 순서)
 id: matching
-title: 체결
-group: 매매/체결
+title: 매매체결
+group: 매매체결
 # signal: 골든 시그널 묶음(traffic 트래픽 · latency 지연 시간 · errors 오류 · saturation 포화도). 없으면 기타(05 §14.10).
 tiles:
   - { title: 주문 유입량,          signal: traffic,    metric: biz.order.in_tps,         agg: sum, unit: TPS, kpi: true }
@@ -574,7 +574,7 @@ tiles:
   - { title: 오류 로그 발생률,     signal: errors,     metric: log.error.count,          agg: sum, unit: 건/초, warn: 1, crit: 5 }
   - { title: 대기 큐,              signal: saturation, metric: biz.order.queue,          agg: sum, unit: 건, warn: 500, crit: 2000, kpi: true }
   - { title: 히스토리 버퍼 사용률, signal: saturation, metric: biz.order.histbuf_pct,    agg: max, unit: "%", warn: 70, crit: 90 }
-  - { title: 프로파일링 오버헤드,                      metric: agent.profiler.cpu_pct,   agg: max, unit: "%", warn: 1 }
+  - { title: 프로파일링 오버헤드,                      metric: agent.profiler.cpu_pct,   agg: max, unit: "%", warn: 5 }
 charts:
   - { title: 처리량,               unit: TPS, agg: sum, metrics: [biz.order.in_tps, biz.order.tps] }
   - { title: 응답 시간,            unit: ms,  agg: max, metrics: [biz.order.latency_avg_ms, biz.order.latency_p99_ms] }

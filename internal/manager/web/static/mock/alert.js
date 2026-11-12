@@ -54,14 +54,14 @@ function buildAlerts(c) {
     const b = bizAt(now, ex);
     const execId = w.startRun.exec_id;
     if (m1 && m1.state !== 'ok') out.push(mk({ id: 11, ts: now - 210 * SEC, kind: 'host', dedup_key: 'host:match-01', level: m1.state, state: 'firing', host: 'match-01', group: m1.group, name: 'host.cpu.pct', value: m1.cpu, message: `match-01 · CPU ${Math.round(m1.cpu)}% (경고 70%)` }));
-    out.push(mk({ id: 12, ts: now - 33 * SEC, kind: 'tile', dedup_key: 'tile:matching/대기 큐', level: 'crit', state: 'firing', group: '매매/체결', name: 'biz.order.queue', exec_id: execId, value: b['biz.order.queue'], message: `체결 · 대기 큐 ${fmtN(b['biz.order.queue'])}건 (위험 2,000)` }));
-    out.push(mk({ id: 13, ts: now - 82 * SEC, kind: 'tile', dedup_key: 'tile:matching/p99 응답 시간', level: 'crit', state: 'firing', group: '매매/체결', name: 'biz.order.latency_p99_ms', exec_id: execId, value: b['biz.order.latency_p99_ms'], message: `체결 · p99 응답 시간 ${fmtN(b['biz.order.latency_p99_ms'])}ms (위험 200)` }));
+    out.push(mk({ id: 12, ts: now - 33 * SEC, kind: 'tile', dedup_key: 'tile:matching/대기 큐', level: 'crit', state: 'firing', group: '매매체결', name: 'biz.order.queue', exec_id: execId, value: b['biz.order.queue'], message: `체결 · 대기 큐 ${fmtN(b['biz.order.queue'])}건 (위험 2,000)` }));
+    out.push(mk({ id: 13, ts: now - 82 * SEC, kind: 'tile', dedup_key: 'tile:matching/p99 응답 시간', level: 'crit', state: 'firing', group: '매매체결', name: 'biz.order.latency_p99_ms', exec_id: execId, value: b['biz.order.latency_p99_ms'], message: `체결 · p99 응답 시간 ${fmtN(b['biz.order.latency_p99_ms'])}ms (위험 200)` }));
     const n = logEvents(c, { levels: ['error'], host: 'match-01', from: now - 150 * SEC, limit: 2000 }).length;
-    out.push(mk({ id: 14, ts: now - 80 * SEC, kind: 'log', dedup_key: 'log:match-01:matching', level: 'crit', state: 'firing', host: 'match-01', group: '매매/체결', name: 'log.error.count', exec_id: execId, value: n, message: `match-01 · matching (E) 로그 ${n}건` }));
-    out.push(mk({ id: 15, ts: now - 50 * SEC, kind: 'exit', dedup_key: `exit:${EXIT_IDS.crash}`, level: 'crit', state: 'resolved', host: 'match-01', group: '매매/체결', name: 'matching_svc', exec_id: execId, message: 'matching_svc 종료 · match-01 — book_insert에서 NULL 역참조(주소 0x8)', resolved_at: now - 50 * SEC + MIN }));
+    out.push(mk({ id: 14, ts: now - 80 * SEC, kind: 'log', dedup_key: 'log:match-01:matching', level: 'crit', state: 'firing', host: 'match-01', group: '매매체결', name: 'log.error.count', exec_id: execId, value: n, message: `match-01 · matching (E) 로그 ${n}건` }));
+    out.push(mk({ id: 15, ts: now - 50 * SEC, kind: 'exit', dedup_key: `exit:${EXIT_IDS.crash}`, level: 'crit', state: 'resolved', host: 'match-01', group: '매매체결', name: 'matching_svc', exec_id: execId, message: 'matching_svc 종료 · match-01 — book_insert에서 NULL 역참조(주소 0x8)', resolved_at: now - 50 * SEC + MIN }));
   }
-  out.push(mk({ id: 21, ts: w.base - 5 * 3600000, kind: 'host', dedup_key: 'host:match-04', level: 'warn', state: 'resolved', host: 'match-04', group: '매매/체결', name: 'host.cpu.pct', value: 72, message: 'match-04 · CPU 72% (경고 70%)', resolved_at: w.base - 5 * 3600000 + 8 * MIN }));
-  out.push(mk({ id: 22, ts: w.base - 26 * 3600000, kind: 'tile', dedup_key: 'tile:matching/히스토리 버퍼 사용률', level: 'warn', state: 'resolved', group: '매매/체결', name: 'biz.order.histbuf_pct', value: 74, message: '체결 · 히스토리 버퍼 사용률 74% (경고 70%)', resolved_at: w.base - 26 * 3600000 + 12 * MIN }));
+  out.push(mk({ id: 21, ts: w.base - 5 * 3600000, kind: 'host', dedup_key: 'host:match-04', level: 'warn', state: 'resolved', host: 'match-04', group: '매매체결', name: 'host.cpu.pct', value: 72, message: 'match-04 · CPU 72% (경고 70%)', resolved_at: w.base - 5 * 3600000 + 8 * MIN }));
+  out.push(mk({ id: 22, ts: w.base - 26 * 3600000, kind: 'tile', dedup_key: 'tile:matching/히스토리 버퍼 사용률', level: 'warn', state: 'resolved', group: '매매체결', name: 'biz.order.histbuf_pct', value: 74, message: '체결 · 히스토리 버퍼 사용률 74% (경고 70%)', resolved_at: w.base - 26 * 3600000 + 12 * MIN }));
   for (const a of out) {
     const k = w.acks.get(a.id);
     if (k) {
@@ -230,7 +230,7 @@ function tsOf(v) {
 
 function incidentList(c) {
   const list = c.w.incidents.map((i) => ({ ...i }));
-  if (c.sig.surge) list.push({ id: 1000, start: c.now - 210 * SEC, end: 0, scope: '매매/체결', title: '자동: 체결 · 대기 큐 위험', source: 'auto', note: '', confirmed: !!c.w.surgeConfirmed });
+  if (c.sig.surge) list.push({ id: 1000, start: c.now - 210 * SEC, end: 0, scope: '매매체결', title: '자동: 체결 · 대기 큐 위험', source: 'auto', note: '', confirmed: !!c.w.surgeConfirmed });
   return list;
 }
 

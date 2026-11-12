@@ -1,6 +1,7 @@
 // 왼쪽 트리(서버 / 배치판)와 주소 해석. 집계·주소 해석은 DOM 없이 호출된다.
 import { api, poll } from './api.js';
 import { el, LEVEL_TEXT } from './ui.js';
+import { groupCmp, groupOrderKey, loadGroupOrder } from './grouporder.js';
 
 // ---- 순수 함수 ----
 export const HOST_ORDER = ['crit', 'silent', 'warn', 'ok'];
@@ -88,7 +89,7 @@ export function parseRoute(hash, boards = new Set()) {
     case 'run': params = { id: segs[1] || '' }; break;
     case 'svc': params = { id: segs[1] || '' }; break; // 서비스 타임머신 #svc/<id>?host=&from=&to= (06, 카드 P-F)
     case 'svcs': break; // 서비스 목록
-    case 'dashes': break; // 사용자 보드 목록(07)
+    case 'dashes': break; // 사용자 보드: 마지막에 본 보드로(07)
     case 'dash': params = { id: segs[1] || '' }; break; // 보드 보기 #dash/<id>?tv=1&from=&to=
     case 'dashedit': params = { id: segs[1] || '' }; break; // 보드 편집 #dashedit/<id>, 새 보드 #dashedit/?from=<템플릿>
     case 'alerts': break;
@@ -175,6 +176,7 @@ export function createTree(host, { onBoards } = {}) {
   function walk(node, depth, kind, rootKey, out) {
     const kids = [...node.children.values()].sort((a, b) => {
       if ((a.kind === 'group') !== (b.kind === 'group')) return a.kind === 'group' ? -1 : 1;
+      if (kind === 'host' && a.kind === 'group') return groupCmp(a.path, b.path); // 서버 그룹은 업무 순서(grouporder.js)
       return a.label < b.label ? -1 : 1;
     });
     for (const k of kids) {
@@ -192,7 +194,7 @@ export function createTree(host, { onBoards } = {}) {
     if (q.g) chip = q.g.split('/').pop();
     else if (hp.startsWith('board/') && hp.length > 6) chip = null;
     if (chip) out.push(el('div', { class: 'tree-chip' }, chip, el('button', { type: 'button', text: '✕', title: '범위 해제', onclick: clearScope })));
-    // 배치 쪽 화면이면 배치판을 위에 둔다(서버 43대 아래에 묻히지 않게).
+    // 배치 쪽 화면이면 배치판을 위에 둔다(서버 46대 아래에 묻히지 않게).
     const roots = [['host', '서버', buildHostTree(hosts)], ['flow', '배치판', buildFlowTree(flows)]];
     if (/^(board|edit|runs|run)(\/|$)/.test(hp)) roots.reverse();
     for (const [kind, label, root] of roots) {
@@ -211,10 +213,10 @@ export function createTree(host, { onBoards } = {}) {
   }
 
   async function load() {
-    const [h, f] = await Promise.all([api('/hosts'), api('/flows')]);
+    const [h, f] = await Promise.all([api('/hosts'), api('/flows'), loadGroupOrder()]);
     hosts = h.hosts || []; flows = f.flows || [];
     onBoards?.(new Set(flows.map((x) => x.board)));
-    const s = JSON.stringify([hosts.map((x) => [x.id, x.state, x.group]), flows.map((x) => [x.id, flowState(x), x.board])]);
+    const s = JSON.stringify([hosts.map((x) => [x.id, x.state, x.group]), flows.map((x) => [x.id, flowState(x), x.board]), groupOrderKey()]);
     if (s !== sig.s) { sig.s = s; render(); }
   }
   const ready = load().catch(() => {});

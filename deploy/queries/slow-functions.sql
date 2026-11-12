@@ -1,6 +1,5 @@
 -- 체결이 밀린 구간(p99 50ms 초과)과 평시에 체결 서비스가 CPU를 쓴 함수 비중(%)
--- 함수 표본과 업무 지표는 서비스 주인 키(svc:matching@<서버>)로 쌓인다(06, 11-11).
--- 그 전 데이터는 start-matching 실행 ID로 쌓였으므로 둘 다 본다.
+-- 체결 서비스의 표본·지표는 서비스 주인 키 svc:matching@<서버>로 쌓인다(06 §12). 그 전 데이터는 start-matching 실행 ID.
 WITH w AS (
   SELECT p.leaf, p.samples,
          EXISTS (SELECT 1 FROM v_samples m

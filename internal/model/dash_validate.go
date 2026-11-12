@@ -96,6 +96,13 @@ func validateWidget(w Widget) error {
 	} else if len(w.Queries) > 0 || w.Ref != nil {
 		return fmt.Errorf("%s 위젯은 queries·ref를 쓰지 않습니다(지표 위젯 stat·timeseries·bar·table만)", w.Type)
 	}
+	if w.Type == WidgetBizflow {
+		if err := validateFlowNodes(w.Nodes); err != nil {
+			return err
+		}
+	} else if len(w.Nodes) > 0 {
+		return fmt.Errorf("nodes는 업무 흐름 위젯(bizflow)만 씁니다")
+	}
 	switch w.Reduce {
 	case "", "last", "avg", "max", "min":
 	default:
@@ -193,6 +200,99 @@ func validateWidgetQuery(q WidgetQuery) error {
 	case "", "host", "owner":
 	default:
 		return fmt.Errorf("by %q: host|owner이거나 비어야 합니다", q.By)
+	}
+	return nil
+}
+
+// validateFlowNodes는 업무 흐름 위젯(bizflow)의 상자들을 본다(카드 U U1).
+func validateFlowNodes(nodes []FlowNode) error {
+	if len(nodes) < 1 || len(nodes) > FlowMaxNodes {
+		return fmt.Errorf("업무 흐름은 상자(nodes) 1~%d개여야 합니다(지금 %d개)", FlowMaxNodes, len(nodes))
+	}
+	panels := make(map[string]bool, len(nodes))
+	for i, n := range nodes {
+		if n.Panel == "" {
+			return fmt.Errorf("%d번째 상자: panel(업무 패널 ID)이 필요합니다", i+1)
+		}
+		if utf8.RuneCountInString(n.Panel) > 64 {
+			return fmt.Errorf("%d번째 상자: panel은 64자까지입니다", i+1)
+		}
+		if panels[n.Panel] {
+			return fmt.Errorf("상자 %s: panel이 겹칩니다(한 위젯에 패널당 상자 하나)", n.Panel)
+		}
+		panels[n.Panel] = true
+	}
+	cells := map[[2]int]string{}
+	for _, n := range nodes {
+		for _, f := range []struct{ name, v string }{{"title", n.Title}, {"in", n.In}, {"out", n.Out}, {"stock", n.Stock}, {"edge", n.Edge}} {
+			if c := utf8.RuneCountInString(f.v); c > DashMaxTitle {
+				return fmt.Errorf("상자 %s: %s는 %d자까지입니다(지금 %d자)", n.Panel, f.name, DashMaxTitle, c)
+			}
+		}
+		seen := map[string]bool{}
+		for _, f := range n.From {
+			switch {
+			case f == n.Panel:
+				return fmt.Errorf("상자 %s: from에 자기 자신을 쓸 수 없습니다", n.Panel)
+			case !panels[f]:
+				return fmt.Errorf("상자 %s: from의 '%s'는 이 위젯의 상자가 아닙니다", n.Panel, f)
+			case seen[f]:
+				return fmt.Errorf("상자 %s: from의 '%s'가 겹칩니다", n.Panel, f)
+			}
+			seen[f] = true
+		}
+		if len(n.At) != 0 {
+			if len(n.At) != 2 {
+				return fmt.Errorf("상자 %s: at은 [열, 줄] 두 개이거나 비어야 합니다(지금 %d개)", n.Panel, len(n.At))
+			}
+			c, r := n.At[0], n.At[1]
+			if c < 0 || c >= FlowMaxCols {
+				return fmt.Errorf("상자 %s: at의 열은 0~%d여야 합니다(지금 %d)", n.Panel, FlowMaxCols-1, c)
+			}
+			if r < 0 || r >= FlowMaxRows {
+				return fmt.Errorf("상자 %s: at의 줄은 0~%d여야 합니다(지금 %d)", n.Panel, FlowMaxRows-1, r)
+			}
+			if o, ok := cells[[2]int{c, r}]; ok {
+				return fmt.Errorf("상자 %s: at [%d, %d]는 상자 %s와 같은 칸입니다", n.Panel, c, r, o)
+			}
+			cells[[2]int{c, r}] = n.Panel
+		}
+	}
+	// 순환: from을 따라 거슬러 올라가며 되돌아오는 길을 찾는다(정의 순서, 첫 순환 하나).
+	from := make(map[string][]string, len(nodes))
+	for _, n := range nodes {
+		from[n.Panel] = n.From
+	}
+	state := map[string]int{} // 1 = 지나는 중, 2 = 끝
+	var path []string
+	var visit func(p string) []string
+	visit = func(p string) []string {
+		state[p] = 1
+		path = append(path, p)
+		for _, f := range from[p] {
+			if state[f] == 1 {
+				i := slices.Index(path, f)
+				// path는 뒤에서 앞으로 거슬러 온 길이라 화살표 방향(앞 → 뒤)으로 뒤집는다.
+				cyc := slices.Clone(path[i:])
+				slices.Reverse(cyc)
+				return append(cyc, cyc[0])
+			}
+			if state[f] == 0 {
+				if c := visit(f); c != nil {
+					return c
+				}
+			}
+		}
+		path = path[:len(path)-1]
+		state[p] = 2
+		return nil
+	}
+	for _, n := range nodes {
+		if state[n.Panel] == 0 {
+			if c := visit(n.Panel); c != nil {
+				return fmt.Errorf("상자의 from이 순환합니다: %s", strings.Join(c, " → "))
+			}
+		}
 	}
 	return nil
 }

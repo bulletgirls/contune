@@ -168,11 +168,11 @@
   | `down` | dev: pid로 종료, 고아 `matching_svc` 정리 / compose: `down` | — |
   | `warmup` | 보조 플로우 12개(`ext-send-margin` 포함)를 수동 실행해 배치판 진행과 "실패 1"을 채움 | 2 |
   | `run` | `load-equity`의 `.load.once`를 지우고(dev: `$EUM_DATA/work/batch-01/.load.once`, compose: `docker compose exec batch-01 rm -f /var/lib/eum/work/.load.once`) `POST /flows/market-open/run` | 3 |
-  | `surge` | match-01 작업 폴더의 `rate`에 3000, 4500을 20초 간격으로, 6000은 `EUM_SURGE_PEAK`초(기본 60) 유지한 뒤 1500. 단계마다 시각 출력. 6000을 60초 두는 까닭: 빠른 PC에서는 6000을 15~40초 받아야 처리가 밀려 체결 알림(p99·대기 큐)이 뜬다(관제 AI 원인 추적 장면) | 5 |
+  | `surge` | match-01 작업 폴더의 `rate`에 3000(20초), 4500(20초), 6000(60초) 뒤 1500. 단계마다 시각 출력. 6000이 60초인 것은 위험도가 최근 60초 특징으로 매겨져서(11-11 리허설) | 5 |
   | `settle` | `POST /flows/daily-settle/run`(게이트 장면) | 5+ |
   | `train` | `POST /risk/train` 결과 요약 | 7 |
   | `sql` | dev: `eum sql --data $EUM_DATA "$(cat deploy/queries/capacity.sql)"` / compose: `docker compose exec manager eum sql --data /data …`. 이어서 `slow-functions.sql`, `risk-vs-incidents.sql` | 7 |
-  | `export <exec_id>` | `./out/`에 CSV·접힌 스택·로그 CSV를 내려받음 | 7 |
+  | `export <exec_id \| svc:<서비스>@<서버>>` | `./out/`에 CSV·접힌 스택·로그 CSV를 내려받음(체결 서비스는 `svc:matching@match-01`, 06 §12) | 7 |
   | `status` | `/flows` 요약(플로우별 최근 상태), `/risk` 지수, firing 알림 수 | — |
 - **`deploy/queries/`**
   - `capacity.sql`, `slow-functions.sql`: 02 §6.1 그대로.
