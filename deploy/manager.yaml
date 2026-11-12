@@ -39,7 +39,7 @@ llm: { type: "${EUM_LLM}", model: claude-opus-5-5, api_key: "${ANTHROPIC_API_KEY
 code:
   repos:
     - { id: demo, path: /src, include: ["demo/**"] }   # compose는 demo 폴더를 /src/demo에 붙인다. 폴더가 없으면 꺼진 채로 뜬다
-  builds: /src/builds.json   # build-id → 커밋 표(demo/build.sh가 쓴다). 없으면 "버전 확인 안 됨"
+  # builds(build-id → 커밋 표)는 두지 않는다: 컨테이너의 /src에는 git 기록이 없어 버전은 늘 "확인 안 됨"으로 보인다(dev는 견준다)
   llm: tools
 risk: { model: logreg, score_every: 10s, train_every: 10m, train_window: 168h, lead: 5m, min_incidents: 3, warn: 30, crit: 60 }
 alerts: { every: 5s, log_levels: [error], incident_after: 30s, incident_clear: 60s, auto_incident: true }
