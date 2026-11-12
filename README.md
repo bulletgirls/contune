@@ -41,7 +41,7 @@
 | [docs/05-supplement.md](docs/05-supplement.md) | **보충 계약(11-09, 02보다 우선):** 지표 카탈로그, 업무 로그, 알림, 장애 위험 지수, 운영자 조작, 편집기, 자연어 초안, API·설정·타입·DDL 추가, 화면 보충, **§16 보안 강화(11-10)** |
 | [docs/07-boards.md](docs/07-boards.md) | **사용자 보드(11-11):** 왜 관제를 대체하지 않고 옆에 두는가(다른 제품 사례), 결정 12개(11: 목록 대신 고르기 칸, 12: 업무 흐름 위젯), 보드 YAML 모양, 결과(§4) |
 | [docs/06-run-process-service.md](docs/06-run-process-service.md) | **실행 · 프로세스 · 서비스(11-11):** 개념 정리와 결과(§12). 화면이 배치에 묶인 지점(근거와 파일 위치), `BATCH_JOB → svr_a·b·c` 예, 개체 셋과 관계, 화면별 변화, 단계 P0~P3, 정할 것 |
-| [docs/cards/](docs/cards/README.md) | **작업카드 원본.** 공통 지시문과 소유 경로(README), 카드 파일 8개(K·A·B·C·R·D·E·X)와 보충 카드(…·U 업무 흐름) |
+| [docs/cards/](docs/cards/README.md) | **작업카드 원본.** 공통 지시문과 소유 경로(README), 카드 파일 8개(K·A·B·C·R·D·E·X)와 보충 카드(…·U 업무 흐름·V 실제 업무 흐름·N 보드 AI 초안·Q 종료 보고서 소스 근거) |
 | [pipeline_plan.md](pipeline_plan.md) | **카드 47장의 등급·우선 세션·선행** (파이프라인의 기준) |
 | [pipeline/ORCHESTRATOR.md](pipeline/ORCHESTRATOR.md) | 자율 오케스트레이터 지시문. 도구: `pipeline/dag.py`(상태), `split_cards.py`(카드 → `specs/<ID>.md`), `setup_worktrees.sh` |
 | [docs/submission/eum-proposal.pdf](docs/submission/eum-proposal.pdf) | 서류 심사 기획서 "이음"(외부 심사위원용, A4 가로 15쪽). 원본은 같은 폴더의 `eum-proposal.html` |
@@ -71,11 +71,20 @@
 
 화면은 `http://localhost:8080/`(실제 API), `http://localhost:8080/?mock=1`(mock). 시연 계정은 `admin/eum-admin`(관리), `operator/eum-operator`(운영), `viewer/eum-viewer`(조회)이고, `demo.sh`는 `EUM_USER`·`EUM_PASS`(기본 admin)로 로그인합니다. 운영 계정의 해시는 `printf '%s' '<비밀번호>' | eum passwd`로 만듭니다.
 
+**LLM 켜기(보드 AI 초안 · 종료 보고서 분석, 11-12):** 기본은 꺼짐(none)이고, 꺼져 있어도 프롬프트 복사와 답 붙여넣기는 됩니다.
+
+    EUM_LLM=claude-cli EUM_LLM_MODEL=claude-opus-5-5 deploy/demo.sh up   # API 키 없이: 이 PC에 로그인된 Claude CLI(claude -p)
+    EUM_LLM=anthropic ANTHROPIC_API_KEY=… deploy/demo.sh up              # Claude API
+
+값을 `deploy/.env.local`(커밋하지 않는 파일)에 적어 두면 `demo.sh`가 읽습니다. 종료 보고서 분석 때 LLM에 코드를 보내는 범위는 `EUM_CODE_LLM=off|snippets|tools`(dev 모드는 비면 tools)입니다. compose는 매니저 컨테이너에 CLI가 없으므로 `EUM_CLAUDE_CLI=1`(이미지에 CLI)과 `CLAUDE_CODE_OAUTH_TOKEN`(`claude setup-token`)이 더 필요합니다.
+
 **되는 것 (dev 모드 리허설로 확인):** 서버 43대·그룹 8개, `ext-04` 무응답·`dw-02` 메모리 위험, 플로우 39개·배치판 6개, 재시도·선후행·서버 넘기·중복 실행 409, `start-matching` 뒤에도 같은 `exec_id`로 `job.*`·`biz.*`·함수 표본 수집, 폭주 전·밀린 구간의 `book_insert` 비중 약 4% → 74%, 리소스 게이트 HELD → 해제, 강제 OK·허용 목록 밖 명령 저장 거절, 업무 로그 `(W)`·알림, 위험 모델 학습(AUC 0.99)·`eum sql` 질의 3개·CSV/접힌 스택/학습 데이터 내보내기, 재시작 뒤 실행 기록 유지(sqlite). **보안(11-10, 별도 포트 리허설로 확인):** 로그인 없이 API 401, 조회 계정의 실행·내보내기 403, 운영 계정의 삭제 403, 다른 Origin 403, 운영자 조작 actor `user:operator`, 에이전트 허용 목록 밖 명령(`sh -c id`)은 실행하지 않고 FAILED, CSP를 건 실제 서버에서 화면 정상. **감사 조회(11-10):** 운영 계정의 실행·재실행·강제 종료·강제 OK·알림 확인과 로그인 실패가 한 목록에, 조회·운영 계정은 403, CSV 수식 주입 방지. **장애 위험도(11-10, 별도 포트 리허설로 확인):** 지수 절편 보정으로 평시 0(평시 창 중 경고 0.07%), 요인마다 서버·평소 값·확인 질문, 요인 용인 → 미확인 지수만 내려가고 원래 지수는 그대로, 한도 초과 때 자동 해제와 알림 재발생, 재시작 뒤 용인 유지.
 
 **실제 업무 흐름(11-12, dev 모드, 별도 포트 18790 리허설, 실제 바이너리):** 평시에는 패널 여섯 모두 약 1,500건/초(지수 송출 36건/초), 주문 → 분배 p99 약 15~35ms. `demo.sh trace`는 같은 주문 번호가 채널 0.6ms → 체결 1.3ms → 통계·시세 2.4ms → 지수 3.2ms → 분배 3.5ms로 지나가는 것을 보인다. `surge`(6,000건/초)에서는 체결 대기 큐 3,168건·RT p99 529ms·TAT p99 530ms(위험)이고 채널·시세·지수·분배·통계는 밀리지 않는다(대기 0~120건). `load`는 dw-01 한 코어에서 `dw_load` 8개와 `stats_svc`가 겨뤄 반영량이 약 1,050건/초로 떨어지고 처리 적체가 15초마다 5,651 → 11,738 → 18,499건으로 늘며, 프로세스 목록의 `dw_load` → 실행 `dw-load-01 › step-1` → 강제 종료 뒤 14초 안에 적체 0, 종료 보고서 `killed.eum`(user:admin)이 남는다. `index-crash`는 종료 보고서 `crash.signal` "recalc_index에서 0으로 나눔(SIGFPE)"과 함께 분배의 지수 수신만 0으로 만들고 시세 수신은 1,497건/초 그대로이며 `quote`로 다시 띄운다. `channel-slow`는 채널 전달 지연 p99 1,583ms·전달 대기 2,373건, 체결 RT p99 0.3ms 그대로에 TAT p99 1,651ms(TAT만 오르면 채널). `count`(최근 5분)는 채널 전달 803,669 · 체결 처리 805,158 · 시세 생성 802,757 · 분배 송출 816,388(시세 + 지수) · 통계 반영 805,156.
 
 **실제 업무 흐름 compose 리허설(11-12, Docker 28.1 · cgroup v1, 컨테이너 9개 = 매니저 + 실제 서버 7 + 모의 39대):** `EUM_MODE=compose deploy/demo.sh up`으로 46대, `quote` → `run` 뒤 패널 여섯이 dev와 같은 값(약 1,500건/초)으로 찬다(저널은 공유 볼륨 `eum-bus`). 서버 자원은 컨테이너 값이다(cgroup 수집기: 평시 dw-01 CPU 약 32%, 메모리 512MB 중 8MB). `load` → dw-01 컨테이너 CPU 100%(위험), 처리 적체 20초마다 17,855 → 37,029건, 강제 종료 뒤 15초 안에 0. `surge` → 체결 대기 큐 14,010건·RT p99 2,345ms, 뒤 업무는 밀리지 않음. `index-crash` → 종료 보고서 `crash.signal`(컨테이너에는 gdb가 없어 함수 이름 없이 "index_svc에서 산술 오류(SIGFPE)"). 컨테이너 안 함수 표본도 서버마다 쌓인다(feed-02 `encode_msg`, dw-01 `update_ohlcv`, feed-01 `decode_packet`, match-01 `check_risk`, idx-01 `weight_sum`), 프로파일링 오버헤드 약 2%. **리허설에서 고친 것:** 매니저 데이터 볼륨 권한(컨테이너를 PC 사용자 uid로), perf 표본 버퍼 한도(`ulimits.memlock`), 이미지에 `addr2line`(binutils), 컨테이너 시간대, 이미지를 한 번만 빌드(서비스마다 빌드해 빌드 캐시가 23GB까지 불어 `/var`가 찼다)와 `.dockerignore`.
+
+**보드 AI 초안 · 종료 보고서 소스 근거(11-12, 카드 V·N·Q를 합친 뒤 시연 포트 :8080, 새로 빌드한 실제 바이너리, 실제 Claude CLI 2.1.310 · `claude-opus-5-5`):** `gofmt -l .` 빈 결과, `go vet ./...`, `go test ./...` 35개 패키지 통과. `EUM_LLM=claude-cli`로 띄워 `quote` → `run` 뒤 패널 여섯이 약 1,500건/초, `trace`는 채널 0.09ms → 분배 3.6ms. **보드 AI 초안**(`POST /assist/dash`, 보드 편집기의 `AI 초안`): "지수산출 업무 점검 보드" 요청이 7초에 한 번에 검사를 통과했다(위젯 10개, 초안은 저장하지 않음). **종료 보고서**: `demo.sh crash` 뒤 보고서에 소스 토막 4곳(`book_insert` 등)과 버전 `일치`가 붙고, LLM 분석(도구 탐색)은 21초에 "접수율 파일이 결함 스위치 `fault_armed`를 켜서 NULL인 `cold_head[s]`를 읽음"과 코드 근거 3곳·고칠 방향을 냈다. `demo.sh run`으로 체결이 다시 뜬다. 이 통합 확인은 API로 했고, 화면은 카드 N·Q가 각각 실제 매니저 화면으로 확인했다([N-dash-assist.md](docs/cards/N-dash-assist.md) §4, [Q-code-evidence.md](docs/cards/Q-code-evidence.md) §4).
 
 **업무 프로세스 분리(11-11, 별도 포트 18095 리허설, 실제 perf):** 서버 43대(실제 4 + 모의 39), 플로우 40개. `quote-open` → feed-01에 `quote_svc`가 떠서 시세 패널 타일이 `start-quote` 실행 ID로, 체결 패널은 `start-matching` 실행 ID로 따로 이어짐. 평시 시세 플레임 그래프 `encode_quote` 51% · `decode_packet` 24% · `update_depth` 12% · `build_snapshot` 6%(체결은 `check_risk`·`price_cross` 중심). `quote-surge`의 8000건/초 구간: 시세 지연 p99 14 → 약 600ms, 시세 누락 초당 수천 건, `(E) GAP`·`(E) DELAY` 로그, 타일 위험 알림(시세 지연 p99·평균 지연·누락·수신 대기)과 해제, 플레임 그래프에 평시에 없던 `rebuild_book` 약 13~20% · `request_snapshot` 약 1~2%. 같은 시각 체결 p99는 최대 0.55ms로 그대로. `quote-rate 0` → 1분 만에 `1분 시세량` 하한 위험(`feed-01`). 타임머신은 실행이 낸 지표로 업무 트랙을 고른다(시세 실행이면 `시세 처리량·수신 대기·시세 지연`, 체결은 지금과 같음). 시세 실행의 A(평시)·B(8000) 비교는 `가장 늘어난 함수 rebuild_book 비중 0% → 13%`. 서비스를 띄우고 바로 끝나는 스텝은 구간을 고르기 전 그래프가 늘 비어 있었는데(스텝 길이 0초), 상주 프로세스가 살아 있으면 지금까지 보여 준다(`실행 전체(상주 프로세스 포함)`). `eum dev`만 다시 띄워도 두 서비스는 같은 실행 ID로 다시 잡힌다.
 
@@ -89,7 +98,7 @@
 
 **안 되거나 확인 못 한 것:**
 - 장애 위험도(학습된 모델)는 폭주 중 "주의"를 거치지 않고 0에서 100으로 건너뜁니다(11-11 리허설, 6000건/초 약 50초 뒤). 좁은 화면(390px)에서는 위 메뉴가 넘칩니다.
-- 종료 보고서: 에이전트가 띄우지 않았거나 에이전트 재시작 전부터 떠 있던 서비스는 부모가 아니라 종료 코드를 모른다(core·커널 로그·정황으로만). 탐색 주기(5초)보다 먼저 죽은 프로세스(예: 뜨자마자 `port in use`로 끝남)는 보고가 없다. systemd-coredump는 이 PC에 없어 가짜 `coredumpctl`로만 시험했다. LLM 진단은 가짜 LLM으로만 시험했다(사내 LLM 연결 전). 이 컨테이너의 `/usr/bin/perf`는 커널과 맞지 않아 리허설은 `linux-tools-6.8`의 perf를 PATH 앞에 두고 했다.
+- 종료 보고서: 에이전트가 띄우지 않았거나 에이전트 재시작 전부터 떠 있던 서비스는 부모가 아니라 종료 코드를 모른다(core·커널 로그·정황으로만). 탐색 주기(5초)보다 먼저 죽은 프로세스(예: 뜨자마자 `port in use`로 끝남)는 보고가 없다. systemd-coredump는 이 PC에 없어 가짜 `coredumpctl`로만 시험했다. LLM 진단은 Claude CLI(`claude-cli`)로 실제 확인했다(11-12). Claude API(`anthropic`)는 키가 없어 가짜 서버로만 시험했고, 컨테이너 안의 CLI 호출은 토큰이 없어 확인하지 못했다(사내 LLM 연결 전). 이 컨테이너의 `/usr/bin/perf`는 커널과 맞지 않아 리허설은 `linux-tools-6.8`의 perf를 PATH 앞에 두고 했다.
 - 업무 흐름 리허설(11-12)의 알아 둘 것: 저널(`--bus`)로 띄우면 시세 수신이 체결 처리량을 따르므로 `quote-surge`·`quote-rate`는 단독 실행(`--bus` 없이)에서만 뜻이 있다. 시드 7일 이력에는 새 지표(`biz.channel.*`·`biz.index.*`·`biz.dist.*`·`biz.stats.*`·`tat_*`)가 없다.
 - compose 모드는 11-12에 이 PC에서 확인했습니다(위 "compose 리허설"). 남은 것: 컨테이너에서는 core를 꺼내지 못하고 gdb가 없어 종료 보고서에 죽은 함수 이름이 없습니다. 화면(브라우저)으로는 compose 쪽을 보지 않았습니다.
 - 브라우저 렌더링(차트·플레임 그래프·다크 모드)과 `node --check`는 브라우저·node가 없어 확인하지 못했습니다. 모든 화면 파일은 200으로 나가고 상대 import는 모두 실제 파일을 가리킵니다. (11-11: 다른 PC에서 `node --check` 전 파일 통과, 시세 타임머신은 Playwright로 실제 화면을 찍어 확인)
@@ -102,5 +111,6 @@
 - 업무 서비스 정의 여섯(`services/*.yaml`)의 감시 시간은 평일 08:30-21:30입니다. 시연이 그 밖이면 서비스가 "시간 외"로 보이고 미기동 알림이 쉬므로, 필요하면 `active`를 시연 시간에 맞춥니다.
 - 함수 추적: `sudo sysctl -w kernel.perf_event_paranoid=1`(재부팅하면 되돌아가므로 시연 직전에 확인).
 - compose 시연을 하려면 Docker 데몬을 켜고 `deploy/demo.sh` 앞에 `EUM_MODE=compose`. 데몬이 없으면 dev 모드로 같은 장면을 보입니다.
+- LLM(`claude-cli`)을 쓰려면 매니저를 띄우는 계정으로 `claude`가 로그인되어 있어야 합니다(`claude`를 실행해 `/login`). 인터넷이 없으면 호출은 502로 끝나므로 프롬프트 복사와 답 붙여넣기로 보입니다.
 - 시연 PC에서 `surge`를 한 번 돌려 p99가 수백 ms까지 오르는지 보고, 모자라면 `COST_SCAN`을 올려 다시 빌드합니다.
 - 시세는 시작할 때 CPU 속도를 재 비용을 맞추므로 다시 빌드할 일이 적습니다. `quote-surge` 8000 구간에서 `(E) GAP`이 나오는지만 봅니다.

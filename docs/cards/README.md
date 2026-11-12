@@ -126,5 +126,6 @@
 | `pipeline/reports/<ID>.md` | 각 카드 자신 |
 | 카드 U(11-12, [U-bizflow.md](U-bizflow.md)) | 업무 흐름 위젯·업무 시뮬레이터(`internal/agent/probe/stage.go`)·서버 구성(`deploy/fleet.yaml`)·업무 패널 일곱(`panels/`)·예시 보드 `dashboards/bizflow.yaml`: 레인 U0~U9가 파일을 나눠 쓴다(카드 §6) |
 | 카드 V(11-12, [V-realflow.md](V-realflow.md)) | 실제 업무 흐름: 업무 여섯(채널 → 매매체결 → 시세 → 지수산출 → 분배, 매매체결 → 매매통계)이 저널(`demo/flow.h`)로 실제 주문을 넘긴다. 체결 RT·TAT, 통계 처리 적체, cgroup 수집기, compose 확인. 청산·rds 패널과 stage 구성은 뺌. 통합 브랜치 `card-v` |
-| 카드 N(11-12, [N-dash-assist.md](N-dash-assist.md)) | 보드 AI 초안: `POST /assist/dash`(LLM 초안·프롬프트만·붙여넣기 검사, 형식·참조 검사 뒤 한 번 다시 묻기), 편집기 `AI 초안`, LLM 구현 `anthropic`(Claude) |
+| 카드 N(11-12, [N-dash-assist.md](N-dash-assist.md)) | 보드 AI 초안: `POST /assist/dash`(LLM 초안·프롬프트만·붙여넣기 검사, 형식·참조 검사 뒤 한 번 다시 묻기), 편집기 `AI 초안`, LLM 구현 `anthropic`(Claude API)·`claude-cli`(로그인된 Claude CLI) |
+| 카드 Q(11-12, [Q-code-evidence.md](Q-code-evidence.md)) | 종료 보고서 소스 근거·LLM 코드 탐색: 코드 저장소 읽기(`internal/manager/coderepo`, 설정 `code.repos`), `build-id → 커밋` 표(`demo/build.sh`가 `builds.json`), 소스 카드·`code_refs` 검사·고칠 방향, 답 붙여넣기(`POST /exits/{id}/analyze`의 `answer`), 도구 탐색(`llm.ToolLLM`: `anthropic`·`claude-cli`), 컨테이너 CLI(`EUM_CLAUDE_CLI=1`) |
 | `README.md`, `docs/` | Z1만(현재 상태 갱신) |
