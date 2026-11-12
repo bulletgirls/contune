@@ -16,7 +16,7 @@
 | 운영 환경 | 업무는 **온라인(체결) 중심**이고, 배치는 개장 준비와 정산에 쓴다. 배치 작업은 셸 스크립트이고 스크립트가 띄우는 서비스는 C다(자바 일부). **운영 서버는 perf를 쓸 수 있다(확인)** |
 | 업무 지표 | 접수·처리 건수, 대기 건수, 응답시간 같은 처리 현황을 **시스템 지표와 같은 통로**로 받는다. 시연에서는 시연용 C 체결 서비스가 보낸다 |
 | 조직화 | 서버가 수십 대, 플로우가 수십 개라는 전제로 화면을 짠다. 서버는 에이전트 설정의 **그룹 경로**(단계는 '/'로 나눈다. 시연은 업무군 하나가 한 단계: `매매체결`), 플로우는 `flows/` 아래 **폴더(배치판)** 로 묶고, 화면은 이 경로로 **트리**를 그린다. 업무 지표 화면은 업무마다 다르므로 **업무 패널**을 YAML로 정의한다(§12.1) |
-| 시연 | 실제 에이전트 4대 + 모의 서버 42대(`eum fleet`)와 보조 플로우로 서버 46대·그룹 일곱(채널·매매체결·매매통계·정보분배·지수산출·청산결제·rds) 규모를 채운다. 장애 장면은 **주문량 폭주로 체결 처리가 밀리는 상황**이다. 스케줄, 실행, 프로세스 추적, 함수 프로파일, 수집 경로는 실제로 동작한다. 서버 자원은 시뮬레이터이고, 체결 서비스는 합성 주문으로 부하를 만드는 시연용 C 프로그램이다(함수 이름과 수치는 시연용) |
+| 시연 | 실제 에이전트 7대 + 모의 서버 39대(`eum fleet`)와 보조 플로우로 서버 46대·그룹 일곱(채널·매매체결·매매통계·정보분배·지수산출·청산결제·rds) 규모를 채운다. 업무 여섯(채널 → 체결 → 시세 → 지수산출 → 분배, 체결 → 매매통계)이 실제 프로세스로 저널 파일을 주고받는다(카드 V, 11-12). 장애 장면은 **주문량 폭주로 체결 처리가 밀리는 상황**, 통계 처리 적체, 지수산출 죽음, 채널 느려짐이다. 스케줄, 실행, 프로세스 추적, 함수 프로파일, 수집 경로는 실제로 동작한다. 서버 자원은 시뮬레이터이고, 체결 서비스는 합성 주문으로 부하를 만드는 시연용 C 프로그램이다(함수 이름과 수치는 시연용) |
 
 **추가 결정 (2026-11-04, 기획서 제출 뒤 구현 준비)** — 근거와 전체 목록은 [04 §1](04-implementation-plan.md)
 
@@ -907,7 +907,7 @@ tiles:
   - { title: 주문 접수,      metric: biz.order.in_tps,         agg: sum, unit: 건/초 }
   - { title: 체결 처리,      metric: biz.order.tps,            agg: sum, unit: 건/초 }
   - { title: 처리 대기,      metric: biz.order.queue,          agg: sum, unit: 건, warn: 500, crit: 2000 }
-  - { title: p99 응답,       metric: biz.order.latency_p99_ms, agg: max, unit: ms, warn: 50, crit: 200 }
+  - { title: RT p99,         metric: biz.order.latency_p99_ms, agg: max, unit: ms, warn: 50, crit: 200 }
   - { title: 함수 추적 부하, metric: agent.profiler.cpu_pct,   agg: max, unit: "%", warn: 1 }
 ```
 
@@ -956,42 +956,43 @@ services:
   match-01: { image: eum, command: [agent, --config, /etc/eum/agent-match-01.yaml], cap_add: [PERFMON] }
   gw-01:    { image: eum, command: [agent, --config, /etc/eum/agent-gw-01.yaml] }
   batch-01: { image: eum, command: [agent, --config, /etc/eum/agent-batch-01.yaml], cap_add: [PERFMON] }
-  fleet:    { image: eum, command: [fleet, --config, /etc/eum/fleet.yaml] }   # 모의 서버 40대
+  # 그 밖의 실제 서버 셋(카드 V): feed-01(시세) · idx-01(지수산출) · feed-02(분배) · dw-01(매매통계). 흐름 서버 여섯은 공유 볼륨 eum-bus와 cpus·mem_limit을 가진다
+  fleet:    { image: eum, command: [fleet, --config, /etc/eum/fleet.yaml] }   # 모의 서버 39대
 ```
 
 | 호스트 | 역할(가정) | 수집 |
 |---|---|---|
-| `match-01` | 체결 서버 | `sim/host`, `push`(체결 서비스가 보냄), 프로파일러 `perf` |
-| `gw-01` | 주문 게이트웨이 | `sim/host` |
+| `gw-01` | 채널(주문 접수) 서버 | `cgroup`(compose)·`sim`(dev), `push`(`channel_svc`), 프로파일러 `perf` |
+| `match-01` | 체결 서버 | 같음, `push`(`matching_svc`) |
+| `feed-01` · `idx-01` · `feed-02` | 시세 · 지수산출 · 분배 서버 | 같음, `push`(`quote_svc`·`index_svc`·`dist_svc`) |
+| `dw-01` | 매매통계 서버(코어 하나) | 같음, `push`(`stats_svc`). 정보계 적재 `dw_load`와 코어를 겨룸 |
 | `batch-01` | 적재·정산 배치 서버 | `sim/host`, 프로파일러 `perf` |
-| `fleet` | 모의 서버 42대(그룹 일곱, 카드 U) | 서버마다 `sim/host`. 함수 추적·서비스 추적 없음. 5대는 업무 시뮬레이터 `stage`가 더해진다(deploy/README.md) |
+| `fleet` | 모의 서버 39대(그룹 일곱, 카드 U·V) | 서버마다 `sim/host`. 함수 추적·서비스 추적 없음 |
 
-- 실제 에이전트의 그룹: `match-01` = `매매체결`, `gw-01` = `채널`, `batch-01` = `청산결제`, `feed-01` = `정보분배`(처음 3대 + 11-11에 분리한 시세 서비스).
-- **규모: 모의 서버와 보조 플로우.** 서버 트리와 배치판은 수십 대·수십 개를 전제로 한 화면이라 3대·2개로는 보여 줄 수 없습니다. `eum fleet`은 `eum dev`가 에이전트 여러 개를 한 프로세스에 띄우는 방식을 설정 파일로 넓힌 것으로, 아래 40대를 각각 에이전트로 띄웁니다. 실행 명령은 `fleet` 컨테이너 안에서 돕니다.
+- 실제 에이전트의 그룹: `gw-01` = `채널`, `match-01` = `매매체결`, `feed-01`·`feed-02` = `정보분배`(시세·분배), `idx-01` = `지수산출`, `dw-01` = `매매통계`, `batch-01` = `청산결제`. 서버 자원은 compose에서 cgroup 수집기(컨테이너 한도 = 서버 용량), dev에서 `sim`이다. 업무 프로세스 여섯의 계약은 카드 [V](cards/V-realflow.md), 설명은 `demo/README.md`.
+- **규모: 모의 서버와 보조 플로우.** 서버 트리와 배치판은 수십 대·수십 개를 전제로 한 화면이라 3대·2개로는 보여 줄 수 없습니다. `eum fleet`은 `eum dev`가 에이전트 여러 개를 한 프로세스에 띄우는 방식을 설정 파일로 넓힌 것으로, 아래 39대를 각각 에이전트로 띄웁니다. 실행 명령은 `fleet` 컨테이너 안에서 돕니다.
 
 ```yaml
-# deploy/fleet.yaml — 모의 서버 42대(feed-01 포함 실제 에이전트 4대는 따로). 같은 매니저에 붙음
+# deploy/fleet.yaml — 모의 서버 39대(실제 에이전트 7대는 따로). 같은 매니저에 붙음
 manager: http://manager:8080
 token: ${EUM_TOKEN}
 hosts:                         # prefix-NN 이름으로 from~to
   - { group: 채널,     prefix: gw,     from: 2, to: 6 }
   - { group: 채널,     prefix: ext,    from: 1, to: 6 }
   - { group: 매매체결, prefix: match,  from: 2, to: 8 }
-  - { group: 매매통계, prefix: dw,     from: 1, to: 5 }
-  - { group: 정보분배, prefix: feed,   from: 2, to: 6 }
-  - { group: 지수산출, prefix: idx,    from: 1, to: 3 }
+  - { group: 매매통계, prefix: dw,     from: 2, to: 5 }   # dw-01은 실제(stats_svc)
+  - { group: 정보분배, prefix: feed,   from: 3, to: 6 }   # feed-01(quote_svc)·feed-02(dist_svc)는 실제
+  - { group: 지수산출, prefix: idx,    from: 2, to: 3 }   # idx-01은 실제(index_svc)
   - { group: 청산결제, prefix: settle, from: 1, to: 4 }
   - { group: 청산결제, prefix: batch,  from: 2, to: 4 }
   - { group: rds,      prefix: rds,    from: 1, to: 4 }
-stages:                        # 업무 시뮬레이터: 앞 업무의 실제 값을 따라가 처리량·대기·지연을 낸다
-  - { host: dw-01, name: stats, from: [biz.order.tps], cap: 9000, lat_ms: 40 }   # 나머지 넷은 deploy/fleet.yaml
 faults:                        # 열지도·이상 서버 목록 장면용
   - { host: ext-04, kind: silent, after: 20s } # 20초 보낸 뒤 멈춤 → 매니저가 알던 서버가 무응답
   - { host: dw-02,  kind: mem, value: 93 }   # 메모리 높음 → 위험
 ```
 
 - 보조 플로우 37개는 배치판 6개(개장준비, 장중, 정산, 대외송수신, 정보계적재, 주간월간)에 나눠 두고, 모의 서버에서 `eum burn`으로 몇 초씩 CPU를 쓰고 끝납니다. 시각은 하루에 흩어 둡니다. 하나(`대외송수신/ext-send-margin`)는 일부러 실패해 배치판 트리에 "실패 1"이 올라오게 합니다. 파일은 `deploy/gen_flows.sh`로 만들어 커밋합니다.
-- 컨테이너 안의 `/proc/stat`은 호스트 값이라 서버별로 다르게 보이지 않습니다. 그래서 시연에서는 `host.*`만 `sim`으로 만듭니다.
+- 컨테이너 안의 `/proc/stat`은 호스트 값이라 서버별로 다르게 보이지 않습니다. 그래서 모의 서버의 `host.*`는 `sim`으로 만들고, 실제 서버 7대는 compose에서 **cgroup 수집기**(컨테이너 한도 = 서버 용량, 05 §2)로 컨테이너 몫을 읽습니다. dev 모드의 실제 에이전트는 `sim`입니다(프로세스 지표·함수 추적은 둘 다 실제).
 - **실제로 동작하는 것:** 스케줄, 잡 실행, 서비스 프로세스 추적, 함수 프로파일, 수집·저장·조회 경로. 체결 서비스의 함수 이름과 부하 모양은 시연용으로 만든 것입니다. 보여 주려는 것은 수치가 아니라 **실행에서 함수까지 이어지는 경로가 실제로 동작한다**는 점입니다.
 - **시연 장애: 주문량 폭주.** 운영 업무는 온라인 중심이고 장중 배치는 드물기 때문에, 장애 장면은 배치가 아니라 접수 주문이 몰려 체결 처리가 밀리는 상황으로 잡습니다.
 - **시연용 체결 서비스 `matching_svc`** (`demo/matching_svc.c`, C 약 150~200줄, 표준 라이브러리만, `gcc -O2`로 빌드, 심볼 유지):
@@ -1007,7 +1008,7 @@ faults:                        # 열지도·이상 서버 목록 장면용
 - 이야기를 끌고 가는 시연 플로우는 2개입니다(나머지는 보조 플로우).
   - `flows/개장준비/market-open.yaml`: §9와 같은 모양. 배치 스텝은 `eum burn`으로 실제 CPU를 쓰고, `load-equity`는 첫 시도만 실패해 재시도를 보여 줍니다. `start-matching`이 체결 서비스를 띄웁니다.
   - `flows/정산/daily-settle.yaml`: §9와 같은 모양(`settle` → `settle-report`, `eum burn`). 리소스 게이트를 넓히기에서 만들면 "체결 대기가 남아 있는 동안 정산이 HELD로 대기" 장면에 씁니다.
-- 폭주는 `demo.sh surge`가 `match-01`의 접수율 파일을 20초마다 3000, 4500, 6000으로 바꾼 뒤 1500으로 되돌려 만듭니다.
+- 폭주는 `demo.sh surge`가 `gw-01`(채널)의 접수율 파일을 20초마다 3000, 4500, 6000으로 바꾼 뒤 1500으로 되돌려 만듭니다.
 - 데이터 주권 장면은 `docker compose exec manager eum sql --data /data "<질의>"`로 실행합니다(§6.1의 질의 2개: 접수량 구간별 p99, 밀린 구간과 평시의 함수 비중. 배포 전후 비교 질의는 선택).
 - **사전 점검(코드 아님):** 시연 노트북의 Docker에서 `docker run --rm --cap-add PERFMON alpine:3.20 sh -c 'apk add -q perf && su -s /bin/sh nobody -c "perf stat -e cpu-clock -- true"'`가 성공하는지 확인합니다.
 - Docker를 쓸 수 없으면 `eum dev`(매니저 + 에이전트 3개를 한 프로세스로)로 같은 시연을 합니다. 이때 함수 추적은 노트북의 perf 권한에 따릅니다.

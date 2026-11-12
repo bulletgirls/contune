@@ -1,16 +1,39 @@
 # 이음 시연 환경(2차). 1차는 `eum dev`(deploy/README.md).
 # 사용: docker compose -f deploy/docker-compose.yml up --build
+# 실제 서버 7대(카드 V): 흐름 업무 여섯(gw-01 채널 → match-01 체결 → feed-01 시세 → idx-01 지수산출 → feed-02 분배,
+# 체결 → dw-01 매매통계)은 저널 볼륨 eum-bus를 같이 쓰고, 컨테이너 한도(cpus·mem_limit)가 곧 서버 용량이다(cgroup 수집기).
+# 모의 서버 39대는 fleet 컨테이너 하나. 합계 46대.
 
+# 이미지는 manager 서비스가 한 번만 만든다(build는 거기에만). 나머지는 같은 이미지 eum을 쓴다:
+# 서비스마다 build를 두면 같은 이미지를 아홉 번 만들어 빌드 캐시가 수십 GB가 된다(11-12 리허설).
 x-eum: &eum
   image: eum
-  build:
-    context: ..
-    dockerfile: deploy/Dockerfile
+  pull_policy: never             # eum은 레지스트리에 없다(받으려 하지 않게)
   env_file: .env
+  # PC 사용자 uid로 돈다(바인드 마운트한 flows·collect·dashboards에 쓰려면). demo.sh가 EUM_UID·EUM_GID를 채우고, 직접 띄우면 1000.
+  user: "${EUM_UID:-1000}:${EUM_GID:-1000}"
+  environment:
+    HOME: /tmp
+    TZ: Asia/Seoul               # 업무 로그·에이전트 로그 시각을 화면(매니저 tz)과 같게
+
+# 흐름 서버 공통: perf(함수 추적), 저널 볼륨, 메모리 한도. cpus는 서버마다.
+# perf가 컨테이너에서 막히면(기본 seccomp가 perf_event_open을 거절) 시연용으로만 security_opt: [seccomp=unconfined]를 켠다.
+x-flow: &flow
+  <<: *eum
+  cap_add: [PERFMON]
+  # perf의 표본 버퍼는 사용자별 한도(perf_event_mlock_kb × CPU 수)를 넘으면 RLIMIT_MEMLOCK에서 빌린다. 컨테이너 기본값(64KB)으로는
+  # 같은 uid의 컨테이너 여럿이 동시에 perf record를 돌릴 때 "perf record: exit status 255"로 실패한다(11-12 리허설).
+  ulimits:
+    memlock: { soft: -1, hard: -1 }
+  mem_limit: 512m
+  depends_on: [manager]
 
 services:
   manager:
     <<: *eum
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
     command: [manager, --config, /etc/eum/manager.yaml]
     ports: ["8080:8080"]
     volumes:
@@ -22,39 +45,63 @@ services:
       - ../dashboards:/dashboards
       - ./manager.yaml:/etc/eum/manager.yaml:ro
 
-  match-01:
-    <<: *eum
-    command: [agent, --config, /etc/eum/agent-match-01.yaml]
-    cap_add: [PERFMON]
-    # perf가 컨테이너에서 막히면(기본 seccomp가 perf_event_open을 거절) 시연용으로만 아래를 켠다.
-    # security_opt: [seccomp=unconfined]
-    volumes:
-      - ./agent-match-01.yaml:/etc/eum/agent-match-01.yaml:ro
-    depends_on: [manager]
-
-  gw-01:
-    <<: *eum
+  gw-01:                         # 채널(channel_svc): 주문 접수 → orders
+    <<: *flow
     command: [agent, --config, /etc/eum/agent-gw-01.yaml]
+    cpus: 1
     volumes:
       - ./agent-gw-01.yaml:/etc/eum/agent-gw-01.yaml:ro
-    depends_on: [manager]
+      - eum-bus:/var/lib/eum/bus
 
-  batch-01:
+  match-01:                      # 체결(matching_svc): orders → fills
+    <<: *flow
+    command: [agent, --config, /etc/eum/agent-match-01.yaml]
+    cpus: 2
+    volumes:
+      - ./agent-match-01.yaml:/etc/eum/agent-match-01.yaml:ro
+      - eum-bus:/var/lib/eum/bus
+
+  feed-01:                       # 시세(quote_svc): fills → quotes
+    <<: *flow
+    command: [agent, --config, /etc/eum/agent-feed-01.yaml]
+    cpus: 2
+    volumes:
+      - ./agent-feed-01.yaml:/etc/eum/agent-feed-01.yaml:ro
+      - eum-bus:/var/lib/eum/bus
+
+  idx-01:                        # 지수산출(index_svc): quotes → index
+    <<: *flow
+    command: [agent, --config, /etc/eum/agent-idx-01.yaml]
+    cpus: 1
+    volumes:
+      - ./agent-idx-01.yaml:/etc/eum/agent-idx-01.yaml:ro
+      - eum-bus:/var/lib/eum/bus
+
+  feed-02:                       # 분배(dist_svc): quotes · index → 세션 송출
+    <<: *flow
+    command: [agent, --config, /etc/eum/agent-feed-02.yaml]
+    cpus: 1
+    volumes:
+      - ./agent-feed-02.yaml:/etc/eum/agent-feed-02.yaml:ro
+      - eum-bus:/var/lib/eum/bus
+
+  dw-01:                         # 매매통계(stats_svc): fills → 통계. 정보계 적재(dw_load)와 코어 하나를 나눠 쓴다
+    <<: *flow
+    command: [agent, --config, /etc/eum/agent-dw-01.yaml]
+    cpus: 1
+    volumes:
+      - ./agent-dw-01.yaml:/etc/eum/agent-dw-01.yaml:ro
+      - eum-bus:/var/lib/eum/bus
+
+  batch-01:                      # 배치(market-open 앞 스텝, batch-job)
     <<: *eum
     command: [agent, --config, /etc/eum/agent-batch-01.yaml]
     cap_add: [PERFMON]
-    # security_opt: [seccomp=unconfined]   # match-01과 같은 이유
+    ulimits:
+      memlock: { soft: -1, hard: -1 }   # perf 표본 버퍼(x-flow와 같은 이유)
+    # security_opt: [seccomp=unconfined]   # 흐름 서버와 같은 이유
     volumes:
       - ./agent-batch-01.yaml:/etc/eum/agent-batch-01.yaml:ro
-    depends_on: [manager]
-
-  feed-01:                       # 시세 서비스(quote_svc). 체결(match-01)과 따로 도는 업무 프로세스
-    <<: *eum
-    command: [agent, --config, /etc/eum/agent-feed-01.yaml]
-    cap_add: [PERFMON]
-    # security_opt: [seccomp=unconfined]   # match-01과 같은 이유
-    volumes:
-      - ./agent-feed-01.yaml:/etc/eum/agent-feed-01.yaml:ro
     depends_on: [manager]
 
   fleet:
@@ -66,3 +113,4 @@ services:
 
 volumes:
   eum-data:
+  eum-bus:                       # 업무 저널(카드 V §2): 이미지의 /var/lib/eum/bus(소유 eum)로 처음 채워진다

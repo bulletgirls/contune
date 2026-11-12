@@ -6,15 +6,17 @@ service: matching
 tiles:
   - { title: 주문 유입량,          signal: traffic,    metric: biz.order.in_tps,         agg: sum, unit: TPS, kpi: true }
   - { title: 체결 처리량,          signal: traffic,    metric: biz.order.tps,            agg: sum, unit: TPS }
-  - { title: 평균 응답 시간,       signal: latency,    metric: biz.order.latency_avg_ms, agg: max, unit: ms, warn: 20, crit: 100 }
-  - { title: p99 응답 시간,        signal: latency,    metric: biz.order.latency_p99_ms, agg: max, unit: ms, warn: 50, crit: 200, kpi: true }
+  - { title: RT 평균,              signal: latency,    metric: biz.order.latency_avg_ms, agg: max, unit: ms, warn: 20, crit: 100 }
+  - { title: RT p99,               signal: latency,    metric: biz.order.latency_p99_ms, agg: max, unit: ms, warn: 50, crit: 200, kpi: true }
+  - { title: TAT 평균,             signal: latency,    metric: biz.order.tat_avg_ms,     agg: max, unit: ms, warn: 30, crit: 150 }
+  - { title: TAT p99,              signal: latency,    metric: biz.order.tat_p99_ms,     agg: max, unit: ms, warn: 80, crit: 300 }
   - { title: 오류 로그 발생률,     signal: errors,     metric: log.error.count,          agg: sum, unit: 건/초, warn: 1, crit: 5 }
   - { title: 대기 큐,              signal: saturation, metric: biz.order.queue,          agg: sum, unit: 건, warn: 500, crit: 2000, kpi: true }
   - { title: 히스토리 버퍼 사용률, signal: saturation, metric: biz.order.histbuf_pct,    agg: max, unit: "%", warn: 70, crit: 90 }
   - { title: 프로파일링 오버헤드,                      metric: agent.profiler.cpu_pct,   agg: max, unit: "%", warn: 5 }
 charts:
   - { title: 처리량,               unit: TPS, agg: sum, metrics: [biz.order.in_tps, biz.order.tps] }
-  - { title: 응답 시간,            unit: ms,  agg: max, metrics: [biz.order.latency_avg_ms, biz.order.latency_p99_ms] }
+  - { title: RT · TAT,             unit: ms,  agg: max, metrics: [biz.order.latency_p99_ms, biz.order.tat_p99_ms] }
   - { title: 대기 큐,              unit: 건,  agg: sum, metrics: [biz.order.queue] }
   - { title: 히스토리 버퍼 사용률, unit: "%", agg: max, metrics: [biz.order.histbuf_pct] }
 log_levels: [error, warn]

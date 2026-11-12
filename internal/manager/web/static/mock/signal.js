@@ -10,6 +10,8 @@ export const BIZ_NAMES = [
   'biz.order.queue',
   'biz.order.latency_avg_ms',
   'biz.order.latency_p99_ms',
+  'biz.order.tat_avg_ms',
+  'biz.order.tat_p99_ms',
   'biz.order.histbuf_pct',
 ];
 // 시세 서비스(quote_svc, feed-01)가 push하는 지표. 체결(biz.order.*)과 다른 프로세스·다른 실행 ID다.
@@ -23,17 +25,17 @@ export const QUOTE_NAMES = [
   'biz.quote.recover',
   'biz.quote.count_1m',
 ];
-// 업무 시뮬레이터(카드 U §3, type: stage): 새 업무 다섯이 앞 업무 값을 따라가며 낸다. 이름은 biz.<name>.in_tps·out_tps·queue·latency_avg_ms·latency_p99_ms(+error_tps).
-// 설정은 deploy/fleet.yaml stages와 같다. from: 체결 유입(in) · 체결 처리량(tps) · 다른 stage의 out.
+// 업무 시뮬레이터(카드 U §3, 카드 V §4): 흐름의 뒤 업무 넷이 앞 업무 값을 따라가며 낸다. 이름은 biz.<name>.in_tps·out_tps·queue·latency_avg_ms·latency_p99_ms(+error_tps).
+// 흐름: 채널 → 매매체결 → 시세 → 지수산출 → 분배, 매매체결 → 매매통계. 채널은 체결 유입을, 통계는 체결 처리량을, 지수산출은 시세 송출량을,
+// 분배는 시세 송출량 + 지수 송출량을 따라간다. extra: 그 업무만 내는 이름(분배: 지수 수신량, 주문 → 분배 p99).
 export const STAGES = {
   channel: { from: ['biz.order.in_tps'], gain: 1.004, loss: 0.004, cap: 20000, ratio: 1, lat: 3 },
   stats: { from: ['biz.order.tps'], gain: 1, loss: 0, cap: 9000, ratio: 1, lat: 40 },
-  index: { from: ['biz.order.tps'], gain: 1, loss: 0, cap: 12000, ratio: 0.05, lat: 15 },
-  clearing: { from: ['biz.order.tps'], gain: 1, loss: 0, cap: 7000, ratio: 1, lat: 60 },
-  rds: { from: ['biz.stats.out_tps', 'biz.clearing.out_tps'], gain: 1, loss: 0, cap: 30000, ratio: 1, lat: 4 },
+  index: { from: ['biz.quote.sent_tps'], gain: 1, loss: 0, cap: 12000, ratio: 0.024, lat: 15 },
+  dist: { from: ['biz.quote.sent_tps', 'biz.index.out_tps'], gain: 1, loss: 0, cap: 30000, ratio: 1, lat: 4, extra: ['index_tps', 'e2e_p99_ms'] },
 };
 export const STAGE_NAMES = Object.entries(STAGES).flatMap(([n, st]) =>
-  ['in_tps', 'out_tps', 'queue', 'latency_avg_ms', 'latency_p99_ms', ...(st.loss > 0 ? ['error_tps'] : [])].map((m) => `biz.${n}.${m}`));
+  ['in_tps', 'out_tps', 'queue', 'latency_avg_ms', 'latency_p99_ms', ...(st.loss > 0 ? ['error_tps'] : []), ...(st.extra || [])].map((m) => `biz.${n}.${m}`));
 export const LOG_NAMES = ['log.error.count', 'log.warn.count'];
 export const AGENT_NAMES = ['agent.profiler.cpu_pct', 'agent.profiler.errors'];
 export const RISK_NAMES = ['risk.index'];
@@ -67,15 +69,20 @@ export function bizAt(ts, ctx) {
     'biz.order.queue': round(queue, 0),
     'biz.order.latency_avg_ms': round(avg, 1),
     'biz.order.latency_p99_ms': round(p99, 1),
+    // TAT = 채널 접수 → 체결 처리 끝 = RT + 채널 구간(채널 평시 지연 3ms · p99 7.5ms)
+    'biz.order.tat_avg_ms': round(avg + 3 * (1 + nz('tata', ts, ctx, 0.05)), 1),
+    'biz.order.tat_p99_ms': round(p99 + 7.5 * (1 + nz('tatp', ts, ctx, 0.05)), 1),
     'biz.order.histbuf_pct': round(hist, 1),
   };
 }
 
 // 업무 시뮬레이터 한 칸의 값(§3 식을 정상 상태로): in = 앞 업무 × gain, 처리 한계(cap)를 넘으면 넘친 만큼 쌓인다.
 // 체결이 폭주해도 cap에 못 미치면 대기는 0이고 처리량·지연이 앞 업무를 따라간다. 처리 안 한 만큼이 쌓일 때 지연이 늘어난다.
+// 시세(biz.quote.*)는 체결 폭주와 따로 지난 시세 폭주 한 번을 가지므로, 지수산출·분배는 그 값도 따라간다.
 export function stageAt(name, ts, ctx) {
   const st = STAGES[name];
-  const src = { ...bizAt(ts, { ...ctx, exact: true }) };
+  const ex = { ...ctx, exact: true };
+  const src = { ...bizAt(ts, ex), ...quoteAt(ts, ex) };
   for (const n of Object.keys(STAGES)) if (n !== name && st.from.some((f) => f.startsWith(`biz.${n}.`))) Object.assign(src, stageAt(n, ts, ctx));
   const u = st.from.reduce((a, f) => a + (src[f] || 0), 0);
   const k = (key, amp) => 1 + nz(`${name}${key}`, ts, ctx, amp);
@@ -93,7 +100,32 @@ export function stageAt(name, ts, ctx) {
     [`biz.${name}.latency_p99_ms`]: round((st.lat * 2.5 + wait) * k('p', 0.01), 1),
   };
   if (st.loss > 0) o[`biz.${name}.error_tps`] = round(rej, 0);
+  if (name === 'dist') {
+    // 시세 수신량과 지수 수신량을 나눠 낸다. 주문 → 분배 p99 = 주문 TAT + 시세 지연 + 지수 산출 + 송출(시세 경로, 지수 경로 중 느린 쪽은 따로 보지 않는다)
+    o['biz.dist.in_tps'] = round(Math.max(0, (src['biz.quote.sent_tps'] || 0) * k('i', 0.01)), 0);
+    o['biz.dist.index_tps'] = round(Math.max(0, (src['biz.index.out_tps'] || 0) * k('x', 0.01)), 0);
+    o['biz.dist.e2e_p99_ms'] = round(((src['biz.order.tat_p99_ms'] || 0) + (src['biz.quote.delay_p99_ms'] || 0) + o['biz.dist.latency_p99_ms']) * k('e', 0.01), 1);
+  }
   return o;
+}
+
+// 업무 프로세스(채널·통계·지수산출·분배)의 자원: 처리 건수에 비례(평시 채널 약 4% · 통계 16% · 지수 6% · 분배 15%, 코어 1개 = 100)
+const STAGE_CPU = { channel: ['in_tps', 0.0027], stats: ['in_tps', 0.0107], index: ['in_tps', 0.003], dist: ['out_tps', 0.007] };
+export function stageServiceAt(name, ts, ctx) {
+  const [m, per] = STAGE_CPU[name];
+  const cpu = clamp(stageAt(name, ts, { ...ctx, exact: true })[`biz.${name}.${m}`] * per + nz(`${name}c`, ts, ctx, 0.8), 0.5, 99.5);
+  const user = cpu * 0.95;
+  return {
+    'job.cpu.pct': round(cpu, 1),
+    'job.cpu.user_pct': round(user, 1),
+    'job.cpu.sys_pct': round(cpu - user, 1),
+    'job.mem.size_mb': 6.4,
+    'job.rss.mb': round(5 + nz(`${name}rs`, ts, ctx, 0.05), 1),
+    'job.mem.vsz_mb': 8.9,
+    'job.io.char_kbps': round(4 + nz(`${name}io`, ts, ctx, 0.5), 1),
+    'job.threads': 1,
+    'job.procs': 1,
+  };
 }
 
 // 5초 단위 (E)·(W) 줄 수 (queue·p99·히스토리 버퍼의 기준 초과)
@@ -147,7 +179,8 @@ export function quoteSurgeRange(ctx) {
 }
 export function quoteRate(ts, ctx) {
   const r = quoteSurgeRange(ctx);
-  if (ts < r.from || ts >= r.to) return 2000;
+  // 시세 폭주가 아닐 때 시세 수신량 = 체결 처리량(체결이 만든 시세, 카드 V). 평시 약 1,500, 주문 폭주 때 약 5,860
+  if (ts < r.from || ts >= r.to) return bizAt(ts, { ...ctx, exact: true })['biz.order.tps'];
   const s = (ts - r.from) / SEC;
   return s < 40 ? 4000 : s < 80 ? 6000 : 8000;
 }

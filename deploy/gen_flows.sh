@@ -1,5 +1,6 @@
 #!/bin/sh
 # 보조 플로우 37개를 flows/ 아래에 만든다(결정적: 다시 돌려도 같은 결과).
+# 특례: ext-send-margin은 일부러 실패, dw-load-01의 step-1은 정보계 적재(scripts/dw_load.sh).
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -59,6 +60,9 @@ echo "$TABLE" | while IFS='|' read -r board id sched host n; do
       if [ "$id" = ext-send-margin ]; then
         echo "    command: [sh, -c, 'echo \"(E) 증거금 파일 전송 실패\"; exit 2']"
         echo "    retry: { count: 2, interval: 10s }"
+      elif [ "$id" = dw-load-01 ] && [ "$i" -eq 1 ]; then
+        # 정보계 적재: 매매통계(dw-01 stats_svc)와 CPU를 나눠 쓰는 적재 프로세스(카드 V §8 장면 B, demo.sh load)
+        echo "    command: [\"\${DEMO}/scripts/dw_load.sh\"]"
       else
         echo "    command: [eum, burn, --cpu, \"1\", --duration, ${d}s]"
       fi

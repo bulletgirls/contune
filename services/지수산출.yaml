@@ -1,0 +1,10 @@
+# 지수산출 서비스: idx-01의 index_svc. 시세 저널(quotes)을 읽어 지수를 계산해 지수 저널(index)에 쓴다(카드 V).
+id: index
+title: 지수산출
+group: 지수산출
+match:
+  - comm: index_svc
+profile: true
+expect:
+  count: 1
+  active: mon-fri 08:30-21:30

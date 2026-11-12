@@ -5,7 +5,8 @@
 //   체결 matching@match-01  어제 market-open › start-matching이 띄운 matching_svc가 SIGSEGV(종료 보고서 ①),
 //                           그 전날 프로세스는 다음 기동 때 SIGTERM(③), 지금 프로세스는 오늘 start-matching(w.startRun)이 띄움
 //        matching@match-02  이음 밖에서 잠깐 띄웠다 끝난 것(감시 시간 밖이면 off, 안이면 down)
-//   시세 quote@feed-01      어제 OOM(②) 뒤 오늘 start-quote(w.quoteRun)가 다시 띄움 · quote@feed-02 2시간 전에 끝남(down, 서비스 미기동)
+//   시세 quote@feed-01      어제 OOM(②) 뒤 오늘 start-quote(w.quoteRun)가 다시 띄움
+//   채널 channel@gw-01 · 지수산출 index@idx-01 · 분배 dist@feed-02 · 매매통계 stats@dw-01  오늘 흐름 기동(market-open·quote-open)이 띄운 프로세스(카드 V §2)
 //   자동 svr_a·svr_b·svr_c  BATCH_JOB › start가 띄움(mock 세계의 w.batchRuns·w.procs, 06 §2.1). svr_b는 SIGSEGV(⑤)로 끝나고
 //                           수동 재실행이 svr_b만 다시 띄움(재기동 1회, 계보 06 §7.2)
 //
@@ -14,7 +15,7 @@
 // 감싼 쪽은 먼저 원래 처리기를 부르고, 원래 처리기가 이미 서비스 값을 주면(다른 레인이 채우면) 그것을 그대로 쓴다.
 // DOM 없이 import된다.
 import { SEC, MIN, HOUR, DAY, KST, round, noise } from './util.js';
-import { serviceAt, bizAt, quoteAt, quoteServiceAt } from './signal.js';
+import { serviceAt, bizAt, quoteAt, quoteServiceAt, stageAt, stageServiceAt } from './signal.js';
 import { routes as coreRoutes } from './core.js';
 import { routes as bizRoutes } from './biz.js';
 import { routes as exitRoutes } from './exit.js';
@@ -33,12 +34,23 @@ export function parseOwnerKey(s) {
 
 // ---- 정의(services/*.yaml을 읽은 것) ----
 const DEFS = [
-  { id: 'matching', title: '체결', group: '매매체결', match: [{ comm: 'matching_svc' }, { env: 'EUM_SERVICE=matching' }], profile: true, expect: { count: 1, active: 'mon-fri 05:30-16:00' }, file: '체결.yaml' },
-  { id: 'quote', title: '시세', group: '정보분배', match: [{ exe: '/opt/eum/demo/bin/quote_svc' }], profile: true, expect: { count: 1 }, file: '시세.yaml' },
+  { id: 'matching', title: '체결', group: '매매체결', match: [{ comm: 'matching_svc' }, { env: 'EUM_SERVICE=matching' }], profile: true, expect: { count: 1, active: 'mon-fri 08:30-21:30' }, file: '체결.yaml' },
+  { id: 'quote', title: '시세', group: '정보분배', match: [{ exe: '/opt/eum/demo/bin/quote_svc' }], profile: true, expect: { count: 1, active: 'mon-fri 08:30-21:30' }, file: '시세.yaml' },
+  { id: 'channel', title: '채널', group: '채널', match: [{ comm: 'channel_svc' }], profile: true, expect: { count: 1, active: 'mon-fri 08:30-21:30' }, file: '채널.yaml' },
+  { id: 'index', title: '지수산출', group: '지수산출', match: [{ comm: 'index_svc' }], profile: true, expect: { count: 1, active: 'mon-fri 08:30-21:30' }, file: '지수산출.yaml' },
+  { id: 'dist', title: '분배', group: '정보분배', match: [{ comm: 'dist_svc' }], profile: true, expect: { count: 1, active: 'mon-fri 08:30-21:30' }, file: '분배.yaml' },
+  { id: 'stats', title: '매매통계', group: '매매통계', match: [{ comm: 'stats_svc' }], profile: true, expect: { count: 1, active: 'mon-fri 08:30-21:30' }, file: '매매통계.yaml' },
+];
+// 흐름 업무 넷: 서비스 = 패널 id(카드 V §2). 호스트 · 읽는 포트 · 기동한 때(받는 쪽부터 열었다: 통계 → 체결 → 채널, 분배 → 지수 → 시세)
+const FLOW_SVCS = [
+  { id: 'stats', host: 'dw-01', port: 9104, at: (w, now) => (w.startRun ? w.startRun.started_at : now - 3 * HOUR) - 3 * MIN },
+  { id: 'channel', host: 'gw-01', port: 9103, at: (w, now) => (w.startRun ? w.startRun.started_at : now - 3 * HOUR) + 2 * MIN },
+  { id: 'dist', host: 'feed-02', port: 9106, at: (w, now) => (w.quoteRun ? w.quoteRun.started_at : now - 3 * HOUR) - 2000 },
+  { id: 'index', host: 'idx-01', port: 9105, at: (w, now) => (w.quoteRun ? w.quoteRun.started_at : now - 3 * HOUR) - 1000 },
 ];
 const AUTO = ['svr_a', 'svr_b', 'svr_c'];
-const PANEL_OF = { matching: 'matching', quote: 'quote' };
-const SVC_OF_COMM = { matching_svc: 'matching', quote_svc: 'quote' };
+const PANEL_OF = { channel: 'channel', matching: 'matching', quote: 'quote', index: 'index', dist: 'dist', stats: 'stats' };
+const SVC_OF_COMM = { matching_svc: 'matching', quote_svc: 'quote', channel_svc: 'channel', index_svc: 'index', dist_svc: 'dist', stats_svc: 'stats' };
 const DEF_ERRORS = [{ file: '주문접수.yaml', msg: 'match[0].exe: 절대 경로여야 합니다' }];
 // 자동 서비스의 자원(06 §7.1: svr_c 121%)
 const AUTO_LOAD = { svr_a: { cpu: 38, rss: 210 }, svr_b: { cpu: 64, rss: 540 }, svr_c: { cpu: 121, rss: 1204 } };
@@ -130,8 +142,8 @@ function story(c) {
     P({ host: w.quoteRun.host, pid: x.pid ?? 41877, ppid: x.ppid ?? 1, started_at: x.started_at ?? w.quoteRun.started_at + 1000, comm: 'quote_svc', exe: '/opt/eum/demo/bin/quote_svc',
       cmdline: '/opt/eum/demo/bin/quote_svc --port 9200 --recv-rate 2000', ...fromRun(w.quoteRun), service: 'quote', profile: true, threads: 3 });
   }
-  P({ host: 'feed-02', pid: 30215, started_at: now - DAY - 4 * HOUR, ended_at: now - 2 * HOUR - 12 * MIN, comm: 'quote_svc', exe: '/opt/eum/demo/bin/quote_svc',
-    cmdline: '/opt/eum/demo/bin/quote_svc --port 9200 --recv-rate 2000 --standby', service: 'quote', profile: true, threads: 3 });
+  FLOW_SVCS.forEach((f, i) => P({ host: f.host, pid: 31200 + i * 37, started_at: f.at(w, now), comm: `${f.id}_svc`, exe: `/opt/eum/demo/bin/${f.id}_svc`,
+    cmdline: `/opt/eum/demo/bin/${f.id}_svc --bus /var/lib/eum/bus --rate rate --push 127.0.0.1:${f.port}`, service: f.id, profile: true, _now: true }));
   // 자동 svr_a·svr_b·svr_c: mock 세계의 BATCH_JOB › start 실행들(w.batchRuns: 정기 · svr_b만 다시 띄운 수동 재실행)이 띄운
   // 프로세스(w.procs)와 같은 pid · 시각 · 종료. 세계에 없으면(예전 세계) daily-settle › settle로 대신한다.
   const bruns = (w.batchRuns && w.batchRuns.length ? w.batchRuns : [w.batchRun || latestRun(w, 'daily-settle', 'settle')]).filter(Boolean);
@@ -167,6 +179,7 @@ function valuesAt(c, p, ts) {
     return { ...toSvc(serviceAt(ts, sig)), ...bizAt(ts, sig) };
   }
   if (p.service === 'quote') return { ...toSvc(quoteServiceAt(ts, c.sig)), ...quoteAt(ts, c.sig) };
+  if (FLOW_SVCS.some((f) => f.id === p.service)) return { ...toSvc(stageServiceAt(p.service, ts, c.sig)), ...stageAt(p.service, ts, c.sig) };
   const L = AUTO_LOAD[p.service] || { cpu: 10, rss: 100 };
   const cpu = Math.max(0.5, L.cpu * (1 + 0.08 * noise(p.service + 'c', ts) + 0.05 * Math.sin(ts / 420000)));
   const rss = L.rss * (1 + 0.01 * noise(p.service + 'r', ts));

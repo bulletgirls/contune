@@ -8,8 +8,12 @@
  * 플레임 그래프에 생긴다. 체결 서비스의 지연(book_insert가 호가 깊이에 비례해 무거워짐)과 원인도 함수도 다르다.
  *
  * 비용은 시작할 때 잰 CPU 속도로 반복 횟수를 정한다: PC가 달라도 처리 한계(약 6,000건/초)가 비슷하다.
- * 표준 라이브러리만, 단일 스레드. */
+ * 표준 라이브러리만, 단일 스레드.
+ *
+ * --bus <폴더>면 거래소 시세를 스스로 만들지 않고 체결의 fills 저널로 수신 버퍼를 채우고(빈 자리만큼만 읽어 넘치지 않는다),
+ * 세션 송출 대신 quotes 저널에 한 건씩 쓴다(분배 dist_svc가 세션에 보낸다. 카드 V §4). 순번 누락·스냅샷 복구는 없다. */
 #define _GNU_SOURCE
+#include "flow.h"
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <signal.h>
@@ -60,6 +64,9 @@ typedef struct { level_t lv[2][LEVELS]; int32_t last, pad; int64_t volume; } sym
 typedef struct { uint64_t sent, bytes; uint8_t buf[64]; } session_t;
 
 static msg_t rcvbuf[RCVBUF_CAP];
+static fl_rec_t rcvsrc[RCVBUF_CAP];          /* --bus: 수신 버퍼 칸마다 받은 fills 레코드(번호·접수 시각) */
+static int on_bus;                           /* --bus면 1: 송출을 quotes 저널로 */
+static fl_writer qwr;
 static uint32_t rb_head, rb_tail;
 static uint32_t seq_next = 1, expect = 1;   /* 거래소가 다음에 보낼 순번, 우리가 기다리는 순번 */
 static symbook_t book[NSYM];
@@ -166,9 +173,20 @@ static NOINL int fanout_sessions(const msg_t *m) {
     return bytes;
 }
 
+/* --bus: 세션 대신 quotes 저널에 한 건(번호·접수 시각은 받은 것 그대로) */
+static NOINL int write_quote(const msg_t *m) {
+    const fl_rec_t *src = &rcvsrc[m - rcvbuf];
+    fl_rec_t q = {.seq = src->seq, .t0_ns = src->t0_ns, .t1_ns = src->t1_ns, .t_ns = now_ns(), .sym = m->sym,
+                  .price = m->price, .qty = m->qty, .side = m->side, .kind = FL_QUOTE,
+                  .flags = m->kind == 1 ? FL_F_TRADE : 0};
+    fl_put(&qwr, &q);
+    fl_trace(&q, "quote");
+    return (int)sizeof q;
+}
+
 static uint64_t published;
 static NOINL int publish_quote(const msg_t *m) {
-    int bytes = fanout_sessions(m);
+    int bytes = on_bus ? write_quote(m) : fanout_sessions(m);
     published++;                              /* 꼬리 호출 막기(apply_quote와 같다) */
     return bytes;
 }
@@ -276,13 +294,14 @@ static void make_msg(msg_t *m, int64_t t_ns, uint32_t seq) {
 }
 
 int main(int argc, char **argv) {
-    const char *rate_path = NULL, *push = "127.0.0.1:9102";
+    const char *rate_path = NULL, *push = "127.0.0.1:9102", *bus = NULL;
     int stats = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--rate") && i + 1 < argc) rate_path = argv[++i];
+        else if (!strcmp(argv[i], "--bus") && i + 1 < argc) bus = argv[++i];
         else if (!strcmp(argv[i], "--push") && i + 1 < argc) push = argv[++i];
         else if (!strcmp(argv[i], "--stats")) stats = 1;
-        else { fprintf(stderr, "usage: %s [--rate file] [--push host:port] [--stats]\n", argv[0]); return 2; }
+        else { fprintf(stderr, "usage: %s [--bus dir] [--rate file] [--push host:port] [--stats]\n", argv[0]); return 2; }
     }
     setvbuf(stdout, NULL, _IOLBF, 0);
 
@@ -305,8 +324,18 @@ int main(int argc, char **argv) {
     it_rebuild_sym = iters(COST_REBUILD_NS);
     rebuild_book();                                   /* 첫 화면: 장 시작 전 스냅샷 */
 
-    int rate = read_rate(rate_path, DEFAULT_RATE);
-    logf_('I', "START", "rate=%d push=%s sessions=%d rcvbuf=%d cpu=%.2f", rate, push, NSESS, RCVBUF_CAP, ipn);
+    fl_reader rd;
+    static fl_rec_t fbuf[RCVBUF_CAP];
+    int64_t prev_lag = 0, nsec = 0;
+    if (bus) {
+        on_bus = 1;
+        fl_ropen(&rd, bus, "fills", "quote");
+        if (fl_wopen(&qwr, bus, "quotes") < 0) { fprintf(stderr, "quotes 저널을 열 수 없음: %s/quotes.jnl: %s\n", bus, strerror(errno)); return 1; }
+    }
+
+    int rate = bus ? 0 : read_rate(rate_path, DEFAULT_RATE);
+    if (bus) logf_('I', "START", "bus=%s push=%s rcvbuf=%d cpu=%.2f", bus, push, RCVBUF_CAP, ipn);
+    else logf_('I', "START", "rate=%d push=%s sessions=%d rcvbuf=%d cpu=%.2f", rate, push, NSESS, RCVBUF_CAP, ipn);
 
     int64_t start = now_ns(), tick = start, sec_end = start + 1000000000LL;
     int64_t snap_at = start + SNAPSHOT_EVERY_MS * 1000000LL;
@@ -327,10 +356,28 @@ int main(int argc, char **argv) {
             make_msg(&rcvbuf[rb_tail++ & (RCVBUF_CAP - 1)], tick + (t - tick) * (int64_t)(i + 1) / n, seq);
         }
         tick = t;
+        if (bus) {                                    /* 체결 저널에서 수신 버퍼의 빈 자리만큼 */
+            int room = RCVBUF_CAP - (int)(rb_tail - rb_head);
+            int k = room > 0 ? fl_get(&rd, fbuf, room) : 0;
+            for (int i = 0; i < k; i++) {
+                uint32_t slot = rb_tail & (RCVBUF_CAP - 1);
+                msg_t *m = &rcvbuf[slot];
+                const fl_rec_t *f = &fbuf[i];
+                m->t_ns = f->t_ns; m->seq = seq_next++;   /* 지연 = 체결 처리 끝 → 송출(저널에서 기다린 시간 포함) */
+                m->sym = (uint16_t)(f->sym % NSYM);
+                m->kind = f->kind == FL_FILL;         /* 체결 → 체결가, 호가 등록 → 호가 잔량 */
+                m->side = f->side & 1;
+                m->level = (uint8_t)(f->seq % LEVELS);
+                m->price = f->price; m->qty = f->qty;
+                rcvsrc[slot] = *f;
+                rb_tail++; st_recv++;
+            }
+        }
 
         if (t >= snap_at) { snap_at += SNAPSHOT_EVERY_MS * 1000000LL; build_snapshot(); }
 
         feed_poll(t + 1000000LL);
+        if (bus) fl_flush(&qwr);
         int64_t after = now_ns();
 
         if (after >= sec_end) {
@@ -338,6 +385,13 @@ int main(int argc, char **argv) {
             if (sec_end <= after) sec_end = after + 1000000000LL;   /* 복구로 1초 넘게 멈췄으면 다음 1초부터 */
             time_t wall = time(NULL);
             int backlog = (int)(rb_tail - rb_head);
+            int64_t recv_cnt = st_recv, lag = 0;
+            if (bus) {                                /* 저널에 남은 것도 수신 대기다 */
+                lag = fl_lag(&rd);
+                recv_cnt = (int64_t)fl_in_tps(st_recv, lag, &prev_lag);
+                fl_commit(&rd, backlog);
+                backlog += (int)lag;
+            }
             double avg = nlat ? lat_sum / nlat : 0, p99 = 0;
             if (nlat) { qsort(lat, (size_t)nlat, sizeof(double), cmp_d); p99 = lat[(int)((nlat - 1) * 0.99)]; }
             int64_t lost = st_dropped + st_discarded;
@@ -348,7 +402,7 @@ int main(int argc, char **argv) {
             char buf[1024]; int len = 0;
             const char *sfx = eid && *eid ? eid : NULL;
             #define LINE(name, fmt, val) len += snprintf(buf + len, sizeof buf - len, "%s " fmt "%s%s\n", name, val, sfx ? " " : "", sfx ? sfx : "")
-            LINE("biz.quote.recv_tps", "%.0f", (double)st_recv);
+            LINE("biz.quote.recv_tps", "%.0f", (double)recv_cnt);
             LINE("biz.quote.sent_tps", "%.0f", (double)st_sent);
             LINE("biz.quote.backlog", "%.0f", (double)backlog);
             LINE("biz.quote.delay_avg_ms", "%.2f", avg);
@@ -360,7 +414,7 @@ int main(int argc, char **argv) {
 
             if (stats)
                 fprintf(stderr, "recv=%lld sent=%lld backlog=%d avg=%.1f p99=%.1f lost=%lld recover=%lld\n",
-                        (long long)st_recv, (long long)st_sent, backlog, avg, p99, (long long)lost, (long long)st_recover);
+                        (long long)recv_cnt, (long long)st_sent, backlog, avg, p99, (long long)lost, (long long)st_recover);
 
             alert(0, p99, W_DELAY, E_DELAY, last_alert, wall, "DELAY", "시세 지연 p99", "ms");
             alert(1, backlog, W_BACKLOG, E_BACKLOG, last_alert, wall, "BACKLOG", "수신 대기", "건");
@@ -373,7 +427,10 @@ int main(int argc, char **argv) {
                 last_gap_log = wall; gap_missing = gap_lost = gap_recover = 0;
             }
 
-            int nr = read_rate(rate_path, rate);
+            if (bus && ++nsec % LOG_EVERY_SEC == 0)
+                logf_('I', "STAT", "in=%lld out=%lld lag=%lld p99_ms=%.2f",
+                      (long long)recv_cnt, (long long)st_sent, (long long)backlog, p99);
+            int nr = bus ? 0 : read_rate(rate_path, rate);
             if (nr != rate) { logf_('I', "RATE", "%d -> %d", rate, nr); rate = nr; }
             st_recv = st_sent = st_dropped = st_discarded = st_recover = 0; nlat = 0; lat_sum = 0;
         }
@@ -383,6 +440,7 @@ int main(int argc, char **argv) {
             if (rest > 0) { struct timespec ts = {0, (long)rest}; nanosleep(&ts, NULL); }
         }
     }
+    if (bus) { fl_flush(&qwr); fl_commit(&rd, (int64_t)(rb_tail - rb_head)); }
     logf_('I', "STOP", "signal received");
     return 0;
 }

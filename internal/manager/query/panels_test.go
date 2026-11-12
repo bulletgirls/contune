@@ -493,11 +493,10 @@ func TestRepoPanels(t *testing.T) {
 	want := map[string]struct{ group, prefix string }{
 		"channel":  {"채널", "biz.channel."},
 		"matching": {"매매체결", "biz.order."},
-		"stats":    {"매매통계", "biz.stats."},
 		"quote":    {"정보분배", "biz.quote."},
 		"index":    {"지수산출", "biz.index."},
-		"clearing": {"청산결제", "biz.clearing."},
-		"rds":      {"rds", "biz.rds."},
+		"dist":     {"정보분배", "biz.dist."},
+		"stats":    {"매매통계", "biz.stats."},
 	}
 	// 평시 관제 KPI 칸(정의 순서)과 업무 탭 첫 화면이 체결이도록 체결이 시세보다 앞이어야 한다.
 	order := map[string]int{}

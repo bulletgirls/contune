@@ -28,7 +28,7 @@ import (
 	"eum/internal/manager/webauth"
 )
 
-// devToken은 eum dev의 공유 에이전트 토큰이다. 모의 서버(fleet)가 쓴다. 실제 에이전트 4대는 호스트별 토큰을 쓴다.
+// devToken은 eum dev의 공유 에이전트 토큰이다. 모의 서버(fleet)가 쓴다. 실제 에이전트 7대는 호스트별 토큰을 쓴다.
 const devToken = "dev"
 
 // devAllow는 05 §8의 시연 허용 목록이다(편집기).
@@ -77,23 +77,41 @@ type devSetup struct {
 type devHost struct {
 	host, group string
 	seed        int
-	push        string                        // 업무 프로세스 push 수신 포트 플래그("" = 없음)
-	service     string                        // push 수신구의 서비스 ID(06). 수신 지표의 주인이 서비스 인스턴스가 된다
-	logs        func() []logtail.SourceConfig // 업무 프로세스 로그 출처(nil = 없음)
-	profile     bool                          // perf가 있으면 함수 추적
+	push        string // 업무 프로세스 push 수신 포트 이름(devPorts의 키, "" = 없음)
+	service     string // 업무 서비스 ID(06·카드 V §2). push 수신 지표와 업무 로그의 주인이 서비스 인스턴스가 된다
+	bin         string // 업무 프로세스 이름(로그 파일 {log_dir}/<bin>.{exec_id}.log)
+	pin         bool   // 업무 프로세스를 코어 하나에 묶는다(변수 PIN_CPU, taskset이 있을 때)
 }
 
-// devHosts는 실제 에이전트 4대다. 업무 프로세스 둘은 서버·push 포트·로그·실행 ID를 따로 쓴다:
-// match-01의 체결 서비스(matching_svc, market-open), feed-01의 시세 서비스(quote_svc, quote-open).
+// devHosts는 실제 에이전트 7대다(카드 V §1 결정 7). 흐름 업무 여섯은 서버·push 포트·로그·실행 ID를 따로 쓰고
+// 저널 폴더(변수 BUS)만 같이 쓴다: 채널 gw-01 → 체결 match-01 → 시세 feed-01 → 지수산출 idx-01 → 분배 feed-02,
+// 체결 → 매매통계 dw-01. batch-01은 배치(market-open 앞 스텝, batch-job)용이다.
 var devHosts = []devHost{
-	{host: "match-01", group: "매매체결", seed: 1, push: "push-port", service: "matching", logs: matchingLogs, profile: true},
-	{host: "gw-01", group: "채널", seed: 2},
-	{host: "batch-01", group: "청산결제", seed: 3, profile: true},
-	{host: "feed-01", group: "정보분배", seed: 4, push: "quote-push-port", service: "quote", logs: quoteLogs, profile: true},
+	{host: "match-01", group: "매매체결", seed: 1, push: "push-port", service: "matching", bin: "matching_svc"},
+	{host: "gw-01", group: "채널", seed: 2, push: "channel", service: "channel", bin: "channel_svc"},
+	{host: "batch-01", group: "청산결제", seed: 3},
+	{host: "feed-01", group: "정보분배", seed: 4, push: "quote-push-port", service: "quote", bin: "quote_svc"},
+	{host: "idx-01", group: "지수산출", seed: 5, push: "index", service: "index", bin: "index_svc"},
+	{host: "feed-02", group: "정보분배", seed: 6, push: "dist", service: "dist", bin: "dist_svc"},
+	{host: "dw-01", group: "매매통계", seed: 7, push: "stats", service: "stats", bin: "stats_svc", pin: true},
+}
+
+// devPushBase는 --push-base에서 새 업무 넷의 push 포트까지의 거리다(채널 +0, 통계 +1, 지수 +2, 분배 +3 → 9103~9106).
+var devPushBase = map[string]int{"channel": 0, "stats": 1, "index": 2, "dist": 3}
+
+// devPinCPU는 dw-01의 업무 프로세스를 묶을 코어다(taskset이 있으면 마지막 코어, 없으면 ""). 테스트가 바꾼다.
+var devPinCPU = func() string {
+	if runtime.GOOS != "linux" {
+		return ""
+	}
+	if _, err := osexec.LookPath("taskset"); err != nil {
+		return ""
+	}
+	return strconv.Itoa(runtime.NumCPU() - 1)
 }
 
 // parseDev는 dev 플래그를 해석해 매니저·에이전트 설정을 만든다(파일은 --config만 읽는다).
-// hasPerf가 true면 match-01·batch-01·feed-01에 perf 프로파일러를 단다.
+// hasPerf가 true면 실제 에이전트 7대 모두에 perf 프로파일러를 단다.
 // 실제 에이전트의 호스트별 토큰은 부를 때마다 난수로 만든다(설정 파일 agent_tokens에 적힌 호스트는 그 토큰).
 func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 	fs := newFlags("dev", stderr)
@@ -108,6 +126,7 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 	fleetPath := fs.String("fleet", "", "fleet.yaml(있으면 모의 서버를 같은 프로세스에서 띄움)")
 	pushPort := fs.Int("push-port", 9101, "match-01(체결 서비스)의 push 수신 포트")
 	quotePushPort := fs.Int("quote-push-port", 9102, "feed-01(시세 서비스)의 push 수신 포트")
+	pushBase := fs.Int("push-base", 9103, "새 업무 넷의 push 수신 첫 포트(채널 gw-01 +0, 통계 dw-01 +1, 지수 idx-01 +2, 분배 feed-02 +3)")
 	demoDir := fs.String("demo-dir", "./deploy", "에이전트 vars.DEMO(시연 폴더)")
 	if err := parse(fs, args); err != nil {
 		return devSetup{}, err
@@ -123,9 +142,26 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 			return devSetup{}, errUsage
 		}
 	}
-	if *pushPort == *quotePushPort {
-		fmt.Fprintf(stderr, "eum dev: --push-port와 --quote-push-port가 같습니다(%d)\n", *pushPort)
+	if *pushBase <= 0 || *pushBase+len(devPushBase)-1 > 65535 {
+		fmt.Fprintf(stderr, "eum dev: --push-base %d는 1~%d여야 합니다(포트 %d개를 씀)\n", *pushBase, 65536-len(devPushBase), len(devPushBase))
 		return devSetup{}, errUsage
+	}
+	for n, off := range devPushBase {
+		ports[n] = *pushBase + off
+	}
+	// 포트 겹침: 업무 여섯의 push 수신 포트는 모두 달라야 한다.
+	byPort := map[int]string{}
+	for _, h := range devHosts {
+		if h.push == "" {
+			continue
+		}
+		p := ports[h.push]
+		if other, dup := byPort[p]; dup {
+			fmt.Fprintf(stderr, "eum dev: push 포트 %d를 %s와 %s가 같이 씁니다. --push-port·--quote-push-port·--push-base(+0~+3)를 겹치지 않게 주세요\n",
+				p, other, h.host)
+			return devSetup{}, errUsage
+		}
+		byPort[p] = h.host
 	}
 
 	// 매니저: 설정 파일이 없으면 기본값 + dev 값, 있으면 그 파일 위에 준 플래그만 덮는다.
@@ -170,7 +206,7 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 		cfg.Collect = collect.Config{Dir: filepath.Join(cfg.Data, "collect"), Enabled: true}
 	}
 
-	// 호스트별 토큰(보안 S3): 실제 에이전트 4대는 시작할 때 만든 난수 토큰, 모의 서버는 공유 토큰(cfg.Token).
+	// 호스트별 토큰(보안 S3): 실제 에이전트 7대는 시작할 때 만든 난수 토큰, 모의 서버는 공유 토큰(cfg.Token).
 	tokens := maps.Clone(cfg.AgentTokens)
 	if tokens == nil {
 		tokens = map[string]string{}
@@ -191,8 +227,10 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 	if err != nil {
 		return devSetup{}, err
 	}
-	addrOf := func(flag string) string { return "127.0.0.1:" + strconv.Itoa(ports[flag]) }
+	addrOf := func(name string) string { return "127.0.0.1:" + strconv.Itoa(ports[name]) }
 	mgrURL := "http://" + dialAddr(cfg.Listen)
+	bus := filepath.Join(dataAbs, "bus") // 저널 폴더: 에이전트가 한 프로세스라 일곱이 같은 폴더를 쓴다(카드 V §2)
+	pin := devPinCPU()
 	out := devSetup{Manager: cfg, Fleet: *fleetPath}
 	for _, h := range devHosts {
 		push := addrOf("push-port") // push 수신이 없는 서버의 PUSH는 체결 서비스 쪽(지금까지와 같다)
@@ -205,17 +243,20 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 			Probes:  []map[string]any{{"type": "sim", "profile": "host", "seed": h.seed}},
 			LogDir:  filepath.Join(dataAbs, "logs", h.host),
 			WorkDir: filepath.Join(dataAbs, "work", h.host),
-			Vars:    map[string]string{"DEMO": demoAbs, "PUSH": push},
+			Vars:    map[string]string{"DEMO": demoAbs, "PUSH": push, "BUS": bus},
 			// 수집 설정을 화면에서 받는다(05 §17). 읽기는 log_dir 안만(read_roots 기본값).
 			Remote: agent.RemoteConfig{Enabled: true},
+		}
+		if h.pin && pin != "" {
+			a.Vars["PIN_CPU"] = pin
 		}
 		if h.push != "" {
 			a.Probes = append(a.Probes, map[string]any{"type": "push", "listen": push, "service": h.service})
 		}
-		if h.logs != nil {
-			a.Logs = h.logs()
+		if h.bin != "" {
+			a.Logs = serviceLogs(h.service, h.bin)
 		}
-		if h.profile && hasPerf {
+		if hasPerf { // 실제 서버 일곱 모두 함수 추적(업무 프로세스·배치 스텝)
 			a.Profiler = map[string]any{"type": "perf", "hz": 49, "window": "10s", "call_graph": "dwarf", "min_age": "5s"}
 		}
 		out.Agents = append(out.Agents, a)
@@ -223,18 +264,18 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 	return out, nil
 }
 
-// matchingLogs는 match-01의 로그 출처다(05 §4: 체결 서비스 로그 + 스텝 실행 로그).
-func matchingLogs() []logtail.SourceConfig { return serviceLogs("matching", "matching_svc") }
+// devTraceRe는 업무 프로세스의 경로 추적 줄이다(demo/flow.h fl_trace: "(I) <날짜> <시각> TRACE seq=… hop=…").
+// info로 남겨 로그 검색(seq=<번호>)으로 주문 하나가 지난 업무를 시간순으로 본다(demo.sh trace).
+const devTraceRe = `^\(I\) \S+ \S+ TRACE seq=`
 
-// quoteLogs는 feed-01의 로그 출처다(시세 서비스 로그 + 스텝 실행 로그).
-func quoteLogs() []logtail.SourceConfig { return serviceLogs("quote", "quote_svc") }
-
-// serviceLogs는 업무 프로세스 로그((E)·(W) 줄, 주인은 서비스 name — 06·카드 P)와 스텝 실행 로그((E) 줄)다. deploy/agent-*.yaml의 logs와 같다.
+// serviceLogs는 업무 프로세스 로그((E)·(W) 줄과 TRACE 줄, 주인은 서비스 name — 06·카드 P·V)와 스텝 실행 로그((E) 줄)다.
+// deploy/agent-*.yaml의 logs와 같다.
 func serviceLogs(name, bin string) []logtail.SourceConfig {
 	return []logtail.SourceConfig{
 		{Name: name, Service: name, Path: "{log_dir}/" + bin + ".{exec_id}.log", Match: []logtail.MatchRule{
 			{Re: `^\(E\)`, Level: "error"},
 			{Re: `^\(W\)`, Level: "warn"},
+			{Re: devTraceRe, Level: "info"},
 		}},
 		{Name: "step", Path: "{log_dir}/{exec_id}.log", Match: []logtail.MatchRule{
 			{Re: `^\(E\)`, Level: "error"},
@@ -263,7 +304,7 @@ func hasPerf() bool {
 	return err == nil
 }
 
-// runDev는 eum dev다: 매니저 + 에이전트 4개(+ 모의 서버)를 한 프로세스에서 띄운다.
+// runDev는 eum dev다: 매니저 + 실제 에이전트 7개(+ 모의 서버)를 한 프로세스에서 띄운다.
 // args는 "dev" 뒤의 인자, ctx는 SIGINT·SIGTERM에 끝난다. 매니저가 듣기 시작한 뒤 에이전트를 띄운다.
 func runDev(ctx context.Context, args []string) error {
 	setup, err := parseDev(args, hasPerf(), os.Stderr)

@@ -1,4 +1,4 @@
-# 새벽 개장 준비: 기준정보 적재 후 체결 서비스 기동
+# 새벽 개장 준비: 기준정보 적재 후 주문 흐름을 받는 쪽부터 연다(매매통계 → 체결 → 채널, 카드 V)
 id: market-open
 schedule: "30 5 * * 1-5"      # 평일 05:30
 on_missed: skip
@@ -18,14 +18,28 @@ steps:
     command: [eum, burn, --cpu, "1", --duration, 12s]
     depends: [fetch-master]
 
+  - id: start-stats
+    host: dw-01
+    command: ["${DEMO}/scripts/start_stats.sh"]
+    depends: [load-equity, load-deriv]
+    profile: true
+    starts: [stats]
+
   - id: start-matching
     host: match-01
     command: ["${DEMO}/scripts/start_matching.sh"]
-    depends: [load-equity, load-deriv]
+    depends: [start-stats]
     profile: true
     starts: [matching]
+
+  - id: start-channel
+    host: gw-01
+    command: ["${DEMO}/scripts/start_channel.sh"]
+    depends: [start-matching]
+    profile: true
+    starts: [channel]
 
   - id: check-ready
     host: match-01
     command: ["${DEMO}/scripts/check_ready.sh"]
-    depends: [start-matching]
+    depends: [start-channel]

@@ -49,18 +49,19 @@ widgets:
   - { id: bat, type: batch, scope: { board: 정산 } }
 ```
 
-업무 흐름 예시(`dashboards/bizflow.yaml`, 상자 일곱 중 셋). 지표를 직접 적지 않고 **패널 ID와 타일 제목**만 가리킨다:
+업무 흐름 예시(`dashboards/bizflow.yaml`, 상자 여섯 중 셋: 채널 → 매매체결 → 시세 → 지수산출 → 분배, 매매체결 → 매매통계. 11-12 카드 V). 지표를 직접 적지 않고 **패널 ID와 타일 제목**만 가리킨다:
 
 ```yaml
   - id: flow
     type: bizflow
     title: 업무 흐름
     w: 12
-    h: 5
-    nodes:
-      - { panel: channel,  in: 주문 수신량, out: 주문 전달량, stock: 전달 대기, at: [0, 0] }
-      - { panel: matching, in: 주문 유입량, out: 체결 처리량, stock: 대기 큐,   at: [1, 0], from: [channel] }
-      - { panel: rds,      in: 쓰기 요청,   out: 커밋 완료,   stock: 쓰기 대기, at: [3, 2], from: [stats, clearing] }
+    h: 4
+    nodes:      # 지수산출만 한 줄 위: 시세 → 분배 직통 화살표가 상자를 가로지르지 않게
+      - { panel: channel,  in: 주문 수신량, out: 주문 전달량, stock: 전달 대기, at: [0, 1] }
+      - { panel: matching, in: 주문 유입량, out: 체결 처리량, stock: 대기 큐,   at: [1, 1], from: [channel] }
+      - { panel: dist,     in: 시세 수신량, out: 송출량,      stock: 송출 대기, at: [4, 1], from: [quote, index] }   # 시세·지수 두 앞 업무
+      - { panel: stats,    in: 체결 수신량, out: 통계 반영량, stock: 처리 적체, at: [2, 2], from: [matching] }
 ```
 
 - 화살표: `from`(앞 업무) → 이 상자. 이름표는 앞 업무의 out(또는 그 상자의 `edge` 타일) 값, 상자마다 한 번.

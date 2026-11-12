@@ -14,10 +14,9 @@ interval: 1s
 #   users: [trade]             # 이 사용자의 프로세스만
 #   exe_roots: [/app/bin]      # 이 폴더 아래 실행 파일만
 probes:
-  - type: sim
-    profile: host
-    seed: 1
-  - type: push
+  - type: cgroup               # 서버 자원 = 이 컨테이너의 몫(한도 = 서버 용량, 카드 V §1 결정 8)
+  - { type: procfs, metrics: [net] }
+  - type: push                 # 체결 서비스(matching_svc)가 1초마다 biz.order.*를 보낸다
     listen: 127.0.0.1:9101
     service: matching
 profiler:
@@ -42,6 +41,7 @@ remote:                        # 로그 수집 설정을 매니저 화면(#colle
 vars:
   DEMO: /opt/eum-demo
   PUSH: 127.0.0.1:9101
+  BUS: /var/lib/eum/bus         # 업무 저널 폴더(공유 볼륨 eum-bus, 카드 V §2)
 logs:
   - name: matching
     service: matching
@@ -49,6 +49,7 @@ logs:
     match:
       - { re: '^\(E\)', level: error }
       - { re: '^\(W\)', level: warn }
+      - { re: '^\(I\) \S+ \S+ TRACE seq=', level: info }   # 경로 추적 줄(demo.sh trace)
   - name: step
     path: "{log_dir}/{exec_id}.log"
     match: [{ re: '^\(E\)', level: error }]
