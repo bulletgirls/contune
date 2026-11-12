@@ -83,6 +83,17 @@
 - 디스크는 전체 장치만 센다: 이름이 `^(sd[a-z]+|vd[a-z]+|xvd[a-z]+|hd[a-z]+|nvme\d+n\d+)$`인 줄(파티션·loop·ram·dm 제외).
 - 카탈로그 그룹: `{id, title, key[], charts[], metrics[]}`. 차트: `{id, title, stack?, max?, overview?, scope?}`. 항목: `{name, title, unit, chart, procfs, derived?, desc?}`. 한 차트의 항목은 **단위가 같아야** 한다(`model` 테스트가 확인).
 - `sim` 수집기는 카탈로그의 `host.*` 전부를 **서로 맞는 값**으로 낸다(CPU 사용률 = 사용자 + 시스템, 유휴 = 100 − 나머지, 사용+캐시 ≥ 사용). 화면은 데이터가 없는 차트를 "미수집"으로 둔다.
+- **`cgroup` 수집기 (2026-11-12, 카드 V)**: 컨테이너 안의 `/proc/stat`·`meminfo`는 PC 전체 값이라, compose의 실제 서버 7대는 위 지표를 **컨테이너(= 서버) 몫**으로 cgroup에서 읽는다(에이전트 `probes`의 `- type: cgroup`, 네트워크는 `procfs`의 `net`). 컨테이너 한도가 곧 서버 용량이다. cgroup v1·v2를 스스로 알아보고(설정 `root`, 기본 `/sys/fs/cgroup`), 첫 주기는 차이를 못 내니 비율 지표를 건너뛴다. 컨테이너 것이 아닌 값은 내지 않는다(그 칸은 "미수집").
+
+| 지표 이름 | cgroup 수집 (컨테이너 몫) |
+|---|---|
+| `host.cpu.pct` · `user_pct` · `sys_pct` · `idle_pct` | ○ 사용 시간 차이 ÷ (시간 × 용량). 용량 = CPU 한도(v1 `cpu.cfs_quota_us/period`, v2 `cpu.max`), 한도가 없으면 쓸 수 있는 CPU 수. user·sys는 v1 `cpuacct.stat`, v2 `cpu.stat` |
+| `host.cpu.wait_pct` · `steal_pct` · `busy_wait_pct` · `host.load1` · `host.proc.running` · `host.sys.*` | ✕ 컨테이너 것이 아니라 내지 않음 |
+| `host.mem.used_pct` · `used_mb` · `cache_pct` · `used_cache_pct` | ○ 사용량 ÷ 메모리 한도(없으면 PC 전체). 파일 캐시는 `memory.stat`으로 used에서 뺌 |
+| `host.disk.read_mbps` · `write_mbps` · `read_iops` · `write_iops` | ○ v1 `blkio.throttle.io_service_bytes`·`io_serviced`, v2 `io.stat` |
+| `host.proc.count` · `host.proc.threads` | ○ `cgroup.procs` 줄 수 · `pids.current` |
+| `host.net.*` | procfs 수집기(`metrics: [net]`)가 냄. 컨테이너 네임스페이스의 `/proc/net/dev`가 이미 컨테이너 것 |
+
 - 서버당 `host.*`가 약 30개로 늘어 46대 × 1초면 초당 약 1,400행이다. 모의 서버(fleet)는 기본 `interval: 5s`로 둔다(실제 3대는 1초).
 
 ## 3. 실행 프로세스 지표 (`job.*` 확장, 서버 탭 "프로세스")
@@ -569,20 +580,23 @@ group: 매매체결
 tiles:
   - { title: 주문 유입량,          signal: traffic,    metric: biz.order.in_tps,         agg: sum, unit: TPS, kpi: true }
   - { title: 체결 처리량,          signal: traffic,    metric: biz.order.tps,            agg: sum, unit: TPS }
-  - { title: 평균 응답 시간,       signal: latency,    metric: biz.order.latency_avg_ms, agg: max, unit: ms, warn: 20, crit: 100 }
-  - { title: p99 응답 시간,        signal: latency,    metric: biz.order.latency_p99_ms, agg: max, unit: ms, warn: 50, crit: 200, kpi: true }
+  - { title: RT 평균,              signal: latency,    metric: biz.order.latency_avg_ms, agg: max, unit: ms, warn: 20, crit: 100 }
+  - { title: RT p99,               signal: latency,    metric: biz.order.latency_p99_ms, agg: max, unit: ms, warn: 50, crit: 200, kpi: true }
+  - { title: TAT 평균,             signal: latency,    metric: biz.order.tat_avg_ms,     agg: max, unit: ms, warn: 30, crit: 150 }
+  - { title: TAT p99,              signal: latency,    metric: biz.order.tat_p99_ms,     agg: max, unit: ms, warn: 80, crit: 300 }
   - { title: 오류 로그 발생률,     signal: errors,     metric: log.error.count,          agg: sum, unit: 건/초, warn: 1, crit: 5 }
   - { title: 대기 큐,              signal: saturation, metric: biz.order.queue,          agg: sum, unit: 건, warn: 500, crit: 2000, kpi: true }
   - { title: 히스토리 버퍼 사용률, signal: saturation, metric: biz.order.histbuf_pct,    agg: max, unit: "%", warn: 70, crit: 90 }
   - { title: 프로파일링 오버헤드,                      metric: agent.profiler.cpu_pct,   agg: max, unit: "%", warn: 5 }
 charts:
   - { title: 처리량,               unit: TPS, agg: sum, metrics: [biz.order.in_tps, biz.order.tps] }
-  - { title: 응답 시간,            unit: ms,  agg: max, metrics: [biz.order.latency_avg_ms, biz.order.latency_p99_ms] }
+  - { title: RT · TAT,             unit: ms,  agg: max, metrics: [biz.order.latency_p99_ms, biz.order.tat_p99_ms] }
   - { title: 대기 큐,              unit: 건,  agg: sum, metrics: [biz.order.queue] }
   - { title: 히스토리 버퍼 사용률, unit: "%", agg: max, metrics: [biz.order.histbuf_pct] }
 log_levels: [error, warn]
 ```
 
+- **RT · TAT (2026-11-12, 카드 V)**: `RT` = 체결 엔진이 주문을 받은 때 → 처리 끝(지표 `biz.order.latency_*`), `TAT` = 채널 접수 → 체결 처리 끝(`biz.order.tat_*`). TAT − RT가 채널 구간이라 TAT만 오르면 채널, 둘 다 오르면 체결이다. 업무 패널은 여섯(채널·매매체결·시세·지수산출·분배·매매통계, `panels/01~06`)이고 청산결제·rds 패널은 없다. 시세와 분배는 서버 그룹 `정보분배` 안의 두 패널이다.
 - **히스토리 버퍼 사용률**: 시연 체결 서비스가 처리한 주문 이력을 체결 통보 전까지 담아 두는 고리 버퍼의 사용률이다(E1). 업무마다 의미가 다른 항목이라 패널 YAML의 타일·차트 한 줄로만 정의한다.
 - 차트 임계선은 따로 적지 않는다. 차트 지표를 쓰는 타일(여럿이면 `kpi` 타일)의 `warn`·`crit`을 그린다.
 
@@ -722,7 +736,7 @@ mock(`?mock=1`)은 플로우마다 지난 실행 7~10회를 더 만든다(가끔
 |---|---|---|
 | 주문 접수 · 체결 처리 (`건/초`) | **주문 유입량 · 체결 처리량** (`TPS`) | 골든 시그널 Traffic, APM의 TPS |
 | 차트 `주문 건수` | **처리량** (`TPS`, 계열: 주문 유입량 · 체결 처리량) | 초당 값을 `건수`로 부르지 않음 |
-| 평균 응답 · p99 응답 | **평균 응답 시간 · p99 응답 시간** | Latency, 응답 시간(response time) |
+| 평균 응답 · p99 응답 | **평균 응답 시간 · p99 응답 시간** (체결 패널 타일은 11-12부터 `RT 평균`·`RT p99`와 채널 구간을 더한 `TAT 평균`·`TAT p99`) | Latency, 응답 시간(response time) |
 | 처리 대기 | **대기 큐** (`건`) | 측정량은 Queue Depth(IBM MQ `CURDEPTH`). 화면 이름은 2026-11-10 결정으로 `대기 큐` 유지(`큐 깊이` 안 씀) |
 | 이력 버퍼 (`%`) | **히스토리 버퍼 사용률** | 사용률(utilization). 버퍼 이름은 2026-11-10 결정으로 `히스토리 버퍼` |
 | 오류 로그 (`건/초`) | **오류 로그 발생률** | Errors(rate) |
@@ -758,6 +772,7 @@ mock(`?mock=1`)은 플로우마다 지난 실행 7~10회를 더 만든다(가끔
 ## 15. 시연 보충 (03 §1에 반영)
 
 - 시연 이력: `eum seed --data <dir> --days 7`이 지난 7일 지표(1분 간격, 실제 3대 + 체결 업무)와 장애 6건(`source: seed`), 매일의 `market-open` 실행 이력을 만든다. 위험 지수 모델이 시연 시작부터 "모델" 모드로 돌고, 서버 탭에서 과거 구간을 고를 수 있다.
+- 11-12 카드 V부터 업무 프로세스는 여섯이고 시드 7일 이력에는 새 지표(`biz.channel.*`·`biz.index.*`·`biz.dist.*`·`biz.stats.*`·`biz.order.tat_*`)가 없다(시연을 띄운 뒤부터 쌓인다).
 - 시연 체결 서비스는 `(I)`·`(W)`·`(E)` 줄을 쓰고, 폭주 때 `(E)` 줄이 업무 로그와 알림 종에 올라온다(E1).
 
 ## 16. 보안 강화 (2026-11-10, 02 §11의 "검증판 제외"를 채움)
