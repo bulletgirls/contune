@@ -31,7 +31,7 @@ export const QUOTE_NAMES = [
 export const STAGES = {
   channel: { from: ['biz.order.in_tps'], gain: 1.004, loss: 0.004, cap: 20000, ratio: 1, lat: 3 },
   stats: { from: ['biz.order.tps'], gain: 1, loss: 0, cap: 9000, ratio: 1, lat: 40 },
-  index: { from: ['biz.quote.sent_tps'], gain: 1, loss: 0, cap: 12000, ratio: 0.05, lat: 15 },
+  index: { from: ['biz.quote.sent_tps'], gain: 1, loss: 0, cap: 12000, ratio: 0.024, lat: 15 },
   dist: { from: ['biz.quote.sent_tps', 'biz.index.out_tps'], gain: 1, loss: 0, cap: 30000, ratio: 1, lat: 4, extra: ['index_tps', 'e2e_p99_ms'] },
 };
 export const STAGE_NAMES = Object.entries(STAGES).flatMap(([n, st]) =>
@@ -179,7 +179,8 @@ export function quoteSurgeRange(ctx) {
 }
 export function quoteRate(ts, ctx) {
   const r = quoteSurgeRange(ctx);
-  if (ts < r.from || ts >= r.to) return 2000;
+  // 시세 폭주가 아닐 때 시세 수신량 = 체결 처리량(체결이 만든 시세, 카드 V). 평시 약 1,500, 주문 폭주 때 약 5,860
+  if (ts < r.from || ts >= r.to) return bizAt(ts, { ...ctx, exact: true })['biz.order.tps'];
   const s = (ts - r.from) / SEC;
   return s < 40 ? 4000 : s < 80 ? 6000 : 8000;
 }
