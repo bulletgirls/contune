@@ -1,0 +1,178 @@
+{
+ "scr-dash-normal": [
+  2000,
+  1125
+ ],
+ "scr-dash-peak": [
+  2000,
+  1125
+ ],
+ "scr-flow-run": [
+  1800,
+  884
+ ],
+ "scr-flow-done": [
+  1800,
+  884
+ ],
+ "scr-biz-peak": [
+  1800,
+  657
+ ],
+ "scr-biz-normal": [
+  1800,
+  657
+ ],
+ "scr-tm-tracks": [
+  1800,
+  1372
+ ],
+ "scr-tm-profile": [
+  1800,
+  1062
+ ],
+ "scr-tm-flames": [
+  1800,
+  591
+ ],
+ "scr-tm-cmp": [
+  1800,
+  318
+ ],
+ "scr-quote-profile": [
+  1800,
+  1029
+ ],
+ "scr-quote-tracks": [
+  1800,
+  1372
+ ],
+ "scr-exit-top": [
+  1800,
+  670
+ ],
+ "scr-exit-stack": [
+  1800,
+  396
+ ],
+ "scr-bizflow-peak": [
+  1800,
+  902
+ ],
+ "scr-bizflow-normal": [
+  1800,
+  902
+ ],
+ "scr-audit": [
+  1800,
+  1152
+ ],
+ "scr-settle-held": [
+  1600,
+  635
+ ],
+ "scr-editor": [
+  1800,
+  945
+ ],
+ "scr-host": [
+  1800,
+  1009
+ ],
+ "scr-hostproc": [
+  1800,
+  1054
+ ],
+ "scr-opswall": [
+  1800,
+  1013
+ ],
+ "scr-alerts": [
+  1800,
+  893
+ ],
+ "scr-quote-biz": [
+  1800,
+  929
+ ],
+ "scr-svcs": [
+  1800,
+  536
+ ],
+ "scr-collect": [
+  1800,
+  1152
+ ],
+ "scr-runs": [
+  1800,
+  1152
+ ],
+ "scr-forced": [
+  1800,
+  902
+ ],
+ "scr-trading": [
+  1800,
+  1152
+ ],
+ "scr-login": [
+  1200,
+  975
+ ],
+ "scr-tm-tracks5": [
+  1800,
+  977
+ ],
+ "scr-risk-card": [
+  494,
+  400
+ ],
+ "sb-1": [
+  1400,
+  560
+ ],
+ "sb-2": [
+  1400,
+  560
+ ],
+ "sb-3": [
+  1400,
+  560
+ ],
+ "sb-4": [
+  1400,
+  560
+ ],
+ "sb-5": [
+  1400,
+  560
+ ],
+ "sb-6": [
+  1400,
+  560
+ ],
+ "prop-dash": [
+  1400,
+  582
+ ],
+ "prop-board": [
+  1400,
+  894
+ ],
+ "prop-tm": [
+  1400,
+  894
+ ],
+ "prop-flame": [
+  1400,
+  391
+ ],
+ "wordmark-teal": [
+  1174,
+  432
+ ],
+ "wordmark-white": [
+  1174,
+  432
+ ]
+}

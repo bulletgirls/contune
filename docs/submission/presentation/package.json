@@ -1,0 +1,22 @@
+{
+  "name": "eum-presentation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "이음(E:UM) 결과 발표 자료 생성기",
+  "scripts": {
+    "build": "node build.js",
+    "pdf": "python3 tools/render.py ../eum-presentation.pptx ../eum-presentation.pdf",
+    "assets": "node tools/prepare_assets.js"
+  },
+  "dependencies": {
+    "pptxgenjs": "4.0.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-icons": "5.7.0",
+    "sharp": "0.35.5"
+  },
+  "devDependencies": {
+    "@fontsource/hahmlet": "5.3.0",
+    "@fontsource/ibm-plex-mono": "5.3.0"
+  }
+}

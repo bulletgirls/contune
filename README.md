@@ -44,6 +44,7 @@
 | [pipeline_plan.md](pipeline_plan.md) | **카드 47장의 등급·우선 세션·선행** (파이프라인의 기준) |
 | [pipeline/ORCHESTRATOR.md](pipeline/ORCHESTRATOR.md) | 자율 오케스트레이터 지시문. 도구: `pipeline/dag.py`(상태), `split_cards.py`(카드 → `specs/<ID>.md`), `setup_worktrees.sh` |
 | [docs/submission/eum-proposal.pdf](docs/submission/eum-proposal.pdf) | 서류 심사 기획서 "이음"(외부 심사위원용, A4 가로 15쪽). 원본은 같은 폴더의 `eum-proposal.html` |
+| [docs/submission/eum-presentation.pdf](docs/submission/eum-presentation.pdf) | 결과 발표 자료(26장: 본편 21 + 부록 5). 심사 기준(완성도·업무 활용성·개선 효과)별 구성, 실제 화면 캡처와 2026-11-12 재실행 수치. 편집용은 같은 폴더의 `eum-presentation.pptx`(발표자 노트 포함), 원본과 수치의 출처는 [presentation/](docs/submission/presentation/README.md) |
 
 ## 현재 상태
 
