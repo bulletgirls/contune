@@ -15,6 +15,7 @@ cd "$ROOT"
 
 # LLM 설정(카드 N·Q): deploy/.env.local(커밋하지 않는 파일)이 있으면 읽어 dev 매니저와 compose에 넘긴다.
 #   EUM_LLM=anthropic + ANTHROPIC_API_KEY=…  |  EUM_LLM=claude-cli(+ compose면 CLAUDE_CODE_OAUTH_TOKEN=…, EUM_CLAUDE_CLI=1)
+#   EUM_CODE_LLM=off|snippets|tools(dev, 비면 tools): 종료 보고서 분석 때 LLM에 코드를 보내는 범위
 if [ -f deploy/.env.local ]; then set -a; . deploy/.env.local; set +a; fi
 
 EUM_URL="${EUM_URL:-http://localhost:8080}"

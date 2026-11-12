@@ -205,7 +205,7 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 	if *cfgPath == "" {
 		// 수집 설정(05 §17): dev는 데이터 폴더 안에 두고 화면에서 고칠 수 있게 켠다.
 		cfg.Collect = collect.Config{Dir: filepath.Join(cfg.Data, "collect"), Enabled: true}
-		cfg.LLM = devLLM(os.Getenv) // AI 초안(카드 N): 설정 파일 없이 띄울 때는 환경변수로 켠다
+		cfg.LLM = devLLM(os.Getenv)   // AI 초안(카드 N): 설정 파일 없이 띄울 때는 환경변수로 켠다
 		cfg.Code = devCode(os.Getenv) // 소스 근거(카드 Q): 작업 폴더의 demo/를 업무 코드 저장소로
 	}
 
