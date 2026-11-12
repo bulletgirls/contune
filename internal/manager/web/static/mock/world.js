@@ -19,26 +19,27 @@ const GROUPS = [
   ['채널', 'gw', 2, 6],
   ['채널', 'ext', 1, 6],
   ['매매체결', 'match', 2, 8],
-  ['매매통계', 'dw', 1, 5],
-  ['정보분배', 'feed', 2, 6],
-  ['지수산출', 'idx', 1, 3],
+  ['매매통계', 'dw', 2, 5],
+  ['정보분배', 'feed', 3, 6],
+  ['지수산출', 'idx', 2, 3],
   ['청산결제', 'settle', 1, 4],
   ['청산결제', 'batch', 2, 4],
   ['rds', 'rds', 1, 4],
 ];
 
-// 업무 시뮬레이터(카드 U §2, deploy/fleet.yaml stages): 이 서버가 biz.<name>.* 서버 지표를 낸다
-export const STAGE_HOSTS = { 'gw-02': 'channel', 'dw-01': 'stats', 'idx-01': 'index', 'settle-01': 'clearing', 'rds-01': 'rds' };
+// 흐름 업무 여섯(카드 V §2)은 실제 서버 여섯이 낸다. 체결(match-01)·시세(feed-01)는 biz.order.*·biz.quote.*,
+// 나머지는 이 서버가 biz.<name>.* 를 낸다(signal.js STAGES)
+export const STAGE_HOSTS = { 'gw-01': 'channel', 'dw-01': 'stats', 'idx-01': 'index', 'feed-02': 'dist' };
 
 const ID2 = (n) => String(n).padStart(2, '0');
 
 function buildHosts() {
-  const real = { 'match-01': '매매체결', 'gw-01': '채널', 'batch-01': '청산결제', 'feed-01': '정보분배' };
+  const real = { 'match-01': '매매체결', 'gw-01': '채널', 'batch-01': '청산결제', 'feed-01': '정보분배', 'feed-02': '정보분배', 'idx-01': '지수산출', 'dw-01': '매매통계' };
   const list = [];
   for (const [group, prefix, from, to] of GROUPS) {
     const ids = [];
     for (let n = from; n <= to; n++) ids.push(`${prefix}-${ID2(n)}`);
-    for (const [rid, rg] of Object.entries(real)) if (rg === group && rid.startsWith(prefix + '-')) ids.unshift(rid);
+    ids.unshift(...Object.entries(real).filter(([rid, rg]) => rg === group && rid.startsWith(prefix + '-')).map(([rid]) => rid));
     for (const id of ids) {
       list.push({
         id,
@@ -471,8 +472,10 @@ export const PANELS = [
     tiles: [
       { title: '주문 유입량', signal: 'traffic', metric: 'biz.order.in_tps', agg: 'sum', unit: 'TPS', kpi: true },
       { title: '체결 처리량', signal: 'traffic', metric: 'biz.order.tps', agg: 'sum', unit: 'TPS' },
-      { title: '평균 응답 시간', signal: 'latency', metric: 'biz.order.latency_avg_ms', agg: 'max', unit: 'ms', warn: 20, crit: 100 },
-      { title: 'p99 응답 시간', signal: 'latency', metric: 'biz.order.latency_p99_ms', agg: 'max', unit: 'ms', warn: 50, crit: 200, kpi: true },
+      { title: 'RT 평균', signal: 'latency', metric: 'biz.order.latency_avg_ms', agg: 'max', unit: 'ms', warn: 20, crit: 100 },
+      { title: 'RT p99', signal: 'latency', metric: 'biz.order.latency_p99_ms', agg: 'max', unit: 'ms', warn: 50, crit: 200, kpi: true },
+      { title: 'TAT 평균', signal: 'latency', metric: 'biz.order.tat_avg_ms', agg: 'max', unit: 'ms', warn: 30, crit: 150 },
+      { title: 'TAT p99', signal: 'latency', metric: 'biz.order.tat_p99_ms', agg: 'max', unit: 'ms', warn: 80, crit: 300 },
       { title: '오류 로그 발생률', signal: 'errors', metric: 'log.error.count', agg: 'sum', unit: '건/초', warn: 1, crit: 5 },
       { title: '대기 큐', signal: 'saturation', metric: 'biz.order.queue', agg: 'sum', unit: '건', warn: 500, crit: 2000, kpi: true },
       { title: '히스토리 버퍼 사용률', signal: 'saturation', metric: 'biz.order.histbuf_pct', agg: 'max', unit: '%', warn: 70, crit: 90 },
@@ -480,38 +483,20 @@ export const PANELS = [
     ],
     charts: [
       { title: '처리량', unit: 'TPS', agg: 'sum', metrics: ['biz.order.in_tps', 'biz.order.tps'] },
-      { title: '응답 시간', unit: 'ms', agg: 'max', metrics: ['biz.order.latency_avg_ms', 'biz.order.latency_p99_ms'] },
+      { title: 'RT · TAT', unit: 'ms', agg: 'max', metrics: ['biz.order.latency_p99_ms', 'biz.order.tat_p99_ms'] },
       { title: '대기 큐', unit: '건', agg: 'sum', metrics: ['biz.order.queue'] },
       { title: '히스토리 버퍼 사용률', unit: '%', agg: 'max', metrics: ['biz.order.histbuf_pct'] },
     ],
     log_levels: ['error', 'warn'],
   },
-  {
-    id: 'stats',
-    title: '매매통계',
-    group: '매매통계',
-    tiles: [
-      { title: '체결 수신량', signal: 'traffic', metric: 'biz.stats.in_tps', agg: 'sum', unit: 'TPS' },
-      { title: '통계 반영량', signal: 'traffic', metric: 'biz.stats.out_tps', agg: 'sum', unit: 'TPS' },
-      { title: '평균 반영 지연', signal: 'latency', metric: 'biz.stats.latency_avg_ms', agg: 'max', unit: 'ms', warn: 500, crit: 2000 },
-      { title: '반영 지연 p99', signal: 'latency', metric: 'biz.stats.latency_p99_ms', agg: 'max', unit: 'ms', warn: 1000, crit: 5000 },
-      { title: '반영 대기', signal: 'saturation', metric: 'biz.stats.queue', agg: 'sum', unit: '건', warn: 10000, crit: 50000 },
-    ],
-    charts: [
-      { title: '처리량', unit: 'TPS', agg: 'sum', metrics: ['biz.stats.in_tps', 'biz.stats.out_tps'] },
-      { title: '지연', unit: 'ms', agg: 'max', metrics: ['biz.stats.latency_avg_ms', 'biz.stats.latency_p99_ms'] },
-      { title: '대기', unit: '건', agg: 'sum', metrics: ['biz.stats.queue'] },
-    ],
-    log_levels: ['error', 'warn'],
-  },
-  // panels/04-정보분배.yaml과 같다(파일 번호 순서: 01 채널 · 02 매매체결 · 03 매매통계 · 04 정보분배 · 05 지수산출 · 06 청산결제 · 07 rds)
+  // panels/*.yaml과 같다(카드 V §5, 파일 번호 순서: 01 채널 · 02 매매체결 · 03 시세 · 04 지수산출 · 05 분배 · 06 매매통계)
   {
     id: 'quote',
-    title: '정보분배',
+    title: '시세',
     group: '정보분배',
     tiles: [
       { title: '시세 수신량', signal: 'traffic', metric: 'biz.quote.recv_tps', agg: 'sum', unit: '건/초', kpi: true },
-      { title: '시세 송출량', signal: 'traffic', metric: 'biz.quote.sent_tps', agg: 'sum', unit: '건/초' },
+      { title: '시세 생성량', signal: 'traffic', metric: 'biz.quote.sent_tps', agg: 'sum', unit: '건/초' },
       { title: '1분 시세량', signal: 'traffic', metric: 'biz.quote.count_1m', agg: 'min', unit: '건/분', warn_below: 60000, crit_below: 10000, stale: '30s' },
       { title: '시세 지연 p99', signal: 'latency', metric: 'biz.quote.delay_p99_ms', agg: 'max', unit: 'ms', warn: 100, crit: 500, kpi: true },
       { title: '평균 시세 지연', signal: 'latency', metric: 'biz.quote.delay_avg_ms', agg: 'max', unit: 'ms', warn: 50, crit: 250 },
@@ -534,14 +519,14 @@ export const PANELS = [
     title: '지수산출',
     group: '지수산출',
     tiles: [
-      { title: '체결 입력', signal: 'traffic', metric: 'biz.index.in_tps', agg: 'sum', unit: 'TPS' },
+      { title: '시세 입력', signal: 'traffic', metric: 'biz.index.in_tps', agg: 'sum', unit: '건/초' },
       { title: '지수 송출량', signal: 'traffic', metric: 'biz.index.out_tps', agg: 'sum', unit: '건/초' },
       { title: '평균 산출 지연', signal: 'latency', metric: 'biz.index.latency_avg_ms', agg: 'max', unit: 'ms', warn: 300, crit: 1000 },
       { title: '산출 지연 p99', signal: 'latency', metric: 'biz.index.latency_p99_ms', agg: 'max', unit: 'ms', warn: 500, crit: 2000 },
       { title: '계산 대기', signal: 'saturation', metric: 'biz.index.queue', agg: 'sum', unit: '건', warn: 5000, crit: 20000 },
     ],
     charts: [
-      { title: '체결 입력', unit: 'TPS', agg: 'sum', metrics: ['biz.index.in_tps'] },
+      { title: '시세 입력', unit: '건/초', agg: 'sum', metrics: ['biz.index.in_tps'] },
       { title: '지수 송출', unit: '건/초', agg: 'sum', metrics: ['biz.index.out_tps'] },
       { title: '지연', unit: 'ms', agg: 'max', metrics: ['biz.index.latency_avg_ms', 'biz.index.latency_p99_ms'] },
       { title: '대기', unit: '건', agg: 'sum', metrics: ['biz.index.queue'] },
@@ -549,38 +534,41 @@ export const PANELS = [
     log_levels: ['error', 'warn'],
   },
   {
-    id: 'clearing',
-    title: '청산결제',
-    group: '청산결제',
+    id: 'dist',
+    title: '분배',
+    group: '정보분배',
     tiles: [
-      { title: '체결 수신량', signal: 'traffic', metric: 'biz.clearing.in_tps', agg: 'sum', unit: 'TPS' },
-      { title: '청산 처리량', signal: 'traffic', metric: 'biz.clearing.out_tps', agg: 'sum', unit: 'TPS' },
-      { title: '평균 처리 지연', signal: 'latency', metric: 'biz.clearing.latency_avg_ms', agg: 'max', unit: 'ms', warn: 1000, crit: 3000 },
-      { title: '처리 지연 p99', signal: 'latency', metric: 'biz.clearing.latency_p99_ms', agg: 'max', unit: 'ms', warn: 2000, crit: 6000 },
-      { title: '청산 대기', signal: 'saturation', metric: 'biz.clearing.queue', agg: 'sum', unit: '건', warn: 10000, crit: 50000 },
+      { title: '시세 수신량', signal: 'traffic', metric: 'biz.dist.in_tps', agg: 'sum', unit: '건/초' },
+      { title: '지수 수신량', signal: 'traffic', metric: 'biz.dist.index_tps', agg: 'sum', unit: '건/초' },
+      { title: '송출량', signal: 'traffic', metric: 'biz.dist.out_tps', agg: 'sum', unit: '건/초' },
+      { title: '평균 송출 지연', signal: 'latency', metric: 'biz.dist.latency_avg_ms', agg: 'max', unit: 'ms', warn: 20, crit: 100 },
+      { title: '송출 지연 p99', signal: 'latency', metric: 'biz.dist.latency_p99_ms', agg: 'max', unit: 'ms', warn: 50, crit: 200 },
+      { title: '주문 → 분배 p99', signal: 'latency', metric: 'biz.dist.e2e_p99_ms', agg: 'max', unit: 'ms', warn: 150, crit: 600 },
+      { title: '오류 로그 발생률', signal: 'errors', metric: 'log.error.count', agg: 'sum', unit: '건/초', warn: 1, crit: 5 },
+      { title: '송출 대기', signal: 'saturation', metric: 'biz.dist.queue', agg: 'sum', unit: '건', warn: 2000, crit: 10000 },
     ],
     charts: [
-      { title: '처리량', unit: 'TPS', agg: 'sum', metrics: ['biz.clearing.in_tps', 'biz.clearing.out_tps'] },
-      { title: '지연', unit: 'ms', agg: 'max', metrics: ['biz.clearing.latency_avg_ms', 'biz.clearing.latency_p99_ms'] },
-      { title: '대기', unit: '건', agg: 'sum', metrics: ['biz.clearing.queue'] },
+      { title: '처리량', unit: '건/초', agg: 'sum', metrics: ['biz.dist.in_tps', 'biz.dist.out_tps'] },
+      { title: '지연', unit: 'ms', agg: 'max', metrics: ['biz.dist.latency_avg_ms', 'biz.dist.latency_p99_ms', 'biz.dist.e2e_p99_ms'] },
+      { title: '송출 대기', unit: '건', agg: 'sum', metrics: ['biz.dist.queue'] },
     ],
     log_levels: ['error', 'warn'],
   },
   {
-    id: 'rds',
-    title: 'rds',
-    group: 'rds',
+    id: 'stats',
+    title: '매매통계',
+    group: '매매통계',
     tiles: [
-      { title: '쓰기 요청', signal: 'traffic', metric: 'biz.rds.in_tps', agg: 'sum', unit: '건/초' },
-      { title: '커밋 완료', signal: 'traffic', metric: 'biz.rds.out_tps', agg: 'sum', unit: '건/초' },
-      { title: '평균 커밋 지연', signal: 'latency', metric: 'biz.rds.latency_avg_ms', agg: 'max', unit: 'ms', warn: 20, crit: 100 },
-      { title: '커밋 지연 p99', signal: 'latency', metric: 'biz.rds.latency_p99_ms', agg: 'max', unit: 'ms', warn: 50, crit: 200 },
-      { title: '쓰기 대기', signal: 'saturation', metric: 'biz.rds.queue', agg: 'sum', unit: '건', warn: 5000, crit: 20000 },
+      { title: '체결 수신량', signal: 'traffic', metric: 'biz.stats.in_tps', agg: 'sum', unit: 'TPS' },
+      { title: '통계 반영량', signal: 'traffic', metric: 'biz.stats.out_tps', agg: 'sum', unit: 'TPS' },
+      { title: '평균 반영 지연', signal: 'latency', metric: 'biz.stats.latency_avg_ms', agg: 'max', unit: 'ms', warn: 500, crit: 2000 },
+      { title: '반영 지연 p99', signal: 'latency', metric: 'biz.stats.latency_p99_ms', agg: 'max', unit: 'ms', warn: 1000, crit: 5000 },
+      { title: '처리 적체', signal: 'saturation', metric: 'biz.stats.queue', agg: 'sum', unit: '건', warn: 5000, crit: 20000 },
     ],
     charts: [
-      { title: '처리량', unit: '건/초', agg: 'sum', metrics: ['biz.rds.in_tps', 'biz.rds.out_tps'] },
-      { title: '지연', unit: 'ms', agg: 'max', metrics: ['biz.rds.latency_avg_ms', 'biz.rds.latency_p99_ms'] },
-      { title: '대기', unit: '건', agg: 'sum', metrics: ['biz.rds.queue'] },
+      { title: '처리량', unit: 'TPS', agg: 'sum', metrics: ['biz.stats.in_tps', 'biz.stats.out_tps'] },
+      { title: '지연', unit: 'ms', agg: 'max', metrics: ['biz.stats.latency_avg_ms', 'biz.stats.latency_p99_ms'] },
+      { title: '처리 적체', unit: '건', agg: 'sum', metrics: ['biz.stats.queue'] },
     ],
     log_levels: ['error', 'warn'],
   },
