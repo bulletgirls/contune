@@ -16,6 +16,7 @@ func init() {
 }
 
 // openai는 OpenAI 호환 /chat/completions 엔드포인트다(net/http만 쓴다).
+// 도구 호출(ToolLLM)은 구현하지 않는다(카드 Q: 도구 탐색은 anthropic만, 여기는 토막만 보내는 한 번 묻기).
 type openai struct {
 	baseURL, model, apiKey string
 	client                 *http.Client
