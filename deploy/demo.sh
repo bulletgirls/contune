@@ -33,7 +33,9 @@ WARMUP_FLOWS="ext-send-margin ext-send-bank ext-send-sec ext-recv-bank ext-recv-
 
 say() { echo "[demo:$1] $2"; }
 die() { echo "demo.sh: $*" >&2; exit 1; }
-compose() { docker compose -f "$EUM_COMPOSE" "$@"; }
+# 컨테이너는 이 PC 사용자 uid로 돈다(바인드 마운트한 flows 등에 쓸 수 있게, docker-compose.yml의 user)
+# (id -g는 sg docker로 돌리면 docker 그룹이 나오므로 저장소 폴더의 주인을 쓴다)
+compose() { EUM_UID="${EUM_UID:-$(stat -c %u "$ROOT")}" EUM_GID="${EUM_GID:-$(stat -c %g "$ROOT")}" docker compose -f "$EUM_COMPOSE" "$@"; }
 # acurl: 세션 쿠키를 읽고 쓰는 curl. API를 부르는 curl은 모두 이것을 쓴다.
 acurl() { curl -b "$COOKIES" -c "$COOKIES" "$@"; }
 get() { acurl -fsS "$API/$1"; }
