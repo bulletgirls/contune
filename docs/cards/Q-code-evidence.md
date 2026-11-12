@@ -119,6 +119,31 @@ LLM 답 스키마(더한 것): `"code_refs": [{"file","start","end","note"}]`(�
 6. mock: ① NULL 건에 토막 둘(`book_insert`·`match_order`)·버전 일치·근거 source, ③ killed.run 건은 토막 없음. analyze(mock)는 code_refs·fix·via tools·read를 돌려주고, `{answer}`는 JSON이면 통과·아니면 422.
 7. 화면 말은 꼭 필요한 것만(안내 문장 대신 ⓘ, 한 단어 한 뜻). 확인: `?mock=1`에서 밝음·어두움·390px, 콘솔 오류 0(개발 PC: node는 `~/.local/eum-tools`, headless chrome).
 
-## 4. 결과
+## 4. 결과 (11-12)
 
-(진행 뒤 채운다)
+여섯 레인을 병렬로 만들고 `card-q`에 합쳤다. `go test ./internal/manager/...` 통과.
+
+| 레인 | 한 일 · 정한 것 |
+|---|---|
+| Q-A | `coderepo`: 함수 색인(중괄호 언어·셸·파이썬), Find·Read·Grep·History·Files·Version, 경로 가두기·기본 제외. `demo/build.sh`가 `builds.json`을 남긴다. 색인은 휴리스틱이라 C++ 템플릿 기본값·K&R 서명은 놓칠 수 있다 |
+| Q-B | 프롬프트에 코드 토막(묶음 24KB + 코드 40KB, 넘으면 강조 줄 둘레), `code_refs`·`fix` 검사(보낸 범위 안), 도구 다섯(`find_function`·`read_file`·`search_text`·`list_files`·`history`), 한도 200줄·20번·200KB·12단계. 붙여넣기와 도구 탐색의 답은 앞뒤 글을 봐준다 |
+| Q-C | `anthropic.CompleteTools`(SDK 도구 러너, `tools_effort` 기본 medium, 캐시 표시). 실제 API 호출은 키가 없어 못 함 |
+| Q-D | 토막 고르기(칸 → 오류 문구 → 프로파일 1위), 근거 `source`, analyze 갈래(붙여넣기 422·413, 도구 탐색 240초·실패하면 토막만으로 다시), 감사 글. 저장소가 꺼지면 묶음이 예전과 바이트까지 같다 |
+| Q-E | 소스 카드, LLM 초안의 코드 근거·고칠 방향·읽은 코드, 서랍의 답 붙여넣기, `분석 중… n초` |
+| Q-F | `claude-cli`: `claude -p`에 내장 도구·설정을 끄고, 도구 탐색은 호출 동안만 여는 loopback MCP 서버(토큰은 환경으로). 컨테이너는 이미지에 CLI(`EUM_CLAUDE_CLI=1`)와 `CLAUDE_CODE_OAUTH_TOKEN` |
+
+통합에서 더한 것: 실제 `demo/`로 잇는 테스트(`exits/realcode_test.go`), 호출 칸은 안쪽 함수를 **부르는 줄**을 이름으로 찾아 강조(디버그 정보가 없어도 긴 함수의 그 줄이 토막에 든다), 시연 설정의 `code` 절, compose·`demo.sh`의 LLM 변수 전달(`deploy/.env.local`).
+
+리허설(매니저만 별도 포트, `EUM_LLM=claude-cli`, 실제 Claude CLI 2.1.310, 시연 설정 그대로 `claude-opus-5-5`·effort low):
+
+- `matching_svc` SIGSEGV: 토막 4곳·버전 일치. 도구 탐색 15초. 초안 "book_insert에서 NULL 역참조(주소 0x8): rate 파일이 켠 결함 스위치 fault_armed 경로" — `cold_head`는 calloc만 해 NULL, 119행에서 `head[1].price`를 읽어 0x8, `fault_armed`는 rate 파일의 `crash`가 켠다. 코드 근거 4곳(117–120, 225, 168–181, 136–143), 더 읽은 곳 3.
+- `quote_svc` 종료 코드 1: 출력 끝 줄의 문구로 소스를 찾음. 도구 탐색 16초. 초안 "quotes 저널 생성 실패(ENOSPC)…", 코드 근거 `quote_svc.c:333`·`flow.h:105–108`.
+- 붙여넣기 성공·422, 조회 계정 403, 감사 글, 화면(밝음·어두움, 콘솔 오류 0) 확인.
+
+남은 것:
+
+- 실제 Claude API(`anthropic`) 도구 탐색과 컨테이너 안의 CLI 호출은 키·토큰이 없어 확인하지 못했다(컨테이너에서 CLI가 뜨는 것까지 확인).
+- 시연 빌드에 `-g`가 없어 죽은 줄 자체는 칠해지지 않는다(호출 칸의 부르는 줄, LLM 코드 근거를 누른 줄은 칠해진다).
+- `demo/matching_svc.c`의 주석 `시연 결함`·`결함 주소 0x8`이 토막에 그대로 보인다(LLM이 주석을 읽는다).
+- 컨테이너는 붙인 폴더에 git 기록이 없어 버전이 늘 `확인 안 됨`.
+- 390px, 버전 `다름`, `새 빌드 첫 종료` 장면은 mock으로만 봤다.

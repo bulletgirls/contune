@@ -419,7 +419,7 @@ export async function render(root, params) {
       el('span', { class: `ex-vtag ${esc(cv.state || '')}`, text: VER_TEXT[cv.state] || cv.state || '확인 안 됨', title: cv.note || '' }),
       cv.note ? info(cv.note) : null) : null;
     const ch = el('div', { class: 'ex-ch' }, el('h3', { class: 'sec', text: '소스' }),
-      info('저장소에서 찾은 코드. 왼쪽은 파일의 줄 번호, 칠한 줄은 죽은 곳(디버그 정보의 줄)이나 출력 문구가 나온 줄. 지금 저장소 폴더의 코드라 죽은 실행 파일과 버전이 다를 수 있다'),
+      info('저장소에서 찾은 코드. 왼쪽은 파일의 줄 번호, 칠한 줄은 죽은 곳(디버그 정보의 줄), 안쪽 함수를 부르는 줄, 출력 문구가 나온 줄. 지금 저장소 폴더의 코드라 죽은 실행 파일과 버전이 다를 수 있다'),
       el('span', { class: 'ex-sub', text: `${code.length}곳` }),
       firstLine ? el('span', { class: 'ex-sub ex-warn', text: '새 빌드 첫 종료', title: firstLine }) : null,
       el('span', { class: 'grow' }), ver);

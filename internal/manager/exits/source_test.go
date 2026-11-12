@@ -241,8 +241,14 @@ func TestSourceFrames(t *testing.T) {
 				t.Errorf("첫 토막 %+v", p.Code[0])
 			}
 			finds, greps, _ := repo.calls()
-			if finds[0] != "book_insert@/build/demo/matching_svc.c" || len(greps) != 0 {
-				t.Errorf("디버그 정보 파일을 Find에: %v, 칸이 있으면 Grep 없음: %v", finds, greps)
+			phrase := 0 // 칸이 있으면 문구는 찾지 않는다. 남는 Grep은 호출 칸의 "부르는 줄" 찾기(이름 + "(")뿐이다
+			for _, g := range greps {
+				if !strings.HasSuffix(g, "(") {
+					phrase++
+				}
+			}
+			if finds[0] != "book_insert@/build/demo/matching_svc.c" || phrase != 0 {
+				t.Errorf("디버그 정보 파일을 Find에: %v, 칸이 있으면 문구 Grep 없음: %v", finds, greps)
 			}
 			if got := set.procs[0]; got != (coderepo.Proc{Comm: "matching_svc", Exe: "/opt/bin/matching_svc", BuildID: "abcd1234ef567890"}) {
 				t.Errorf("For에 준 프로세스 %+v", got)

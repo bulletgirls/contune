@@ -138,6 +138,7 @@ func (k *picker) frames(r model.ExitReport) {
 		return
 	}
 	name, crash := exeName(r), true
+	inner := "" // 바로 안쪽 앱 칸의 함수(이 칸이 부른 것). 모르면 ""
 	for i, f := range r.Core.Frames {
 		if k.full() {
 			return
@@ -145,13 +146,16 @@ func (k *picker) frames(r model.ExitReport) {
 		if f.Module != name {
 			continue
 		}
-		why := fmt.Sprintf(whyCall, i)
+		why, caller := fmt.Sprintf(whyCall, i), true
 		if crash { // 첫 앱 칸이 죽은 곳이다(그 칸의 이름을 몰라도)
-			why, crash = fmt.Sprintf(whyCrash, i), false
+			why, crash, caller = fmt.Sprintf(whyCrash, i), false, false
 		}
+		callee := inner
+		inner = ""
 		if f.Func == "" || f.Func == "??" {
 			continue
 		}
+		inner = f.Func
 		locs := k.rd.Find(k.ctx, f.Func, f.File)
 		if len(locs) == 0 {
 			continue
@@ -159,6 +163,9 @@ func (k *picker) frames(r model.ExitReport) {
 		l, mark := locs[0], 0
 		if f.Line >= l.Start && f.Line <= l.End { // 범위 밖이면 이름만 같은 다른 함수일 수 있어 강조하지 않는다
 			mark = f.Line
+		}
+		if mark == 0 && caller { // 디버그 정보가 없으면 안쪽 함수를 부르는 줄을 이름으로 찾는다(긴 함수도 그 줄이 토막에 들게)
+			mark = k.callSite(l, callee)
 		}
 		if sn, ok := k.read(l.Repo, l.File, l.Start, l.End, mark, why); ok {
 			if sn.Func == "" {
@@ -168,6 +175,31 @@ func (k *picker) frames(r model.ExitReport) {
 		}
 	}
 }
+
+// callSite는 함수 l 안에서 inner를 부르는 줄이다. 이름으로 찾는 것이라 한 곳뿐일 때만 준다(없거나 여럿이거나 너무 많으면 0).
+func (k *picker) callSite(l coderepo.Loc, inner string) int {
+	if inner == "" {
+		return 0
+	}
+	hits := k.rd.Grep(k.ctx, inner+"(", callGrepMax)
+	if len(hits) >= callGrepMax {
+		return 0
+	}
+	line := 0
+	for _, h := range hits {
+		if h.Repo != l.Repo || h.File != l.File || h.Start < l.Start || h.Start > l.End {
+			continue
+		}
+		if line != 0 && h.Start != line {
+			return 0
+		}
+		line = h.Start
+	}
+	return line
+}
+
+// callGrepMax는 부르는 줄을 찾을 때 받는 Grep 결과 한도다. 다 찼으면 흔한 이름이라 믿지 않는다.
+const callGrepMax = 50
 
 // phrases는 출력 끝 줄(끝 줄부터)·자기 오류 로그(E에 가까운 것부터)의 문구가 나온 곳을 찾는다. 곳마다 첫 하나만.
 func (k *picker) phrases(tail, ownErrs []string) {

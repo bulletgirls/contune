@@ -190,7 +190,7 @@ type CodeSnippet struct {
 	End     int      `json:"end"`               // 끝 줄 번호(포함)
 	Func    string   `json:"func,omitempty"`    // 이 토막의 함수 이름(알 때)
 	Why     string   `json:"why"`               // 뽑은 까닭(화면 말): "죽은 곳 #0", "호출 #1", "출력 끝 줄의 문구"
-	Mark    int      `json:"mark,omitempty"`    // 강조할 줄 번호(디버그 정보의 줄, 문구가 나온 줄). 0이면 없음
+	Mark    int      `json:"mark,omitempty"`    // 강조할 줄 번호(디버그 정보의 줄, 안쪽 함수를 부르는 줄, 문구가 나온 줄). 0이면 없음
 	Lines   []string `json:"lines"`             // Start부터의 줄(MaskSecrets를 거친 것)
 	Cut     bool     `json:"cut,omitempty"`     // 줄 한도에서 잘림
 	Changes []string `json:"changes,omitempty"` // 이 범위의 최근 변경 "2026-11-11 136f027 T6: …"(git일 때, 최대 5)

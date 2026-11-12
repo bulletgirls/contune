@@ -118,6 +118,16 @@ func TestRealCodeEndToEnd(t *testing.T) {
 	if d.Pack.Code[1].Func != "match_order" || !strings.HasPrefix(d.Pack.Code[1].Why, "호출") {
 		t.Fatalf("둘째 토막: %s %s", d.Pack.Code[1].Func, d.Pack.Code[1].Why)
 	}
+	// 호출 칸은 디버그 정보가 없어도 안쪽 함수를 부르는 줄을 강조하고, 긴 함수(main)도 그 줄이 토막에 든다.
+	if got, want := d.Pack.Code[1].Mark, lineOf(t, "return book_insert(o)"); got != want {
+		t.Fatalf("match_order의 강조 줄 %d, 원한 것 %d", got, want)
+	}
+	for i := 1; i < len(d.Pack.Code); i++ {
+		c, in := d.Pack.Code[i], d.Pack.Code[i-1].Func
+		if c.Mark == 0 || !strings.Contains(c.Lines[c.Mark-c.Start], in+"(") {
+			t.Fatalf("%s 토막(%d-%d, 강조 %d)에 %s를 부르는 줄이 없음", c.Func, c.Start, c.End, c.Mark, in)
+		}
+	}
 	if last := d.Pack.Evidence[len(d.Pack.Evidence)-1]; last.ID != model.EvSource || last.Facts["snippets"] < 2 {
 		t.Fatalf("끝 근거가 source가 아님: %+v", last)
 	}
