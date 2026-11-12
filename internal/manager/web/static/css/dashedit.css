@@ -133,3 +133,26 @@ body[data-page="dashedit"] #tree { display:none; }
 .de-nodes .de-qh .de-x:disabled { opacity:.35; cursor:default; }
 .de-nodes .de-from { gap:2px 10px; }
 .de-nodes .de-at { grid-template-columns:1.2fr 1fr 1fr; }
+
+/* AI 초안(카드 N): 머리 꼬리표 · 바뀐 것 · 되돌리기 | 문제 칸 | 모달(플로우 편집기 ed-modal 모양) */
+.de-dr { display:inline-flex; align-items:center; gap:4px 8px; flex-wrap:wrap; min-width:0; }
+.de-dr[hidden], .de-probs[hidden] { display:none; }
+.de-draft { font-size:12px; border:1px solid var(--st-gated); color:var(--st-gated); border-radius:10px; padding:0 8px; cursor:help; white-space:nowrap; }
+.de-diff { font-size:12px; color:var(--t2); white-space:nowrap; cursor:default; }
+.de-i { color:var(--t3); font-size:12px; cursor:help; }
+.de-probs { flex:none; max-height:140px; overflow:auto; border:1px solid var(--line); border-left:3px solid var(--crit); border-radius:8px; background:var(--surface); padding:6px 10px; }
+.de-probs ul { margin:4px 0 0; padding:0; list-style:none; }
+.de-probs li { display:flex; gap:8px; align-items:baseline; padding:2px 4px; border-radius:4px; color:var(--crit); font-size:13px; }
+.de-probs li.link { cursor:pointer; }
+.de-probs li.link:hover, .de-probs li.link:focus-visible { background:var(--bg); outline:none; }
+.de-probs li code { flex:none; font-size:12px; color:var(--t1); background:var(--bg); border:1px solid var(--line); border-radius:3px; padding:0 4px; }
+.de-ai { max-height:90vh; overflow:auto; }
+.de-ai [hidden] { display:none !important; }
+.de-ai .de-ain { min-height:96px; }
+.de-aimsg { white-space:pre-line; }
+.de-aimsg.bad { color:var(--crit); }
+.de-aiout { width:100%; resize:vertical; font:12px/1.5 ui-monospace,Consolas,monospace; background:var(--bg); user-select:text; }
+.de-aibtns { flex-wrap:wrap; align-items:center; margin-top:4px; }
+.de-aibtns .tip { padding:0 4px; }
+.de-aibtns .tip .tipbox { left:auto; right:0; top:auto; bottom:1.6em; }
+@media (max-width:480px) { .de-aibtns .de-grow { flex-basis:100%; height:0; } }

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -75,29 +74,11 @@ func (h *handler) draft(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 502, map[string]any{"error": err.Error()})
 		return
 	}
-	yamlText, explain := splitYAML(out)
+	yamlText, explain := llm.SplitYAML(out)
 	flow, errs := h.check(yamlText, req.Board)
 	writeJSON(w, 200, map[string]any{
 		"available": true, "yaml": yamlText, "flow": toJSON(flow), "errors": errs, "explain": explain,
 	})
-}
-
-var fence = regexp.MustCompile("(?s)```(?:ya?ml)?[ \\t]*\\n(.*?)```")
-
-// splitYAML은 ```yaml 블록(없으면 전체)과 YAML 밖의 설명 첫 줄을 돌려준다.
-func splitYAML(out string) (string, string) {
-	m := fence.FindStringSubmatchIndex(out)
-	if m == nil {
-		return strings.TrimSpace(out), ""
-	}
-	y := strings.TrimSpace(out[m[2]:m[3]])
-	rest := out[:m[0]] + "\n" + out[m[1]:]
-	for _, ln := range strings.Split(rest, "\n") {
-		if ln = strings.TrimSpace(ln); ln != "" {
-			return y, ln
-		}
-	}
-	return y, ""
 }
 
 // check는 B8의 validate와 같은 순서로 초안을 검사한다.

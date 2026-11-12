@@ -187,7 +187,7 @@ func New(cfg Config) (*Manager, error) {
 	svc.Mount(m.mux)
 	dash.Mount(m.mux, dash.Deps{ // 사용자 보드(07, 카드 W)
 		Dir: cfg.Dashboards, ReadOnly: cfg.DashboardsReadOnly, Metrics: m.metrics, State: m.state, Live: lv,
-		Panels: panels, Catalog: model.Catalog(), Loc: loc, Now: now,
+		Panels: panels, Catalog: model.Catalog(), LLM: lm, Flows: reg.List, Loc: loc, Now: now,
 	})
 	m.sched.Mount(m.mux)
 	col.Mount(m.mux)

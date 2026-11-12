@@ -10,6 +10,7 @@
 //	GET    /api/v1/dashboards/metrics      {metrics: [DashMetric]}                                           W-B metrics.go
 //	GET    /api/v1/dashboards/{id}/data    ?from=&to=&g= → DashData                                          W-B data.go
 //	POST   /api/v1/dashboards/data         {dash, from, to, g} → DashData | 400(미리보기, 조회 역할)         W-B data.go
+//	POST   /api/v1/assist/dash             DashAssistReq → DashAssistResp | 400 | 403(편집 꺼짐) | 502(LLM 오류)  N-A assist.go
 package dash
 
 import (
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"eum/internal/manager/live"
+	"eum/internal/manager/llm"
 	"eum/internal/manager/query"
 	"eum/internal/manager/store"
 	"eum/internal/model"
@@ -38,6 +40,8 @@ type Deps struct {
 	Live     *live.Cache
 	Panels   *query.PanelBook // Ref 타일·kpi·템플릿·지표 목록(알림 감시자와 같은 것). nil이면 패널 없음
 	Catalog  []model.MetricGroup
+	LLM      llm.LLM             // 보드 AI 초안(카드 N). nil이면 none
+	Flows    func() []model.Flow // 배치판 목록(초안 프롬프트·참조 검사). nil이면 없음
 	Loc      *time.Location
 	Now      func() time.Time
 }
@@ -60,4 +64,5 @@ func Mount(mux *http.ServeMux, d Deps) {
 	mountTemplates(mux, h) // W-A
 	mountData(mux, h)      // W-B
 	mountMetrics(mux, h)   // W-B
+	mountAssist(mux, h)    // N-A
 }

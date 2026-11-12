@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 	"sync"
 )
 
@@ -61,4 +63,22 @@ type none struct{}
 func (none) Name() string { return "none" }
 func (none) Complete(ctx context.Context, req Request) (string, error) {
 	return "", ErrNotConfigured
+}
+
+var fence = regexp.MustCompile("(?s)```(?:ya?ml)?[ \\t]*\\n(.*?)```")
+
+// SplitYAML은 답에서 ```yaml 블록(없으면 전체)과 블록 밖 설명의 첫 줄을 돌려준다(플로우·보드 초안이 같이 쓴다).
+func SplitYAML(out string) (string, string) {
+	m := fence.FindStringSubmatchIndex(out)
+	if m == nil {
+		return strings.TrimSpace(out), ""
+	}
+	y := strings.TrimSpace(out[m[2]:m[3]])
+	rest := out[:m[0]] + "\n" + out[m[1]:]
+	for _, ln := range strings.Split(rest, "\n") {
+		if ln = strings.TrimSpace(ln); ln != "" {
+			return y, ln
+		}
+	}
+	return y, ""
 }

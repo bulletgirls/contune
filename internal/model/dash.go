@@ -234,3 +234,28 @@ type DashMetric struct {
 	Hosts    int      `json:"hosts"`              // 값을 보낸 서버 수(live)
 	Services []string `json:"services,omitempty"` // 값을 낸 서비스(live 주인 키에서, 이름 순)
 }
+
+// DashAssistReq는 보드 AI 초안 요청이다(POST /api/v1/assist/dash, 카드 N).
+//   - Text만(+Dash): LLM에 묻고 검사한 초안. Dash가 있으면 그 보드를 고치고, 없으면 새로 만든다
+//   - PromptOnly: LLM에 보낼 요청 그대로(System·Prompt)만 돌려준다. LLM이 없어도 된다(밖의 LLM에 붙여 넣게)
+//   - YAML: LLM 없이 검사만(밖의 LLM 답을 붙여 넣음). Text는 비어도 된다
+type DashAssistReq struct {
+	Text       string `json:"text"`
+	Dash       *Dash  `json:"dash,omitempty"` // 지금 편집 중인 정의(id·title·widgets…). 고치기의 바탕이자 id를 이어 쓴다
+	PromptOnly bool   `json:"prompt_only,omitempty"`
+	YAML       string `json:"yaml,omitempty"`
+}
+
+// DashAssistResp는 보드 AI 초안 응답이다. 초안은 저장하지 않는다(편집기에 채우고 사람이 저장한다).
+type DashAssistResp struct {
+	Available bool     `json:"available"`         // LLM이 연결됨(none이 아님)
+	Provider  string   `json:"provider"`          // LLM 이름(none·openai·anthropic…)
+	Message   string   `json:"message,omitempty"` // LLM이 없을 때 안내
+	System    string   `json:"system,omitempty"`  // PromptOnly: LLM에 보낼 시스템 글
+	Prompt    string   `json:"prompt,omitempty"`  // PromptOnly: LLM에 보낼 요청 글
+	YAML      string   `json:"yaml,omitempty"`    // 받은(또는 붙여 넣은) 정의 YAML
+	Dash      *Dash    `json:"dash,omitempty"`    // YAML을 읽은 정의. id는 요청 Dash의 id(없으면 ""), owner·updated_*는 비운다. 읽지 못하면 nil
+	Errors    []string `json:"errors"`            // 형식 검사(ValidateDash)·참조 검사 결과. 비면 그대로 저장할 수 있다
+	Explain   string   `json:"explain,omitempty"` // LLM이 붙인 설명 한 줄
+	Tries     int      `json:"tries,omitempty"`   // LLM에 물은 횟수(검사 실패 뒤 다시 물으면 2)
+}
