@@ -25,11 +25,11 @@ module.exports = async (d) => {
     const none = { type: 'none' };
     const head = (t) => ({ text: t, options: { bold: true, color: C.background1, fill: { color: C.accent1 }, fontSize: 12.5 } });
     const rows = [
-      ['폐쇄망', '외부 서비스·CDN 없이 동작합니다. 화면 라이브러리까지 실행 파일 안에 들어 있습니다.', '외부 의존성 4개, 빌드 단계 없는 화면'],
-      ['방화벽', '에이전트 → 매니저 한 방향으로만 연결합니다. 여는 포트는 매니저 1개입니다.', '서버 46대 구성이 포트 1개로 동작'],
-      ['기존 배치 자산', '셸 스크립트를 그대로 실행합니다. 스크립트가 nohup·setsid로 띄운 C 서비스도 같은 번호로 추적합니다.', '체결·시세 서비스(C, -O2 빌드) 추적'],
-      ['서버 부담', '함수 추적은 표본 방식(초당 49회)입니다. 추적 부하를 숨기지 않고 화면에 띄웁니다.', '부하 실측 약 3% (코어 1개 기준)'],
-      ['설치·자원', '실행 파일 1개(24MB)와 YAML 파일입니다. 저장은 파일 DB라 별도 DB 서버가 없습니다.', '46대 구성 전체가 메모리 약 120MB'],
+      ['폐쇄망', '외부 서비스·CDN 없이 동작합니다.\n화면 라이브러리까지 실행 파일 안에 들어 있습니다.', '외부 라이브러리 4개, 빌드 단계 없는 화면'],
+      ['방화벽', '에이전트 → 매니저 한 방향으로만 연결합니다.\n여는 포트는 매니저 1개입니다.', '서버 46대 구성이 포트 1개로 동작'],
+      ['기존 배치 자산', '셸 스크립트를 그대로 실행합니다.\nnohup·setsid로 띄운 C 서비스도 같은 번호로 추적합니다.', '체결·시세 서비스(C, -O2 빌드) 추적'],
+      ['서버 부담', '함수 추적은 표본 방식(초당 49회)입니다.\n추적 부하를 숨기지 않고 화면에 띄웁니다.', '부하 실측 약 3% (코어 1개 기준)'],
+      ['설치·자원', '실행 파일 1개(24MB)와 YAML 파일입니다.\n저장은 파일 DB라 별도 DB 서버가 없습니다.', '46대 구성 전체가 메모리 약 120MB'],
     ];
     const colW = [2.0, 6.25, CW - 8.25];
     s.addTable([
@@ -69,7 +69,7 @@ module.exports = async (d) => {
     const layers = [
       ['LuUserCheck', '화면: 누가 무엇을 할 수 있나', '로그인과 역할 3개(조회·운영·관리)를 둡니다. 다른 출처의 변경 요청과 반복된 로그인 실패를 막습니다.', ['역할 3개']],
       ['LuShieldCheck', '서버: 무엇이 실행될 수 있나', '매니저와 에이전트가 명령 허용 목록을 각각 검사합니다. 매니저가 뚫려도 서버는 정해진 명령만 실행합니다.', ['호스트별 토큰', 'TLS']],
-      ['LuScrollText', '기록: 누가 무엇을 했나', '실행·재실행·강제 종료·강제 OK와 로그인 실패까지 감사 기록 한 목록에 남고, CSV로 내려받습니다.', ['감사 기록']],
+      ['LuScrollText', '기록: 누가 무엇을 했나', '실행·재실행·강제 종료·강제 OK와 로그인 실패까지 감사 기록 한곳에 남고, CSV로 내려받습니다.', ['감사 기록']],
     ];
     for (let i = 0; i < layers.length; i++) {
       const [ic, title, body, tags] = layers[i];
@@ -96,7 +96,8 @@ module.exports = async (d) => {
       box(s, x, ry, 1.64, 0.34, { fill: C.background1, line: C.accent6, r: 0.06, name: '확인' });
       T(s, [{ text: t + '  ', options: { fontSize: 10.5, color: C.accent5 } }, { text: code, options: { bold: true, fontFace: MONO, fontSize: 11.5, color: C.accent3 } }], { x, y: ry, w: 1.64, h: 0.34, align: 'center', valign: 'middle' });
     });
-    screen(s, 'scr-audit', MX + lw + 0.3, y0, CW - lw - 0.3, { label: '감사 기록: 조작 33건, 로그인 실패 2건', url: '#audit', alt: '감사 기록 화면: 로그인 실패, 강제 OK, 수동 실행이 한 목록에' });
+    const ah = screen(s, 'scr-audit', MX + lw + 0.3, y0, CW - lw - 0.3, { label: '감사 기록: 조작 33건, 로그인 실패 2건', url: '#audit', alt: '감사 기록 화면: 로그인 실패, 강제 OK, 수동 실행이 한 목록에' });
+    T(s, '운영 계정의 강제 OK, 틀린 비밀번호 두 번, 수동 실행이 한 목록에 남은 실제 화면입니다.', { x: MX + lw + 0.3, y: y0 + ah + 0.06, w: CW - lw - 0.3, h: 0.28, fontSize: 11.5, color: C.accent5, valign: 'middle' });
   }
 
   // ── 13. 운영자가 직접 넓힌다 ───────────────────────────────────────────────
@@ -149,7 +150,7 @@ module.exports = async (d) => {
       ...ln([['      agg: max, unit: ms, ', K], ['warn: 50, crit: 200', H], [' }', K]]),
       ...ln([['  - { title: ', K], ['대기 큐', V], [', metric: ', K], ['biz.order.queue', V], [',', K]]),
       ...ln([['      agg: sum, unit: 건, ', K], ['warn: 500, crit: 2000', H], [' }', K]]),
-    ], { x: rx + 0.28, y: y0 + 0.2, w: rw - 0.5, h: 2.36, fontSize: 11, lineSpacingMultiple: 1.12, name: '패널 YAML' });
+    ], { x: rx + 0.28, y: y0 + 0.14, w: rw - 0.5, h: 2.44, fontSize: 11, lineSpacingMultiple: 1.12, valign: 'middle', name: '패널 YAML' });
     T(s, '이 몇 줄로 타일·기준선·알림이 생깁니다. 재시작 없이 [다시 읽기]로 반영됩니다.', { x: rx, y: y0 + 2.8, w: rw, h: 0.3, fontSize: 12.5, color: C.accent5, valign: 'middle' });
 
     T(s, '업무 지표를 붙이는 세 가지 길', { x: rx, y: y0 + 3.24, w: rw, h: 0.3, fontSize: 14, bold: true, valign: 'middle' });

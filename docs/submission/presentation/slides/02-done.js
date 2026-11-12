@@ -114,7 +114,7 @@ module.exports = async (d) => {
     const scenes = [
       ['한 화면 관제', '서버 46대·플로우 41개를 한 화면에'],
       ['플로우 실행', '병렬·합류·서버 넘기·재시도(시도 2)'],
-      ['주문 폭주', '유입 1,500 → 6,000건/초, 대기 큐 3,785건'],
+      ['주문 폭주', '유입 1,500 → 6,000건/초, 대기 큐 최대 6,031건'],
       ['위험 감지', '타일 알림에 이어 장애 위험도 100'],
       ['함수까지', '평시와 지연 구간 비교: book_insert 0% → 70%'],
       ['죽은 원인', '크래시 6초 뒤, 원인이 적힌 종료 보고서'],
@@ -150,11 +150,12 @@ module.exports = async (d) => {
     screen(s, 'scr-tm-profile', MX + 6.2, y, 6.13, { label: '② 프로파일: 두 구간의 함수 비교', url: '#svc/matching', alt: '플레임 그래프 A·B와 함수별 CPU 비중 비교 표' });
     // 왼쪽 틀 아래: 그 구간의 실측값
     const fy = y + h1 + 0.1;
-    const facts = [['유입', '1,500→6,000건/초'], ['p99 응답', '0.6→1,031ms'], ['대기 큐', '0→6,031건']];
-    facts.forEach(([k, v], i) => {
-      const fx = MX + i * 1.99;
-      box(s, fx, fy, 1.92, 0.32, { r: 0.06, name: '실측' });
-      T(s, [{ text: k + '  ', options: { color: C.accent5, fontSize: 10.5 } }, { text: v, options: { bold: true, fontSize: 11 } }], { x: fx, y: fy, w: 1.92, h: 0.32, align: 'center', valign: 'middle' });
+    const facts = [['유입', '1,500 → 6,000건/초', 2.34], ['p99 응답', '최대 1,031ms', 1.76], ['대기 큐', '최대 6,031건', 1.6]];
+    let fx = MX;
+    facts.forEach(([k, v, fw]) => {
+      box(s, fx, fy, fw, 0.32, { r: 0.06, name: '실측' });
+      T(s, [{ text: k + '  ', options: { color: C.accent5, fontSize: 10.5 } }, { text: v, options: { bold: true, fontSize: 11 } }], { x: fx, y: fy, w: fw, h: 0.32, align: 'center', valign: 'middle' });
+      fx += fw + 0.1;
     });
     // 결과 띠
     const by = 6.38;
@@ -180,15 +181,15 @@ module.exports = async (d) => {
         약속보다 더 만든 것 네 가지입니다.
         종료 보고서는 서비스가 죽은 직접 원인을 알려 줍니다. 시연에서는 크래시 6초 뒤에 "book_insert에서 NULL 역참조"라는 알림이 왔습니다. core 파일은 서버 밖으로 나가지 않습니다.
         장애 위험도는 같은 DB의 과거 장애 기록과 지표로 학습하는 참고 지표입니다. 판단을 대신하지 않고, 무엇부터 볼지 순서를 줍니다.
-        업무 흐름 보드는 업무 일곱 개를 상자와 화살표로 이어, 어느 업무에서 막혔는지 보여 줍니다.
+        업무 흐름 보드는 업무 패널 일곱 개를 상자와 화살표로 이어, 어느 업무에서 막혔는지 보여 줍니다.
         그리고 화면에서 작업을 구성하고, 강제 OK나 재실행 같은 조작을 할 수 있습니다. 모두 감사 기록에 남습니다.
       `,
     });
     const cellW = (CW - 0.3) / 2, cellH = 2.14, imgW = 3.3;
     const cells = [
       { title: '종료 보고서', sub: '서비스가 죽은 직접 원인', body: '서비스가 죽은 지 6초 뒤, 원인이 적힌 알림이 옵니다. core 파일은 서버 안에서 분석합니다.' },
-      { title: '장애 위험도', sub: '같은 DB로 학습하는 참고 지표', body: '과거 장애 기록으로 로지스틱 회귀를 학습합니다. 폭주 51초 뒤 위험(99)에 올랐습니다.', img: 'scr-risk-card' },
-      { title: '사용자 보드·업무 흐름', sub: '어느 업무에서 막혔나', body: '업무 패널 일곱 개를 상자와 화살표로 잇습니다. 보드는 YAML 파일 하나로 정의합니다.', img: 'scr-bizflow-peak' },
+      { title: '장애 위험도', sub: '같은 DB로 학습하는 참고 지표', body: '과거 장애 기록으로 로지스틱 회귀를 학습합니다. 폭주 51초 뒤 위험 단계에 올라 100까지 갔습니다.', img: 'scr-risk-card' },
+      { title: '사용자 보드·업무 흐름', sub: '어느 업무에서 막혔나', body: '업무 패널 7개를 상자와 화살표로 잇습니다. 보드는 YAML 파일 하나로 정의합니다.', img: 'scr-bizflow-peak' },
       { title: '화면에서 작업 구성', sub: '정의는 여전히 파일', body: '편집기는 허용 목록 안에서 YAML 파일을 씁니다. 재실행과 강제 종료 같은 조작은 감사 기록에 남습니다.', img: 'scr-editor' },
     ];
     cells.forEach((c, i) => {
@@ -223,7 +224,7 @@ module.exports = async (d) => {
     const tiles = [
       ['883', '테스트 통과', '하위 사례 포함 · 실패 0'],
       ['39', '패키지 통과', '테스트가 있는 패키지 전부'],
-      ['9단계', '개념 완결 E2E', '실제 perf로 함수 표본까지'],
+      ['9단계', '개념 완결 테스트', '기동부터 함수·SQL까지'],
       ['46대', '시연 규모', '그룹 7개 · 플로우 41개'],
     ];
     const tw = 2.66, th = 1.42;
@@ -234,7 +235,7 @@ module.exports = async (d) => {
       T(s, label, { x: x + 0.24, y: y + 0.76, w: tw - 0.48, h: 0.28, fontSize: 14, bold: true, valign: 'middle' });
       T(s, sub, { x: x + 0.24, y: y + 1.04, w: tw - 0.48, h: 0.26, fontSize: 11.5, color: C.accent5, valign: 'middle' });
     });
-    T(s, 'gofmt·go vet 지적 0건. 환경은 리눅스 4코어, 매니저 1 + 에이전트 4 + 모의 서버 42대입니다. 서버 자원은 모의 값, 부하는 합성 주문입니다.', { x: MX, y: 5.72, w: tw * 2 + 0.2, h: 0.9, fontSize: 12, color: C.accent5, lineSpacingMultiple: 1.15 });
+    T(s, 'gofmt·go vet 지적 0건. 환경은 리눅스 4코어이고, 서버 46대는 실제 에이전트 4대와 모의 서버 42대입니다. 서버 자원은 모의 값, 부하는 합성 주문입니다.', { x: MX, y: 5.72, w: tw * 2 + 0.2, h: 0.9, fontSize: 12, color: C.accent5, lineSpacingMultiple: 1.15 });
 
     const rx = MX + tw * 2 + 0.2 + 0.4, rw = L.W - MX - rx;
     T(s, '발표 준비 때 다시 실행해 확인한 장면', { x: rx, y: 2.42, w: rw, h: 0.32, fontSize: 16, bold: true, valign: 'middle' });
