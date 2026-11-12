@@ -1,0 +1,105 @@
+/* 관제 AI(상황 브리핑 · 원인 추적). 모든 AI 출력은 같은 표시(✦, 보라 강조)를 쓴다. */
+.dash-main { display:flex; flex-direction:column; gap:12px; }
+.ai-mark { color:var(--ai); font-weight:700; }
+
+/* 상황 브리핑 카드 */
+.ai-brief { position:relative; background:var(--surface); border:1px solid color-mix(in srgb, var(--ai) 35%, var(--line)); border-radius:8px; padding:10px 14px 12px 16px; overflow:hidden; }
+.ai-brief::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:linear-gradient(180deg, var(--ai), color-mix(in srgb, var(--ai) 30%, var(--accent))); }
+.ai-brief.lv-crit { border-color:color-mix(in srgb, var(--crit) 40%, var(--line)); }
+.ai-h { display:flex; align-items:center; gap:8px; min-width:0; }
+.ai-h h2 { font-size:13px; font-weight:700; margin:0; color:var(--ai-ink); letter-spacing:.2px; }
+.ai-h .ai-mark { font-size:15px; }
+.ai-at { font-size:12px; color:var(--t3); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.ai-by { font-size:11px; padding:0 7px; border-radius:9px; white-space:nowrap; border:1px solid currentColor; line-height:18px; }
+.ai-by.llm { color:var(--on-accent); background:var(--ai); border-color:var(--ai); }
+.ai-by.pend { color:var(--ai); animation:ai-pulse 1.2s ease-in-out infinite; }
+.ai-by.rule, .ai-by.wait { color:var(--t3); }
+.ai-by.err { color:var(--warn); }
+@keyframes ai-pulse { 50% { opacity:.45; } }
+@media (prefers-reduced-motion: reduce) { .ai-by.pend { animation:none; } }
+
+.ai-body { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; margin-top:6px; }
+.ai-brief.has-trace .ai-body { grid-template-columns:minmax(0,1.35fr) minmax(300px,1fr); }
+@media (max-width:1100px) { .ai-brief.has-trace .ai-body { grid-template-columns:minmax(0,1fr); } }
+.ai-head { margin:0 0 4px; font-size:17px; font-weight:700; line-height:1.4; color:var(--t1); }
+.ai-head.lv-crit { color:var(--crit); } .ai-head.lv-warn { color:var(--warn); }
+.ai-lines { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:3px; }
+.ai-lines li { position:relative; padding-left:14px; font-size:13px; line-height:1.55; color:var(--t1); }
+.ai-lines li::before { content:"•"; position:absolute; left:2px; color:var(--t3); }
+.ai-lines li.lv-crit::before { content:"■"; font-size:9px; top:3px; color:var(--crit); }
+.ai-lines li.lv-warn::before { content:"▲"; font-size:9px; top:3px; color:var(--warn); }
+.ai-t { margin-right:6px; }
+.ai-refs { display:inline-flex; flex-wrap:wrap; gap:4px; vertical-align:1px; }
+.ai-ref { font-size:11px; line-height:17px; padding:0 6px; border-radius:4px; background:var(--ai-soft); color:var(--ai-ink); border:1px solid color-mix(in srgb, var(--ai) 25%, transparent); text-decoration:none; white-space:nowrap; max-width:180px; overflow:hidden; text-overflow:ellipsis; }
+a.ai-ref:hover { border-color:var(--ai); }
+.ai-ref.k-trace { background:var(--ai); color:var(--on-accent); border-color:var(--ai); cursor:pointer; }
+.ai-next { margin-top:6px; font-size:12px; color:var(--t2); display:flex; gap:8px; align-items:baseline; }
+.ai-next b { color:var(--t3); font-weight:600; white-space:nowrap; }
+.ai-next ol { margin:0; padding-left:16px; display:flex; flex-direction:column; gap:1px; }
+
+/* 브리핑 오른쪽: 원인 추적 요약 */
+.ai-trace { border-left:1px solid var(--line); padding-left:14px; display:flex; flex-direction:column; gap:6px; min-width:0; font-size:13px; }
+@media (max-width:1100px) { .ai-trace { border-left:0; border-top:1px solid var(--line); padding:8px 0 0; } }
+.at-h { display:flex; align-items:baseline; gap:5px; min-width:0; }
+.at-h b { color:var(--ai-ink); }
+.at-src { color:var(--t3); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.at-chain { display:flex; flex-wrap:wrap; align-items:center; gap:4px; font-size:12px; }
+.at-chain i { font-style:normal; color:var(--t3); }
+.at-step { padding:1px 7px; border-radius:10px; background:var(--bg); border:1px solid var(--line); color:var(--t2); white-space:nowrap; }
+.at-step.lv-crit { color:var(--crit); border-color:color-mix(in srgb, var(--crit) 45%, var(--line)); }
+.at-step.lv-warn { color:var(--warn); border-color:color-mix(in srgb, var(--warn) 45%, var(--line)); }
+.at-step.fn { background:var(--ai-soft); color:var(--ai-ink); border-color:color-mix(in srgb, var(--ai) 40%, transparent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:600; }
+.at-fn { display:grid; grid-template-columns:auto minmax(60px,1fr) auto auto; align-items:center; gap:8px; }
+.at-fn code { font-size:15px; font-weight:700; color:var(--t1); }
+.at-bars { display:flex; flex-direction:column; gap:2px; }
+.at-bars i { display:block; height:5px; border-radius:2px; min-width:2px; }
+.at-bars i.a { background:var(--ab-a); } .at-bars i.b { background:var(--ab-b); }
+.at-v { font-size:12px; color:var(--t2); white-space:nowrap; }
+.at-d { color:var(--crit); white-space:nowrap; }
+.at-path { display:flex; flex-wrap:wrap; align-items:center; gap:3px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; color:var(--t3); }
+.at-path i { font-style:normal; }
+.at-path b { color:var(--ai-ink); }
+.at-path.big { font-size:13px; color:var(--t2); }
+.at-metric, .at-wait { font-size:12px; color:var(--t2); margin:0; }
+.at-diag { display:flex; align-items:baseline; gap:6px; font-size:12px; min-width:0; }
+.at-dt { color:var(--t1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.at-act { display:flex; gap:6px; flex-wrap:wrap; margin-top:2px; }
+.ai-btn { display:inline-flex; align-items:center; font-size:12px; padding:3px 10px; border-radius:4px; border:1px solid var(--line); background:var(--surface); color:var(--t1); text-decoration:none; cursor:pointer; }
+.ai-btn:hover { border-color:var(--ai); }
+.ai-btn.primary { background:var(--ai); border-color:var(--ai); color:var(--on-accent); font-weight:600; }
+
+/* 실시간 이벤트 줄의 원인 추적 단추 */
+.wrow .wtr { flex:none; font-size:11px; line-height:16px; padding:0 6px; border-radius:4px; border:1px solid color-mix(in srgb, var(--ai) 40%, var(--line)); background:var(--ai-soft); color:var(--ai-ink); cursor:pointer; }
+.wrow .wtr:hover { background:var(--ai); color:var(--on-accent); border-color:var(--ai); }
+
+/* 원인 추적 서랍 */
+.drawer.at-drawer { width:680px; }
+.at-view { display:flex; flex-direction:column; gap:10px; font-size:13px; }
+.at-top { display:flex; align-items:center; gap:8px; }
+.at-steps { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; }
+.ts { display:grid; grid-template-columns:24px minmax(0,1fr); column-gap:10px; position:relative; padding-bottom:12px; }
+.ts:not(:last-child)::after { content:""; position:absolute; left:11px; top:24px; bottom:0; width:2px; background:color-mix(in srgb, var(--ai) 30%, var(--line)); }
+.ts-n { width:24px; height:24px; border-radius:50%; background:var(--ai); color:var(--on-accent); font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+.ts-b { min-width:0; padding-top:2px; }
+.ts-t { font-weight:600; color:var(--t2); font-size:12px; margin-bottom:3px; }
+.ts-line { color:var(--t1); }
+.ts-sub { font-size:12px; color:var(--t3); margin-top:2px; }
+.ts-ab { display:flex; flex-wrap:wrap; gap:6px; }
+.ts-facts { margin:0; padding-left:16px; display:flex; flex-direction:column; gap:2px; color:var(--t2); }
+.ts-facts b { color:var(--t1); font-weight:600; }
+.at-tbl { max-width:none; }
+.at-tbl tbody tr { cursor:default; }
+.at-tbl td:last-child { width:140px; }
+.at-judge { border:1px solid color-mix(in srgb, var(--ai) 35%, var(--line)); background:color-mix(in srgb, var(--ai-soft) 60%, var(--surface)); border-radius:8px; padding:10px 12px; display:flex; flex-direction:column; gap:6px; }
+.at-judge.rule { background:var(--surface); }
+.aj-h { display:flex; align-items:center; gap:6px; }
+.aj-h b { color:var(--ai-ink); }
+.aj-conf { font-size:11px; padding:0 6px; border-radius:9px; background:var(--bg); color:var(--t2); border:1px solid var(--line); }
+.aj-conf.high { color:var(--ok); border-color:currentColor; } .aj-conf.low { color:var(--t3); }
+.aj-t { margin:0; font-size:15px; font-weight:700; color:var(--t1); }
+.aj-d { margin:0; color:var(--t2); line-height:1.6; }
+.aj-ev { display:flex; gap:6px; align-items:baseline; }
+.aj-l { font-size:12px; color:var(--t3); flex:none; white-space:nowrap; }
+.aj-rule summary { font-size:12px; color:var(--t3); cursor:pointer; }
+.aj-rule .aj-t { font-size:13px; margin-top:4px; }
+.aj-err { margin:0; font-size:12px; color:var(--warn); }

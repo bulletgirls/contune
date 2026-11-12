@@ -8,6 +8,7 @@
 #          EUM_COMPOSE(compose 파일, 기본 deploy/docker-compose.yml) EUM_DEV_FLAGS(eum dev에 더 넘길 플래그)
 #          EUM_HOSTS(up이 기다리는 호스트 수, 기본 46) EUM_BIN(eum 실행 파일, 기본 deploy/bin/eum) EUM_TOKEN(기본 dev)
 #          EUM_USER·EUM_PASS(화면 로그인 계정, 기본 admin/eum-admin. 로그인이 꺼져 있으면 쓰지 않음)
+#          EUM_SURGE_PEAK(surge가 6000건/초를 유지하는 초, 기본 60)
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -157,8 +158,8 @@ cmd_run() {
 
 # 6000은 60초: 위험도는 최근 60초 특징으로 매기므로 6000이 20초뿐이면 0 그대로다(11-11 리허설: 약 50초 유지해야 오름).
 cmd_surge() {
-  say surge "접수율 3000(20초) -> 4500(20초) -> 6000(60초) -> 1500 (장면 5)"
-  for step in 3000:20 4500:20 6000:60 1500:0; do
+  say surge "접수율 3000(20초) -> 4500(20초) -> 6000(${EUM_SURGE_PEAK:-60}초) -> 1500 (장면 5)"
+  for step in 3000:20 4500:20 "6000:${EUM_SURGE_PEAK:-60}" 1500:0; do
     r=${step%:*}
     set_rate "$r"
     echo "  $(date +%H:%M:%S) 접수율 $r"

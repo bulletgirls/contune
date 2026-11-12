@@ -7,6 +7,7 @@
 import { api, poll } from '../api.js';
 import { lineChart, fmtTime } from '../chart.js';
 import { renderFlame, compareLeaf, verdict } from '../flame.js';
+import { parseSpan } from '../ai.js';
 import { el, esc, fmtNum, fmtClock, fmtDuration, numUnit, info, shortExec, svcOwner, toast, DASH, LEVEL_TEXT } from '../ui.js';
 import { createTimeRange } from '../timerange.js';
 import { gate, can } from '../auth.js';
@@ -219,7 +220,8 @@ async function renderTM(root, id, query) {
 
   const def = detail.def || { id };
   const st = {
-    detail, inst: pickInstance(detail.instances, query.host || ''), view: view(), sel: { a: null, b: null }, pending: null, hl: null, tab: 'procs',
+    // 주소의 a·b(“from-to”)·hl은 원인 추적(관제 AI)이 고른 구간과 함수다: 그대로 골라 둔 채로 연다.
+    detail, inst: pickInstance(detail.instances, query.host || ''), view: view(), sel: { a: parseSpan(query.a), b: parseSpan(query.b) }, pending: null, hl: query.hl || null, tab: 'procs',
     panel: null, bands: [], logs: [],
   };
   const host = (st.inst && st.inst.host) || query.host || '';
