@@ -104,6 +104,8 @@
 - N-C: anthropic은 공식 Go SDK(`anthropic-sdk-go/v2` v2.9.0), Beta Messages + 서버 쪽 거절 대체(`fallbacks: default`). Opus 5.5는 샘플링 값을 받지 않아 temperature를 보내지 않고, 생각이 늘 켜져 있어 `max_tokens` 하한 16000. effort 기본 `low`(시연 대기), 설정으로 바꿈. 설정 `llm.type`은 `${EUM_LLM}`(비면 none).
 
 남은 것:
-- 실제 Claude 호출은 이 PC에 API 키가 없어 해 보지 못했다(가짜 Messages 서버로 SDK 경로까지 확인). 켜는 법: `EUM_LLM=anthropic ANTHROPIC_API_KEY=… deploy/demo.sh up`(compose) 또는 같은 환경변수로 매니저 직접 실행.
+- Claude API(`anthropic`)는 키가 없어 실제 호출은 못 해 봤다(가짜 Messages 서버로 SDK 경로까지). 켜는 법: `EUM_LLM=anthropic ANTHROPIC_API_KEY=… deploy/demo.sh up`.
+- 추가(11-12, 사용자 요청 "API 키 없이 Claude CLI로"): LLM 구현 `claude-cli` — 이 PC에 로그인된 `claude -p`를 부른다(`--output-format json --tools "" --safe-mode --no-session-persistence --system-prompt … --model … --effort low`, 글은 표준 입력, 빈 임시 폴더, `CLAUDECODE` 뺌, 동시 2개, 기본 180s). `--bare`는 OAuth를 읽지 않아 쓰지 않는다. dev 모드(demo.sh 기본)는 설정 파일 없이 `EUM_LLM`(+`EUM_LLM_MODEL`·`EUM_LLM_EFFORT`·`EUM_LLM_URL`·`EUM_LLM_KEY`)으로 켠다: `EUM_LLM=claude-cli EUM_LLM_MODEL=claude-opus-5-5 deploy/demo.sh up`. compose 컨테이너 안 매니저는 호스트 CLI를 못 쓴다.
+- **실제 Claude(CLI) 확인**: 기존 보드 trading 고치기("시세 지연 p99 시계열 추가, CPU 막대를 메모리로") 10초·한 번에 통과·요청한 두 가지만 바뀜(위젯 8개 그대로). 새 보드("지수산출 점검") 8초·한 번에 통과: 지수산출 패널 타일 ref 4·처리량/지연 시계열(scope.service index)·그룹 지수산출 서버별 CPU/메모리·서비스 로그.
 - 인터넷이 없는 곳: Claude 호출은 502(`Claude에 닿지 못했습니다…`)로 끝나고 프롬프트 복사·붙여넣기는 된다. 빌드는 SDK 의존성 때문에 `go mod download`(또는 `go mod vendor`해 둔 소스)가 필요하다.
 - 390px에서 머리 메뉴가 넘쳐 모달이 오른쪽으로 잘린다(전부터 있던 문제).

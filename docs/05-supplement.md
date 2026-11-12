@@ -256,7 +256,7 @@ logs:
   - **초안은 저장하지 않는다.** 화면은 초안을 편집기에 채우고, 사람이 고쳐서 저장한다(같은 허용 목록·감사).
 - `GET /api/v1/assist` → `{"available":bool,"provider":"none"}`.
 - 보드 초안(07 결정 13, 카드 N): `POST /api/v1/assist/dash {"text","dash"}` → 보드 정의 초안. `prompt_only`면 보낼 프롬프트만, `yaml`이면 LLM 없이 검사만(밖의 LLM 답 붙여넣기).
-- LLM 구현: `none` · `openai`(OpenAI 호환) · `anthropic`(Claude, 공식 Go SDK, 기본 `claude-opus-5-5`, effort·거절 대체). 시연 설정은 `EUM_LLM=anthropic`과 `ANTHROPIC_API_KEY`로 켠다.
+- LLM 구현: `none` · `openai`(OpenAI 호환) · `anthropic`(Claude API, 공식 Go SDK, 기본 `claude-opus-5-5`, effort·거절 대체) · `claude-cli`(이 PC에 로그인된 Claude Code CLI, API 키 없이). 시연은 `EUM_LLM=claude-cli`(또는 `anthropic` + `ANTHROPIC_API_KEY`)로 켠다.
 
 ## 10. API 추가
 

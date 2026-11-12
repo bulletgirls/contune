@@ -204,6 +204,7 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 	if *cfgPath == "" {
 		// 수집 설정(05 §17): dev는 데이터 폴더 안에 두고 화면에서 고칠 수 있게 켠다.
 		cfg.Collect = collect.Config{Dir: filepath.Join(cfg.Data, "collect"), Enabled: true}
+		cfg.LLM = devLLM(os.Getenv) // AI 초안(카드 N): 설정 파일 없이 띄울 때는 환경변수로 켠다
 	}
 
 	// 호스트별 토큰(보안 S3): 실제 에이전트 7대는 시작할 때 만든 난수 토큰, 모의 서버는 공유 토큰(cfg.Token).
@@ -422,4 +423,24 @@ func waitListening(ctx context.Context, addr string, mgrDone <-chan struct{}) er
 		case <-tick.C:
 		}
 	}
+}
+
+// devLLM은 설정 파일 없이 띄운 dev의 LLM 설정이다. EUM_LLM(claude-cli | anthropic | openai, 비면 none)과
+// EUM_LLM_MODEL·EUM_LLM_EFFORT·EUM_LLM_URL·EUM_LLM_KEY(없으면 ANTHROPIC_API_KEY)를 읽는다. 구현마다 아는 칸만 쓴다.
+func devLLM(env func(string) string) map[string]any {
+	kind := env("EUM_LLM")
+	if kind == "" {
+		return map[string]any{"type": "none"}
+	}
+	cfg := map[string]any{"type": kind}
+	key := env("EUM_LLM_KEY")
+	if key == "" {
+		key = env("ANTHROPIC_API_KEY")
+	}
+	for k, v := range map[string]string{"model": env("EUM_LLM_MODEL"), "effort": env("EUM_LLM_EFFORT"), "base_url": env("EUM_LLM_URL"), "api_key": key} {
+		if v != "" {
+			cfg[k] = v
+		}
+	}
+	return cfg
 }
