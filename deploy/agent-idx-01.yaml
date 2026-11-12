@@ -1,0 +1,52 @@
+host: idx-01
+group: 지수산출
+manager: http://manager:8080
+token: ${EUM_TOKEN}
+# ca: /etc/eum/ca.pem          # manager가 https://일 때 믿을 인증서(PEM). 비면 시스템 루트
+allow:                         # 에이전트 허용 목록(editor.allow와 같은 문법, ${VAR}를 펼치기 전 명령)
+  - '^eum burn( |$)'
+  - '^\$\{DEMO\}/scripts/[A-Za-z0-9_-]+\.sh( |$)'
+  - '^sleep [0-9]+$'
+  - '^echo( |$)'
+  - '^sh -c echo "\(E\) [^"$`\\]*"; exit [0-9]+$'
+interval: 1s
+probes:
+  - type: cgroup               # 서버 자원 = 이 컨테이너의 몫(한도 = 서버 용량, 카드 V §1 결정 8)
+  - { type: procfs, metrics: [net] }
+  - type: push                 # 지수산출 서비스(index_svc)가 1초마다 biz.index.*를 보낸다
+    listen: 127.0.0.1:9105
+    service: index
+profiler:
+  type: perf
+  hz: 49
+  window: 10s
+  call_graph: dwarf
+  min_age: 5s
+exit:                          # 종료 보고서(없으면 아래 기본값으로 켜짐)
+  enabled: true
+  subreaper: true
+  core_limit: 256MiB
+  core_keep: 3
+  output_lines: 40
+  gdb: auto
+  kmsg: true
+log_dir: /var/lib/eum/logs
+work_dir: /var/lib/eum/work
+remote:                        # 로그 수집 설정을 매니저 화면(#collect)에서 받기(05 §17). 꺼져 있으면 아래 logs만 돈다
+  enabled: true
+  read_roots: [/var/lib/eum/logs]   # 화면에서 정한 로그 파일·미리보기가 읽을 수 있는 폴더. 밖은 에이전트가 거절한다
+vars:
+  DEMO: /opt/eum-demo
+  PUSH: 127.0.0.1:9105
+  BUS: /var/lib/eum/bus         # 업무 저널 폴더(공유 볼륨 eum-bus, 카드 V §2)
+logs:
+  - name: index
+    service: index
+    path: "{log_dir}/index_svc.{exec_id}.log"
+    match:
+      - { re: '^\(E\)', level: error }
+      - { re: '^\(W\)', level: warn }
+      - { re: '^\(I\) \S+ \S+ TRACE seq=', level: info }   # 경로 추적 줄(demo.sh trace)
+  - name: step
+    path: "{log_dir}/{exec_id}.log"
+    match: [{ re: '^\(E\)', level: error }]

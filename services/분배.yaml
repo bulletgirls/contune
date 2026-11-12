@@ -1,0 +1,10 @@
+# 분배 서비스: feed-02의 dist_svc. 시세(quotes)·지수(index) 저널을 읽어 세션에 송출한다(카드 V).
+id: dist
+title: 분배
+group: 정보분배
+match:
+  - comm: dist_svc
+profile: true
+expect:
+  count: 1
+  active: mon-fri 08:30-21:30

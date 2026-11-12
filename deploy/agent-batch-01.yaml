@@ -11,9 +11,8 @@ allow:                         # 에이전트 허용 목록(editor.allow와 같�
   - '^sh -c echo "\(E\) [^"$`\\]*"; exit [0-9]+$'
 interval: 1s
 probes:
-  - type: sim
-    profile: host
-    seed: 3
+  - type: cgroup               # 서버 자원 = 이 컨테이너의 몫(한도 = 서버 용량, 카드 V §1 결정 8)
+  - { type: procfs, metrics: [net] }
 profiler:
   type: perf
   hz: 49
@@ -36,4 +35,4 @@ remote:                        # 로그 수집 설정을 매니저 화면(#colle
 vars:
   DEMO: /opt/eum-demo
   PUSH: 127.0.0.1:9101
-
+  BUS: /var/lib/eum/bus         # 업무 저널 폴더(공유 볼륨 eum-bus, 카드 V §2)

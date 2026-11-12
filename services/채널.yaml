@@ -1,0 +1,10 @@
+# 채널 서비스: gw-01의 channel_svc. 주문을 받아 주문 저널(orders)로 체결에 넘긴다(카드 V).
+id: channel
+title: 채널
+group: 채널
+match:
+  - comm: channel_svc
+profile: true
+expect:
+  count: 1
+  active: mon-fri 08:30-21:30
