@@ -106,9 +106,9 @@ var ErrNotFound = errors.New("coderepo: 없는 저장소·파일이거나 읽을
 // New는 설정으로 Set을 만든다. Repos가 비면 꺼진 Set(nil 아님). 설정이 틀리면(ID 중복·모르는 llm 값) 에러,
 // 폴더가 없는 저장소는 경고만 남기고 뺀다(매니저는 뜬다).
 //
-// Q0 자리: 늘 꺼진 Set을 준다. Q-A가 채운다.
+// 기본값: llm snippets, git auto, 토막 60줄, 토막 4개. ID 모양, 모르는 git 값, 틀린 glob도 에러다.
 func New(cfg Config) (Set, error) {
-	return off{}, nil
+	return newSet(cfg)
 }
 
 type off struct{}
