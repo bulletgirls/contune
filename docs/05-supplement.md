@@ -257,6 +257,7 @@ logs:
 - `GET /api/v1/assist` → `{"available":bool,"provider":"none"}`.
 - 보드 초안(07 결정 13, 카드 N): `POST /api/v1/assist/dash {"text","dash"}` → 보드 정의 초안. `prompt_only`면 보낼 프롬프트만, `yaml`이면 LLM 없이 검사만(밖의 LLM 답 붙여넣기).
 - LLM 구현: `none` · `openai`(OpenAI 호환) · `anthropic`(Claude, 공식 Go SDK, 기본 `claude-opus-5-5`, effort·거절 대체). 시연 설정은 `EUM_LLM=anthropic`과 `ANTHROPIC_API_KEY`로 켠다.
+- `claude-cli`(카드 Q-F): API 키 없이 로그인된 Claude CLI(`claude -p`)를 부른다. 설정은 `EUM_LLM=claude-cli`. 컨테이너에서는 이미지에 CLI를 넣고(`EUM_CLAUDE_CLI=1`) `claude setup-token`으로 만든 토큰을 `CLAUDE_CODE_OAUTH_TOKEN`으로 넘긴다. 도구 탐색은 그 호출 동안만 여는 loopback MCP 서버로 같은 읽기 전용 도구를 내준다(CLI 내장 도구는 끔).
 
 ## 10. API 추가
 
@@ -358,6 +359,8 @@ logs: [ … §4 … ]
 editor:  { enabled: false, allow: [] }                     # §8. 시연 설정만 켬
 llm:     { type: none }                                    # none | openai
 #        { type: openai, base_url: http://llm.internal/v1, model: <모델>, api_key: ${LLM_KEY}, timeout: 30s }
+#        { type: anthropic, model: claude-opus-5-5, api_key: ${ANTHROPIC_API_KEY} } | { type: claude-cli }  (카드 N·Q)
+code:    { repos: [{ id: demo, path: ., include: ["demo/**"] }], builds: deploy/bin/builds.json, llm: tools }  # 카드 Q: 업무 코드 저장소. repos가 비면 꺼짐
 risk:    { model: logreg, score_every: 10s, train_every: 10m, train_window: 168h, lead: 5m, min_incidents: 3, warn: 30, crit: 60 }
 alerts:  { every: 5s, log_levels: [error], incident_after: 30s, incident_clear: 60s, auto_incident: true }
 notify:  { webhook: "", min_level: warn }
@@ -838,6 +841,8 @@ mock(`?mock=1`)은 플로우마다 지난 실행 7~10회를 더 만든다(가끔
 | 원인 | 규칙(기본, 결정론적): NULL 역참조·잘못된 접근·스스로 abort(힙 손상·assert)·실행 오류 신호·메모리 부족·eum 강제 종료·다른 실행이 종료·밖에서 종료·오류 종료·정상 종료·미상. LLM은 같은 근거 묶음을 받는 **참고 초안**(근거 ID 검사, 실패하면 규칙 결과). 새 인터페이스 없이 `llm.LLM`을 쓴다 |
 | API | `POST /agent/exits`, `GET /exits`·`/exits/{id}`·`/exits/{id}/pack`(내려받기)·`/exits/{id}/prompt`(외부 LLM에 붙여 넣기), `POST /exits/{id}/analyze`(운영, 감사 `exit.analyze`). 표 `exits` |
 | 화면 | `#exit/<id>`(11-11 정리, 카드 T §9): 제목 = 원인 한 줄, 아래 `프로세스 · 서버 · 기동한 실행` → 요약 카드 6장 → 원인(근거·확인할 것) → 호출 스택(크래시 지점 강조, 라이브러리 프레임 접기, 추정 표시, 복사) → 직전 상황 → 종료 정보 → LLM 참고 초안 → 수집하지 못한 정보. 들어가는 길: 실행 메뉴의 **종료 보고서 목록** `#exits`(구간·서버·원인 묶음·검색), 서버 프로세스 탭의 `종료된 프로세스`, 실행 이력 줄의 종료 칩, 타임머신 맨 위 띠, 알림(kind `exit`, crash·oom crit, 밖에서 종료·오류 종료 warn) |
+| 소스 근거 | (카드 Q, 11-12) `manager.yaml code.repos[]`의 업무 코드 저장소(로컬 폴더 여럿, include·exclude·match)에서 죽은 함수와 호출자(core 칸), 오류 문구가 나온 곳(출력 끝 줄), 직전 프로파일 1위 함수를 찾아 근거 `source`와 `pack.code`(토막: 파일·줄·최근 변경)로 붙인다. 버전은 빌드가 남긴 `build-id → 커밋` 표(`code.builds`)와 견줘 `일치 · 다름 · 확인 안 됨`. 규칙은 코드를 읽지 않는다(저장되는 원인은 그대로). 화면은 호출 스택 아래 소스 카드 |
+| LLM과 코드 | `code.llm`: `off`(화면에만) · `snippets`(토막을 프롬프트에) · `tools`(토막 + 읽기 전용 도구 다섯으로 저장소를 더 읽음: `llm.ToolLLM`을 구현한 `anthropic`·`claude-cli`). 답에 `code_refs`·`fix`가 더해지고, 가리킨 코드가 보낸 토막(도구 탐색이면 읽은 범위) 안인지 검사한다. 읽은 범위는 초안의 `read`와 감사 `exit.analyze`에 남는다. `POST /exits/{id}/analyze {"answer"}`는 밖의 LLM 답 붙여넣기(LLM이 없어도 검사·저장) |
 | 한계 | 에이전트가 띄우지 않았거나 에이전트 재시작 전부터 떠 있던 서비스는 부모가 아니라 종료 코드를 모른다(core·커널 로그로만). 탐색 주기(5초) 전에 죽은 프로세스는 보고가 없다. SIGKILL을 보낸 쪽은 정황(같은 시각의 실행·조작)으로만 |
 
 ## 20. 실행 · 프로세스 · 서비스 (2026-11-11)
