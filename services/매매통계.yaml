@@ -1,0 +1,10 @@
+# 매매통계 서비스: dw-01의 stats_svc. 체결 저널(fills)을 읽어 종목별 통계를 반영한다(카드 V).
+id: stats
+title: 매매통계
+group: 매매통계
+match:
+  - comm: stats_svc
+profile: true
+expect:
+  count: 1
+  active: mon-fri 08:30-21:30

@@ -31,7 +31,7 @@ const usage = `사용법: eum <서브커맨드> [플래그]
 
   manager --config <path> [--listen --data --flows --panels --services --store]
   agent   --config <path>
-  dev     [--listen --data --store --flows --panels --services --fleet --push-port --demo-dir --config]
+  dev     [--listen --data --store --flows --panels --services --fleet --push-port --quote-push-port --push-base --demo-dir --config]
   fleet   --config <path>
   burn    --cpu N --duration 8s
   sql     --data <dir> [--csv] "<SELECT …>"

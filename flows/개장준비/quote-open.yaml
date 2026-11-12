@@ -1,11 +1,25 @@
-# 시세 개시: 시세 서비스(quote_svc)를 띄운다. 체결(market-open의 matching_svc)과 따로 도는 업무 프로세스다.
+# 시세 개시: 시세 흐름을 받는 쪽부터 연다(분배 → 지수산출 → 시세, 카드 V). 시세는 체결 저널(fills)을 읽는다.
 id: quote-open
 schedule: "50 7 * * 1-5"      # 평일 07:50(장 전 동시호가 전)
 on_missed: skip
 steps:
+  - id: start-dist
+    host: feed-02
+    command: ["${DEMO}/scripts/start_dist.sh"]
+    profile: true
+    starts: [dist]
+
+  - id: start-index
+    host: idx-01
+    command: ["${DEMO}/scripts/start_index.sh"]
+    depends: [start-dist]
+    profile: true
+    starts: [index]
+
   - id: start-quote
     host: feed-01
     command: ["${DEMO}/scripts/start_quote.sh"]
+    depends: [start-index]
     profile: true
     starts: [quote]
 

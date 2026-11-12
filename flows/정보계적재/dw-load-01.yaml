@@ -4,7 +4,7 @@ schedule: "0 19 * * 1-5"
 steps:
   - id: step-1
     host: dw-01
-    command: [eum, burn, --cpu, "1", --duration, 4s]
+    command: ["${DEMO}/scripts/dw_load.sh"]
   - id: step-2
     host: dw-01
     command: [eum, burn, --cpu, "1", --duration, 6s]
