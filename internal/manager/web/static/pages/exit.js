@@ -1,6 +1,7 @@
 // 종료 보고서 #exit/<id> (05 §19, 카드 T5): 프로세스가 죽은 직접 원인.
 // 주어는 프로세스다(06 §7): 제목 = 원인 한 줄, 그 아래 프로세스 · 서버 · 기동한 실행(출처).
-// 위에서 아래로 머리 → 요약 카드 → 원인 → 호출 스택 → 직전 상황 → 종료 정보 → LLM 참고 초안 → 수집하지 못한 정보.
+// 위에서 아래로 머리 → 요약 카드 → 원인 → 호출 스택 → 소스 → 직전 상황 → 종료 정보 → LLM 참고 초안 → 수집하지 못한 정보.
+// 소스(카드 Q): 저장소에서 찾은 코드 토막(pack.code). LLM 초안의 코드 근거를 누르면 그 토막의 그 줄로 간다.
 // 글자 크기는 20(제목) · 16(요약 값) · 15(칸 제목) · 14(본문) · 13(표·목록·고정폭) · 12(이름표) 여섯 단계만 쓴다.
 // 참고한 사례: Sentry 이슈 머리(제목 = 원인, 아래 = 어디서), gdb bt·Crashpad(내 코드 프레임은 진하게, 라이브러리는 흐리게·접기),
 // Kubernetes lastState.terminated(종료 사유를 상태로), Windows WER 버킷(원인 분류).
@@ -28,7 +29,18 @@ export const CONF_TEXT = { high: '확신 높음', medium: '확신 보통', low: 
 export const EV_TEXT = {
   exit: '종료 정보', core: '호출 스택', output: '표준 출력', kernel: '커널 로그', job: '프로세스 지표', host: '서버 지표',
   profile: '프로파일', logs: '애플리케이션 로그', runs: '같은 서버 실행', audit: '운영자 조작', prev: '이전 종료',
+  source: '소스',
 };
+// 읽은 코드와 죽은 실행 파일의 버전 관계(CodeVersion.State) · LLM 초안을 받은 길(ExitDiagnosis.Via)
+export const VER_TEXT = { match: '일치', differ: '다름', unknown: '확인 안 됨' };
+export const VIA_TEXT = { tools: '도구 탐색', paste: '붙여넣기' };
+// LLM에 코드를 보내는 범위(ExitDetail.code_mode) → [보낼 내용 서랍의 한 줄, ⓘ]. ""(저장소 없음)이면 줄 없음
+const CODE_SCOPE = {
+  off: ['코드는 보내지 않음', 'manager.yaml code.llm: off — 소스 카드의 코드는 화면에만 보인다'],
+  snippets: ['코드 토막 포함', 'manager.yaml code.llm: snippets — 소스 카드의 토막을 함께 보낸다'],
+  tools: ['코드 토막 포함', 'manager.yaml code.llm: tools — 토막을 함께 보내고, LLM에 맡기면 저장소를 더 읽는다. 다른 LLM에 붙여 넣을 때는 토막만 간다'],
+};
+const ANSWER_MAX = 64 * 1024; // 붙여넣기 한도(POST analyze {answer})
 const HOW_FROM = { wait: 'wait4', core: 'core의 신호 정보', kmsg: '커널 로그', none: '근거 없음' };
 // Evidence.Facts 이름 → [이름표, 단위]
 const FACT = {
@@ -165,6 +177,20 @@ export function fmtWhen(ts) {
   const d = new Date(ts);
   return `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
 }
+// 코드 자리 글: demo/matching_svc.c:117–119 (한 줄이면 :142)
+export function refText(r) {
+  const s = Number(r && r.start) || 0, e = Number(r && r.end) || 0;
+  return `${(r && r.file) || ''}:${s}${e > s ? '–' + e : ''}`;
+}
+// 토막의 끝 줄: end, 없으면 start + 줄 수 − 1
+const snipEnd = (s) => Number(s.end) || (Number(s.start) + (s.lines || []).length - 1);
+// 코드 자리를 품은 토막 번호(없으면 -1). 저장소는 둘 다 있을 때만 견준다.
+export function snippetOf(code, r) {
+  if (!r || !r.file) return -1;
+  const a = Number(r.start) || 0, b = Math.max(a, Number(r.end) || 0);
+  return (code || []).findIndex((s) => s.file === r.file && (!s.repo || !r.repo || s.repo === r.repo)
+    && a >= s.start && b <= snipEnd(s));
+}
 const isUlid = (s) => /^[0-9A-HJKMNP-TV-Z]{26}$/.test(String(s || ''));
 const runRef = (s) => '#run/' + q(s);
 
@@ -212,11 +238,14 @@ function verdict(dg) {
     CATEGORY_TEXT[dg.category] || dg.category || DASH, ' · ', dg.by === 'llm' ? 'LLM 참고 초안' : '규칙 판단', ' · ',
     el('span', { class: `ex-conf ${esc(dg.confidence || '')}`, text: CONF_TEXT[dg.confidence] || dg.confidence || '확신 모름' }));
 }
-// 진단 본문(규칙·LLM 같은 모양): 설명 · 근거 · 확인할 것
-function diagBody(dg, have) {
+// 진단 본문(규칙·LLM 같은 모양): 설명 · 근거 · 코드 근거 · 고칠 방향 · 확인할 것. 코드 근거·고칠 방향은 LLM 초안에만 온다.
+// refList(code_refs) → 요소(누르면 소스 카드로 가는 목록)
+function diagBody(dg, have, refList) {
   const box = el('div', { class: 'ex-diag' });
   if (dg.detail) box.append(el('p', { class: 'ex-detail', text: dg.detail }));
   if ((dg.evidence_ids || []).length) box.append(labeled('근거', evChips(dg.evidence_ids, have)));
+  if ((dg.code_refs || []).length && refList) box.append(labeled('코드 근거', refList(dg.code_refs)));
+  if (dg.fix) box.append(labeled('고칠 방향', el('p', { class: 'ex-fix', text: dg.fix })));
   if ((dg.next_checks || []).length) box.append(labeled('확인할 것', el('ol', { class: 'ex-next' }, dg.next_checks.map((s) => el('li', { text: s })))));
   return box;
 }
@@ -256,12 +285,15 @@ export async function render(root, params) {
   const frames = (core && core.frames) || [];
   const exeMod = exeModule(rep);
   const evs = new Map((pk.evidence || []).map((e) => [e.id, e]));
-  // 직전 상황에 그릴 근거: 정한 순서, 그 밖의 것, 묶음에 없으면 보고서의 출력 끝 줄·커널 로그
-  const priorItems = [...PRIOR.filter((k) => evs.has(k)), ...[...evs.keys()].filter((k) => !PRIOR.includes(k) && k !== 'exit' && k !== 'core')].map((k) => evs.get(k));
+  const code = (pk.code || []).filter((s) => s && s.file);
+  // 직전 상황에 그릴 근거: 정한 순서, 그 밖의 것, 묶음에 없으면 보고서의 출력 끝 줄·커널 로그. source는 소스 카드가 맡는다(토막이 있을 때).
+  const own = new Set(['exit', 'core', ...(code.length ? ['source'] : [])]);
+  const priorItems = [...PRIOR.filter((k) => evs.has(k)), ...[...evs.keys()].filter((k) => !PRIOR.includes(k) && !own.has(k))].map((k) => evs.get(k));
   if (!evs.has('output') && (rep.output_tail || []).length) priorItems.push({ id: 'output', title: `출력 끝 ${rep.output_tail.length}줄`, lines: rep.output_tail });
   if (!evs.has('kernel') && (rep.kernel || []).length) priorItems.push({ id: 'kernel', title: `커널 로그 ${rep.kernel.length}줄`, lines: rep.kernel });
   const have = new Set(['exit', ...priorItems.map((e) => e.id)]);
   if (core) have.add('core');
+  if (code.length) have.add('source');
   const rule = d.rule || { category: 'unknown', title: '원인 미상', confidence: 'low', by: 'rule', evidence_ids: [] };
   const level = exitLevel(rule.category, rep.resident);
   const top = frames[0] && frames[0].func && frames[0].func !== '??' ? frames[0] : null;
@@ -375,6 +407,65 @@ export async function render(root, params) {
     const table = el('table', { class: 'ex-stack' },
       el('thead', {}, el('tr', {}, ['#', '함수', '파일:줄', '모듈', '주소'].map((t) => el('th', { text: t })))), tb);
     stackCard.replaceChildren(ch, el('div', { class: 'ex-scroll' }, table));
+  }
+
+  // 소스(카드 Q): 토막마다 머리(파일:줄 · 함수 · 뽑은 까닭) · 줄 번호와 코드 · 최근 변경. 첫 토막만 펼친다.
+  const srcCard = code.length ? el('section', { class: 'ex-card ex-src', id: 'ex-ev-source' }) : null;
+  function drawSource() {
+    const cv = pk.code_version || null;
+    const sev = evs.get('source');
+    const firstLine = sev && sev.facts && sev.facts.first_on_build === 1 ? (sev.lines || []).find((s) => /첫 종료/.test(s)) || '이 build-id로 바뀐 뒤 첫 종료' : '';
+    const ver = cv ? el('span', { class: 'ex-ver' }, el('span', { class: 'ex-cl', text: '버전' }),
+      el('span', { class: `ex-vtag ${esc(cv.state || '')}`, text: VER_TEXT[cv.state] || cv.state || '확인 안 됨', title: cv.note || '' }),
+      cv.note ? info(cv.note) : null) : null;
+    const ch = el('div', { class: 'ex-ch' }, el('h3', { class: 'sec', text: '소스' }),
+      info('저장소에서 찾은 코드. 왼쪽은 파일의 줄 번호, 칠한 줄은 죽은 곳(디버그 정보의 줄), 안쪽 함수를 부르는 줄, 출력 문구가 나온 줄. 지금 저장소 폴더의 코드라 죽은 실행 파일과 버전이 다를 수 있다'),
+      el('span', { class: 'ex-sub', text: `${code.length}곳` }),
+      firstLine ? el('span', { class: 'ex-sub ex-warn', text: '새 빌드 첫 종료', title: firstLine }) : null,
+      el('span', { class: 'grow' }), ver);
+    srcCard.replaceChildren(ch, el('div', { class: 'ex-snips' }, code.map(snipBlock)));
+  }
+  function snipBlock(s, i) {
+    const dead = /^죽은 곳/.test(s.why || '');
+    const loc = `${s.file}:${s.start}–${snipEnd(s)}`;
+    const file = s.url ? el('a', { class: 'ex-sfile', href: s.url, target: '_blank', rel: 'noopener', text: loc, title: '저장소 화면에서 열기' })
+      : el('span', { class: 'ex-sfile', text: loc, title: s.repo ? `저장소 ${s.repo}` : '' });
+    const head = el('summary', { class: 'ex-sh' }, file,
+      s.func ? [' · ', el('span', { class: 'ex-sfn', text: s.func })] : null,
+      s.why ? [' · ', el('span', { class: 'ex-swhy' + (dead ? ' dead' : ''), text: s.why })] : null);
+    const rows = el('div', { class: 'ex-codein' });
+    (s.lines || []).forEach((t, k) => {
+      const n = s.start + k;
+      const mk = s.mark && n === s.mark ? (dead ? ' mark dead' : ' mark') : '';
+      rows.append(el('div', { class: 'cl' + mk, id: `ex-src-${i}-L${n}` }, el('span', { class: 'cn', text: String(n) }), el('span', { class: 'ct', text: t })));
+    });
+    if (s.cut) rows.append(el('div', { class: 'cl cut' }, el('span', { class: 'cn' }), el('span', { class: 'ct', text: '… 잘림', title: '토막 줄 한도에서 자름(manager.yaml code.snippet_lines)' })));
+    const chg = (s.changes || []).length ? el('details', { class: 'ex-schg' }, el('summary', { text: `최근 변경 ${s.changes.length}건` }),
+      el('ul', {}, s.changes.map((c) => el('li', { text: c })))) : null;
+    return el('details', { class: 'ex-snip', id: 'ex-src-' + i, open: i === 0 }, head, el('div', { class: 'ex-code' }, rows), chg);
+  }
+  // 코드 자리로: 그 토막을 펴고, 그 줄들을 칠하고, 첫 줄을 가운데로
+  function jumpCode(r) {
+    const i = snippetOf(code, r);
+    const det = i >= 0 && document.getElementById('ex-src-' + i);
+    if (!det) return;
+    det.open = true;
+    const a = Number(r.start), b = Math.max(a, Number(r.end) || 0);
+    for (const n of srcCard.querySelectorAll('.cl.ref')) n.classList.remove('ref');
+    for (let n = a; n <= b; n++) document.getElementById(`ex-src-${i}-L${n}`)?.classList.add('ref');
+    const t = document.getElementById(`ex-src-${i}-L${a}`) || det;
+    t.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    det.classList.remove('flash');
+    void det.offsetWidth;
+    det.classList.add('flash');
+  }
+  // LLM 초안의 코드 근거: 토막 안이면 누르는 자리, 밖이면(도구 탐색으로 더 읽은 곳) 글만
+  function refList(refs) {
+    return el('ul', { class: 'ex-crefs' }, refs.map((r) => el('li', {},
+      snippetOf(code, r) >= 0
+        ? el('button', { type: 'button', class: 'ex-cref', text: refText(r), title: '소스 카드의 그 줄로', onclick: () => jumpCode(r) })
+        : el('span', { class: 'ex-cref out', text: refText(r), title: '소스 카드의 토막 밖' }),
+      r.note ? el('span', { class: 'ex-cnote', text: r.note }) : null)));
   }
 
   // 직전 상황: 근거 한 줄 = 왼쪽 이름 · 오른쪽 요약과 내용
@@ -492,48 +583,113 @@ export async function render(root, params) {
     return st.prompt;
   }
   const promptText = (p) => [p.system, p.prompt].filter(Boolean).join('\n\n');
+  // 보낼 내용 서랍: 코드 범위 한 줄 · 복사 · system · prompt, 아래에 답 붙여넣기(운영). 보낼 내용을 못 받아도 붙여넣기는 된다.
   async function showPrompt() {
-    let p;
-    try { p = await getPrompt(); } catch (e) { toast('보낼 내용을 받지 못함'); return; }
+    let p = null, pErr = null;
+    try { p = await getPrompt(); } catch (e) { pErr = e; }
     const dr = openDrawer('LLM에 보낼 내용');
     document.getElementById('drawer')?.classList.add('ex-drawer');
+    const scope = CODE_SCOPE[d.code_mode];
+    const scopeTxt = scope && (d.code_mode === 'off' || code.length) ? (d.code_mode === 'off' ? scope[0] : `${scope[0]}(${code.length}곳)`) : '';
     dr.body.append(
       el('p', { class: 'ex-sub', text: '외부 LLM에 그대로 붙여 넣을 수 있습니다. 비밀처럼 보이는 값은 에이전트가 가렸습니다.' }),
-      el('div', { class: 'ex-dtools' }, el('button', { type: 'button', class: 'primary', text: '전체 복사', onclick: () => copyText(promptText(p), '보낼 내용 복사함') })),
-      el('div', { class: 'ex-subh', text: 'system' }), el('pre', { class: 'ex-pre wrap', text: p.system || '' }),
-      el('div', { class: 'ex-subh', text: 'prompt' }), el('pre', { class: 'ex-pre wrap tall', text: p.prompt || '' }));
+      scopeTxt ? el('div', { class: 'ex-scope' }, el('span', { text: scopeTxt }), info(scope[1])) : null);
+    if (p) {
+      dr.body.append(
+        el('div', { class: 'ex-dtools' }, el('button', { type: 'button', class: 'primary', text: '전체 복사', onclick: () => copyText(promptText(p), '보낼 내용 복사함') })),
+        el('div', { class: 'ex-subh', text: 'system' }), el('pre', { class: 'ex-pre wrap', text: p.system || '' }),
+        el('div', { class: 'ex-subh', text: 'prompt' }), el('pre', { class: 'ex-pre wrap tall', text: p.prompt || '' }));
+    } else {
+      dr.body.append(el('p', { class: 'ex-pmsg err', text: `보낼 내용을 받지 못함${pErr && pErr.error ? ': ' + pErr.error : ''}. 서랍을 닫고 다시 여세요` }));
+    }
+    if (can('operator')) dr.body.append(pasteBox(dr));
+  }
+  // 답 붙여넣기: 다른 LLM의 답(JSON)을 POST analyze {answer}로 검사·저장. 422는 받은 글 그대로 보인다.
+  function pasteBox(dr) {
+    const ta = el('textarea', { class: 'ex-paste', rows: '8', spellcheck: 'false', 'aria-label': '다른 LLM의 답', placeholder: '{"category": "…", "title": "…", …}' });
+    const msg = el('div', { class: 'ex-pmsg', role: 'status' });
+    const fail = (t) => { msg.className = 'ex-pmsg err'; msg.textContent = t; };
+    const go = el('button', { type: 'button', class: 'primary', text: '검사·저장', disabled: true, onclick: async () => {
+      const answer = ta.value;
+      if (new Blob([answer]).size > ANSWER_MAX) { fail('답이 64KB를 넘습니다. JSON 객체 부분만 붙여 넣으세요'); return; }
+      go.disabled = true;
+      go.textContent = '검사 중…';
+      msg.className = 'ex-pmsg';
+      msg.textContent = '';
+      try {
+        const r = await api(`/exits/${q(id)}/analyze`, { method: 'POST', body: { answer } });
+        if (r && r.llm) {
+          d.llm = r.llm;
+          st.llmMsg = '';
+          drawLLM();
+          dr.close();
+          toast('붙여 넣은 답을 초안으로 저장함');
+          llmCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return;
+        }
+        fail('저장하지 못함: 응답에 초안이 없습니다. 매니저 로그를 확인하세요');
+      } catch (err) {
+        if (err.status === 422) fail(err.error || '답이 형식에 맞지 않습니다(422)');
+        else if (err.status === 403) fail('운영 권한이 있어야 저장할 수 있습니다');
+        else fail(`저장하지 못함${err.error ? ': ' + err.error : ''}. 잠시 뒤 다시 누르세요`);
+      } finally {
+        go.textContent = '검사·저장';
+        go.disabled = !ta.value.trim();
+      }
+    } });
+    ta.addEventListener('input', () => { go.disabled = !ta.value.trim(); });
+    return el('div', { class: 'ex-pastebox' },
+      el('div', { class: 'ex-subh' }, '답 붙여넣기 ', info('다른 LLM이 준 답(JSON)을 붙여 넣으면 근거 ID와 코드 범위를 검사해 LLM 참고 초안으로 저장한다. 답 앞뒤의 글은 무시한다. LLM이 연동되지 않아도 된다')),
+      ta, el('div', { class: 'ex-ptools' }, go, msg));
   }
   async function analyze(e) {
     const b = e.currentTarget;
     b.disabled = true;
-    b.textContent = '분석 중…';
+    const t0 = Date.now();
+    const show = () => { b.textContent = `분석 중… ${Math.floor((Date.now() - t0) / 1000)}초`; };
+    show();
+    if (d.code_mode === 'tools' && code.length) b.title = 'LLM이 저장소를 더 읽는 중(최대 4분)';
+    clearInterval(waitTick);
+    waitTick = setInterval(show, 1000);
     try {
       const r = await api(`/exits/${q(id)}/analyze`, { method: 'POST' });
       if (r && r.available) { d.llm = r.llm; st.llmMsg = ''; } else { d.llm_available = false; st.llmMsg = (r && r.message) || 'LLM 연동 뒤 쓸 수 있습니다'; }
     } catch (err) {
-      st.llmMsg = err.status === 502 ? `LLM 답을 쓰지 못함: ${err.error}` : err.status === 403 ? '' : '분석을 요청하지 못함';
+      st.llmMsg = err.status === 502 ? `LLM 답을 쓰지 못함: ${err.error}` : err.status === 403 ? '' : `분석을 요청하지 못함${err.error ? ': ' + err.error : ''}. 잠시 뒤 다시 맡기세요`;
+    } finally {
+      clearInterval(waitTick);
+      waitTick = null;
     }
     drawLLM();
   }
   function drawLLM() {
     const btns = [];
-    if (can('operator')) {
+    const op = can('operator');
+    if (op) {
       btns.push(el('button', { type: 'button', class: 'primary', text: d.llm ? '다시 맡기기' : 'LLM에 맡기기', disabled: !d.llm_available,
         title: d.llm_available ? '근거 묶음을 LLM에 보내 참고 초안을 받는다' : 'LLM 연동 뒤 쓸 수 있습니다', onclick: analyze }));
     }
-    btns.push(el('button', { type: 'button', text: '보낼 내용 보기', title: '외부 LLM에 붙여 넣을 내용(system + prompt)', onclick: showPrompt }));
-    const msg = st.llmMsg || (!d.llm_available ? 'LLM 연동 뒤 쓸 수 있습니다. 보낼 내용을 복사해 다른 LLM에 붙여 넣을 수 있습니다.' : '');
+    btns.push(el('button', { type: 'button', text: op ? '보낼 내용 · 답 붙여넣기' : '보낼 내용 보기',
+      title: op ? '외부 LLM에 붙여 넣을 내용(system + prompt)과 그 답을 붙여 넣는 칸' : '외부 LLM에 붙여 넣을 내용(system + prompt)', onclick: showPrompt }));
+    const msg = st.llmMsg || (!d.llm_available ? (op ? 'LLM 연동 뒤 쓸 수 있습니다. 다른 LLM의 답은 붙여 넣어 저장할 수 있습니다.' : 'LLM 연동 뒤 쓸 수 있습니다. 보낼 내용을 복사해 다른 LLM에 붙여 넣을 수 있습니다.') : '');
     const kids = [el('div', { class: 'ex-ch' }, el('h3', { class: 'sec', text: 'LLM 참고 초안' }),
       info('같은 근거 묶음을 LLM에 보내 받은 참고 초안. 저장된 원인은 위의 규칙 판단이다'), el('span', { class: 'grow' }), ...btns)];
     if (d.llm) {
       const l = d.llm;
-      const by = [l.model, l.at ? fmtWhen(l.at) : '', l.actor].filter(Boolean).join(' · ');
+      // 붙여넣기는 이름표가 이미 '붙여넣기'라 모델 칸에서 뺀다
+      const by = [l.via === 'paste' && l.model === VIA_TEXT.paste ? '' : l.model, l.at ? fmtWhen(l.at) : '', l.actor].filter(Boolean).join(' · ');
       const differ = l.category && l.category !== rule.category;
+      const read = l.read || [];
       kids.push(el('div', { class: 'ex-draft' },
         el('div', { class: 'ex-dh' }, el('b', { class: 'ex-dtitle', text: l.title || CATEGORY_TEXT[l.category] || DASH }),
-          verdict(l), differ ? el('span', { class: 'ex-diff', text: '규칙 판단과 다름' }) : null,
+          verdict(l), VIA_TEXT[l.via] ? el('span', { class: 'ex-b', text: VIA_TEXT[l.via] }) : null,
+          differ ? el('span', { class: 'ex-diff', text: '규칙 판단과 다름' }) : null,
           el('span', { class: 'grow' }), el('span', { class: 'ex-sub', text: by })),
-        diagBody(l, have)));
+        diagBody(l, have, refList),
+        read.length ? el('details', { class: 'ex-read' }, el('summary', { text: `LLM이 읽은 코드 ${read.length}곳`, title: '도구 탐색에서 LLM에 나간 코드 범위(감사 기록에도 남는다)' }),
+          el('ul', {}, read.map((r) => el('li', {}, snippetOf(code, r) >= 0
+            ? el('button', { type: 'button', class: 'ex-cref', text: refText(r), title: '소스 카드의 그 줄로', onclick: () => jumpCode(r) })
+            : el('span', { class: 'ex-cref out', text: refText(r) }))))) : null));
     } else if (msg) kids.push(el('p', { class: 'ex-sub', text: msg }));
     else kids.push(el('p', { class: 'ex-sub', text: '아직 초안이 없습니다.' }));
     if (d.llm && st.llmMsg) kids.push(el('p', { class: 'ex-sub', text: st.llmMsg }));
@@ -546,9 +702,15 @@ export async function render(root, params) {
     el('ul', {}, notes.map((s) => el('li', { text: s })))) : null;
 
   drawStack();
+  if (srcCard) drawSource();
   drawLLM();
-  page.append(head, kpis, cause, stackCard, prior, infoCard, llmCard);
+  page.append(head, kpis, cause, stackCard, ...(srcCard ? [srcCard] : []), prior, infoCard, llmCard);
   if (notesCard) page.append(notesCard);
 }
 
-export function dispose() {}
+// LLM에 맡긴 뒤 기다리는 동안 단추의 초를 올리는 타이머(화면을 떠나면 멈춘다)
+let waitTick = null;
+export function dispose() {
+  clearInterval(waitTick);
+  waitTick = null;
+}

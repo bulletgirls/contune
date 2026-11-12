@@ -124,6 +124,11 @@ type ExitDiagnosis struct {
 	Model       string   `json:"model,omitempty"` // By가 llm일 때 LLM 이름
 	At          int64    `json:"at,omitempty"`    // 만든 시각(ms)
 	Actor       string   `json:"actor,omitempty"` // llm 진단을 요청한 사람
+	// 카드 Q(By가 llm일 때만).
+	Via      string    `json:"via,omitempty"`       // "" 한 번 묻기 | "tools" 도구 탐색 | "paste" 밖의 LLM 답 붙여넣기
+	CodeRefs []CodeRef `json:"code_refs,omitempty"` // 판단에 쓴 코드 자리. 묶음의 Code(도구 탐색이면 Read) 안이어야 한다
+	Fix      string    `json:"fix,omitempty"`       // 고칠 방향 한두 문장
+	Read     []CodeRef `json:"read,omitempty"`      // 도구 탐색에서 LLM이 읽은 범위(밖으로 나간 코드의 기록)
 }
 
 // 근거 ID(Evidence.ID). 묶음을 엮는 쪽(manager/exits)과 규칙(manager/exitdiag)이 같은 이름을 쓴다.
@@ -139,6 +144,7 @@ const (
 	EvRuns    = "runs"    // 같은 서버에서 앞뒤 1분 안에 시작·끝난 다른 실행
 	EvAudit   = "audit"   // 앞뒤 2분의 운영자 조작(강제 종료·재실행 …)
 	EvPrev    = "prev"    // 같은 서버·같은 프로그램의 최근 24시간 종료
+	EvSource  = "source"  // 저장소에서 찾은 소스: 죽은 곳·호출자·오류 문구가 나온 곳(카드 Q). 본문은 ExitPack.Code
 )
 
 // Evidence는 근거 하나다. Lines는 사람이 읽는 줄(가린 것), Facts는 규칙이 읽는 숫자, Refs는 실행 ID 등 링크 대상.
@@ -152,6 +158,7 @@ const (
 //	audit:   count, kills(강제 종료·재실행·강제 OK 수)
 //	logs:    errors, warns
 //	prev:    count_24h
+//	source:  snippets(토막 수), version_match(1 같음 · 0 다름, 모르면 넣지 않음), first_on_build(이 build-id로 바뀐 뒤 첫 종료면 1)
 type Evidence struct {
 	ID    string             `json:"id"`
 	Title string             `json:"title"` // 한 줄 요약
@@ -169,6 +176,51 @@ type ExitPack struct {
 	StepID   string     `json:"step_id,omitempty"`
 	RunState RunStatus  `json:"run_status,omitempty"`
 	Evidence []Evidence `json:"evidence"` // 처음은 늘 EvExit
+	// Code는 저장소에서 뽑은 소스 토막이다(카드 Q). 근거 source가 있을 때만. 화면에는 늘 보이고,
+	// LLM에는 code.llm이 off가 아닐 때만 간다(exitdiag.StripCode).
+	Code        []CodeSnippet `json:"code,omitempty"`
+	CodeVersion *CodeVersion  `json:"code_version,omitempty"`
+}
+
+// CodeSnippet은 저장소에서 뽑은 소스 한 토막이다(카드 Q).
+type CodeSnippet struct {
+	Repo    string   `json:"repo"`              // 저장소 ID(manager.yaml code.repos[].id)
+	File    string   `json:"file"`              // 저장소 안 경로(/ 구분)
+	Start   int      `json:"start"`             // 첫 줄 번호(1부터)
+	End     int      `json:"end"`               // 끝 줄 번호(포함)
+	Func    string   `json:"func,omitempty"`    // 이 토막의 함수 이름(알 때)
+	Why     string   `json:"why"`               // 뽑은 까닭(화면 말): "죽은 곳 #0", "호출 #1", "출력 끝 줄의 문구"
+	Mark    int      `json:"mark,omitempty"`    // 강조할 줄 번호(디버그 정보의 줄, 안쪽 함수를 부르는 줄, 문구가 나온 줄). 0이면 없음
+	Lines   []string `json:"lines"`             // Start부터의 줄(MaskSecrets를 거친 것)
+	Cut     bool     `json:"cut,omitempty"`     // 줄 한도에서 잘림
+	Changes []string `json:"changes,omitempty"` // 이 범위의 최근 변경 "2026-11-11 136f027 T6: …"(git일 때, 최대 5)
+	URL     string   `json:"url,omitempty"`     // 사내 git 화면 링크(code.repos[].web이 있을 때)
+}
+
+// CodeRef는 코드 자리 하나다: LLM 초안이 가리킨 곳(ExitDiagnosis.CodeRefs), 도구 탐색에서 읽은 곳(ExitDiagnosis.Read).
+type CodeRef struct {
+	Repo  string `json:"repo,omitempty"`
+	File  string `json:"file"`
+	Start int    `json:"start"`
+	End   int    `json:"end,omitempty"`  // 0이면 Start 한 줄
+	Note  string `json:"note,omitempty"` // 왜 가리켰는지 한 줄
+}
+
+// 코드 버전 관계(CodeVersion.State).
+const (
+	CodeVerMatch   = "match"   // 죽은 실행 파일을 빌드한 커밋 = 지금 읽은 코드
+	CodeVerDiffer  = "differ"  // 다름(Note에 차이)
+	CodeVerUnknown = "unknown" // build-id → 커밋 표가 없거나 그 build-id가 없음
+)
+
+// CodeVersion은 읽은 코드와 죽은 실행 파일의 버전 관계다.
+type CodeVersion struct {
+	Repo   string `json:"repo"`
+	Commit string `json:"commit,omitempty"` // 읽은 코드의 커밋(짧게). git이 아니면 ""
+	Dirty  bool   `json:"dirty,omitempty"`  // 작업 폴더에 커밋 안 된 변경이 있음
+	Build  string `json:"build,omitempty"`  // 죽은 실행 파일을 빌드한 커밋(build-id 표에서). 모르면 ""
+	State  string `json:"state"`            // CodeVerMatch | CodeVerDiffer | CodeVerUnknown
+	Note   string `json:"note"`             // 화면 말 한 줄: "버전 일치(136f027)", "버전 확인 안 됨 — build-id 표에 없음"
 }
 
 // ExitRecord는 저장된 종료 보고서와 마지막 LLM 초안이다.
@@ -215,6 +267,8 @@ type ExitDetail struct {
 	Rule         ExitDiagnosis  `json:"rule"`
 	LLM          *ExitDiagnosis `json:"llm,omitempty"`
 	LLMAvailable bool           `json:"llm_available"`
+	// CodeMode는 LLM에 코드를 보내는 범위다(카드 Q): "" 저장소 없음 | off | snippets | tools.
+	CodeMode string `json:"code_mode,omitempty"`
 }
 
 var signalNames = map[int]string{

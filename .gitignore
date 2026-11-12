@@ -23,3 +23,5 @@ eum-perf-*.data
 
 # 에이전트 격리 워크트리
 .claude/worktrees/
+# 카드 Q: compose에 넘기는 LLM 키·토큰(커밋하지 않는다)
+/deploy/.env.local

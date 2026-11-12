@@ -72,6 +72,62 @@ table.ex-stack { border-collapse:collapse; width:100%; font-size:13px; }
 .ex-nostack { margin:0; }
 .ex-nostack a { color:var(--accent); }
 
+/* 소스(카드 Q): 토막마다 머리 · 줄 번호와 코드(카드 안에서만 가로 스크롤, 줄 번호는 붙박이) · 최근 변경(접힘) */
+.ex-ver { display:inline-flex; align-items:center; gap:6px; }
+.ex-ver .tip .tipbox { left:auto; right:0; }
+.ex-vtag { font-size:12px; padding:0 8px; border-radius:9px; border:1px solid var(--line); color:var(--t2); white-space:nowrap; }
+.ex-vtag.match { border-color:var(--ok); color:var(--ok); }
+.ex-vtag.differ { border-color:var(--warn); color:var(--warn); }
+.ex-vtag.unknown { color:var(--t3); }
+.ex-snips { display:flex; flex-direction:column; gap:8px; }
+.ex-snip { border:1px solid var(--line); border-radius:4px; min-width:0; scroll-margin-top:8px; }
+.ex-snip > summary { cursor:pointer; padding:5px 10px; font-size:13px; color:var(--t2); overflow-wrap:anywhere; }
+.ex-snip[open] > summary { border-bottom:1px solid var(--line); }
+.ex-sfile, .ex-sfn, .ex-code, .ex-cref, .ex-schg li, .ex-read li, .ex-paste { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+.ex-sfile { color:var(--t1); }
+a.ex-sfile { color:var(--accent); text-decoration:none; } a.ex-sfile:hover { text-decoration:underline; }
+.ex-sfn { color:var(--t1); font-weight:600; }
+.ex-sfn, .ex-swhy { white-space:nowrap; }
+.ex-swhy.dead { color:var(--crit); font-weight:600; }
+.ex-code { overflow-x:auto; overscroll-behavior-x:contain; background:var(--bg); font-size:12px; line-height:1.6; tab-size:4; -moz-tab-size:4; }
+.ex-codein { display:inline-block; min-width:100%; padding:4px 0; vertical-align:top; }
+.ex-code .cl { display:flex; white-space:pre; --rowbg:var(--bg); background:var(--rowbg); }
+.ex-code .cn { position:sticky; left:0; flex:none; min-width:4.5ch; padding:0 8px 0 10px; text-align:right; color:var(--t3); background:var(--rowbg); border-right:1px solid var(--line); user-select:none; }
+.ex-code .ct { padding:0 14px 0 10px; color:var(--t1); }
+.ex-code .cl.mark { --rowbg:color-mix(in srgb, var(--accent) 12%, var(--bg)); }
+.ex-code .cl.mark .cn { color:var(--accent); font-weight:600; box-shadow:inset 3px 0 0 var(--accent); }
+.ex-code .cl.mark.dead { --rowbg:color-mix(in srgb, var(--crit) 12%, var(--bg)); }
+.ex-code .cl.mark.dead .cn { color:var(--crit); box-shadow:inset 3px 0 0 var(--crit); }
+.ex-code .cl.ref { --rowbg:color-mix(in srgb, var(--accent) 20%, var(--bg)); }
+.ex-code .cl.ref .cn, .ex-code .cl.mark.ref .cn { color:var(--accent); font-weight:600; box-shadow:inset 3px 0 0 var(--accent); }
+.ex-code .cl.cut .ct { color:var(--t3); }
+.ex-schg { padding:4px 10px 6px; border-top:1px solid var(--line); font-size:12px; color:var(--t2); }
+.ex-schg > summary, .ex-read > summary { cursor:pointer; color:var(--t3); font-size:12px; width:max-content; max-width:100%; }
+.ex-schg ul, .ex-read ul { margin:4px 0 0; padding-left:18px; }
+.ex-schg li, .ex-read li { font-size:12px; overflow-wrap:anywhere; }
+
+/* LLM 초안의 코드 근거 · 고칠 방향 · 읽은 코드 */
+.ex-crefs { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:3px; min-width:0; }
+.ex-crefs li { display:flex; flex-wrap:wrap; align-items:baseline; gap:0 10px; min-width:0; }
+button.ex-cref { font-size:13px; padding:0; border:0; border-radius:0; background:none; color:var(--accent); text-align:left; overflow-wrap:anywhere; }
+button.ex-cref:hover { text-decoration:underline; }
+.ex-cref { font-size:13px; }
+.ex-cref.out { color:var(--t2); }
+.ex-cnote { font-size:13px; color:var(--t2); min-width:0; word-break:keep-all; overflow-wrap:anywhere; }
+.ex-fix { margin:0; max-width:960px; }
+.ex-read li .ex-cref { font-size:12px; }
+
+/* 보낼 내용 서랍: 코드 범위 한 줄 · 답 붙여넣기 */
+.ex-scope { display:flex; align-items:center; gap:6px; margin:0 0 6px; font-size:13px; color:var(--t2); }
+.ex-pastebox { display:flex; flex-direction:column; gap:6px; margin-top:16px; padding-top:12px; border-top:1px solid var(--line); }
+.ex-pastebox .ex-subh { margin:0; }
+.ex-paste { width:100%; min-height:140px; resize:vertical; font-size:12px; line-height:1.5; }
+.ex-ptools { display:flex; align-items:flex-start; flex-wrap:wrap; gap:6px 10px; }
+.ex-ptools button { flex:none; }
+.ex-pmsg { flex:1; min-width:0; font-size:12px; color:var(--t3); white-space:pre-wrap; word-break:keep-all; overflow-wrap:anywhere; }
+.ex-pmsg:empty { display:none; }
+.ex-pmsg.err { color:var(--crit); }
+
 /* 직전 상황: 근거 한 줄 = 왼쪽 이름(120px) · 오른쪽 요약과 내용 */
 .ex-evs { display:flex; flex-direction:column; }
 .ex-ev { display:grid; grid-template-columns:120px minmax(0,1fr); gap:4px 12px; padding:10px 4px; border-top:1px solid var(--line); scroll-margin-top:8px; border-radius:4px; }

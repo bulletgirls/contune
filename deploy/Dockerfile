@@ -27,6 +27,16 @@ RUN apk add --no-cache perf binutils procps tzdata \
  && mkdir -p /data /var/lib/eum/logs /var/lib/eum/work /var/lib/eum/bus /opt/eum-demo/bin /opt/eum-demo/scripts \
  && chown -R eum:eum /var/lib/eum /data \
  && chmod 1777 /data /var/lib/eum /var/lib/eum/logs /var/lib/eum/work /var/lib/eum/bus
+# Claude CLI(선택, 카드 Q-F): --build-arg CLAUDE_CLI=1(compose는 EUM_CLAUDE_CLI=1)일 때만 넣는다. 매니저가 llm.type: claude-cli로 부른다.
+# 공식 apk 저장소(서명 키의 sha256 확인). musl에서는 libgcc·libstdc++·ripgrep이 따로 있어야 하고 내장 ripgrep을 끈다.
+ARG CLAUDE_CLI=0
+RUN if [ "$CLAUDE_CLI" = "1" ]; then \
+      wget -qO /etc/apk/keys/claude-code.rsa.pub https://downloads.claude.ai/keys/claude-code.rsa.pub \
+   && echo "395759c1f7449ef4cdef305a42e820f3c766d6090d142634ebdb049f113168b6  /etc/apk/keys/claude-code.rsa.pub" | sha256sum -c - \
+   && echo "https://downloads.claude.ai/claude-code/apk/latest" >> /etc/apk/repositories \
+   && apk add --no-cache claude-code libgcc libstdc++ ripgrep; \
+    fi
+ENV USE_BUILTIN_RIPGREP=0 DISABLE_AUTOUPDATER=1
 COPY --from=eum-build /out/eum /usr/local/bin/eum
 COPY --from=demo-build /out/channel_svc /out/matching_svc /out/quote_svc /out/index_svc /out/dist_svc /out/stats_svc /opt/eum-demo/bin/
 COPY deploy/scripts/ /opt/eum-demo/scripts/

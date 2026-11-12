@@ -41,9 +41,24 @@ const (
 	timeWithDate = "2006-01-02 15:04:05"
 )
 
-// pack은 보고서 하나의 근거 묶음을 엮는다(결정론적, LLM 없음). 근거를 읽다 난 에러는 로그로 남기고 그 근거만 뺀다.
-// 질의: GetRun 1, 지표 4(job 2·host 2), 프로파일 1, 로그 1, 실행 1, 감사 1, 이전 종료 1 = 10번.
+// packIn은 소스 근거(source.go)를 고를 때 쓰는 중간 값이다. 근거를 엮으며 이미 읽은 것을 다시 묻지 않으려고 모은다.
+type packIn struct {
+	ownErrs []string           // 자기 오류 로그의 메시지(가린 것). E에 가까운 것부터
+	hot     []string           // 직전 프로파일 1위 스택(뿌리 → 잎). 이 프로세스의 표본일 때만
+	prev    []model.ExitReport // 같은 서버·같은 프로그램의 [E−24시간, E) 종료(이 보고서 제외)
+}
+
+// pack은 보고서 하나의 근거 묶음이다: build에 소스 근거(저장소가 있을 때)를 더한 것.
 func (s *Service) pack(ctx context.Context, rec model.ExitRecord) model.ExitPack {
+	p, in := s.build(ctx, rec)
+	return s.addSource(ctx, p, in)
+}
+
+// build는 소스 근거를 뺀 근거 묶음을 엮는다(결정론적, LLM 없음). 규칙 진단은 이것만 읽는다(코드를 읽지 않는다).
+// 근거를 읽다 난 에러는 로그로 남기고 그 근거만 뺀다.
+// 질의: GetRun 1, 지표 4(job 2·host 2), 프로파일 1, 로그 1, 실행 1, 감사 1, 이전 종료 1 = 10번.
+func (s *Service) build(ctx context.Context, rec model.ExitRecord) (model.ExitPack, packIn) {
+	var in packIn
 	r := maskReport(rec.Report)
 	p := model.ExitPack{Version: packVersion, Report: r}
 	run, _, err := s.d.State.GetRun(ctx, r.ExecID)
@@ -64,13 +79,18 @@ func (s *Service) pack(ctx context.Context, rec model.ExitRecord) model.ExitPack
 	add(evLines(model.EvKernel, "커널 로그 %d줄", r.EndedAt, r.Kernel))
 	add(s.evJob(ctx, r))
 	add(s.evHost(ctx, r))
-	add(s.evProfile(ctx, r))
-	add(s.evLogs(ctx, r))
+	prof, hot := s.profile(ctx, r)
+	add(prof)
+	in.hot = hot
+	logs, ownErrs := s.evLogs(ctx, r)
+	add(logs)
+	in.ownErrs = ownErrs
 	hostRuns := s.hostRuns(ctx, r)
 	add(s.evRuns(r, hostRuns))
 	add(s.evAudit(ctx, r, run, hostRuns))
-	add(s.evPrev(ctx, r))
-	return p
+	in.prev = s.prevExits(ctx, r)
+	add(s.evPrev(r, in.prev))
+	return p, in
 }
 
 // maskReport는 묶음에 넣는 보고서 사본이다: 가릴 수 있는 글(cmdline·출력·커널 줄·Notes)은 MaskSecrets를 한 번 더 거친다.
@@ -374,15 +394,20 @@ func (s *Service) evHost(ctx context.Context, r model.ExitReport) *model.Evidenc
 	return e
 }
 
+// exeName은 앱 칸을 가리는 모듈 이름이다: 실행 파일 이름, 모르면 comm.
+func exeName(r model.ExitReport) string {
+	if r.Exe != "" {
+		return filepath.Base(r.Exe)
+	}
+	return r.Comm
+}
+
 // appFrame은 "첫 앱 칸"이다: core 칸 중 모듈이 실행 파일 이름과 같은 첫 칸, 없으면 0번 칸. core·칸이 없으면 false.
 func appFrame(r model.ExitReport) (model.Frame, bool) {
 	if r.Core == nil || len(r.Core.Frames) == 0 {
 		return model.Frame{}, false
 	}
-	name := r.Comm
-	if r.Exe != "" {
-		name = filepath.Base(r.Exe)
-	}
+	name := exeName(r)
 	for _, f := range r.Core.Frames {
 		if f.Module == name {
 			return f, true
@@ -400,8 +425,14 @@ type stackN struct {
 // 서비스 프로세스의 표본은 서비스 주인 키(svc:<서비스>@<서버>)로 쌓이므로 그것을 먼저 보고(06 §12),
 // 비었으면 실행 ID로 본다(서비스로 잡히기 전 표본, 서비스가 아닌 프로세스).
 func (s *Service) evProfile(ctx context.Context, r model.ExitReport) *model.Evidence {
+	e, _ := s.profile(ctx, r)
+	return e
+}
+
+// profile은 evProfile의 근거와 1위 스택(뿌리 → 잎)이다. 스택은 이 프로세스(comm)의 표본일 때만 준다(소스 근거가 쓴다).
+func (s *Service) profile(ctx context.Context, r model.ExitReport) (*model.Evidence, []string) {
 	if s.d.Metrics == nil {
-		return nil
+		return nil, nil
 	}
 	E := r.EndedAt
 	var owners []string
@@ -416,7 +447,7 @@ func (s *Service) evProfile(ctx context.Context, r model.ExitReport) *model.Evid
 		p, err := s.d.Metrics.QueryProfile(ctx, owner, E-profBefore, E)
 		if err != nil {
 			slog.Warn("근거 묶음: 프로파일 조회 실패", "owner", owner, "err", err)
-			return nil
+			return nil, nil
 		}
 		if len(p.Stacks) > 0 {
 			prof = p
@@ -447,7 +478,7 @@ func (s *Service) evProfile(ctx context.Context, r model.ExitReport) *model.Evid
 		total += n
 	}
 	if total == 0 {
-		return nil
+		return nil, nil
 	}
 	sort.Slice(all, func(i, j int) bool {
 		if all[i].n != all[j].n {
@@ -455,6 +486,10 @@ func (s *Service) evProfile(ctx context.Context, r model.ExitReport) *model.Evid
 		}
 		return all[i].stack < all[j].stack
 	})
+	var hot []string
+	if mine {
+		hot = strings.Split(all[0].stack, ";")
+	}
 	e := &model.Evidence{ID: model.EvProfile, TS: E - profBefore,
 		Title: fmt.Sprintf("직전 %d초 표본 %s개", profBefore/sec, fmtNum(float64(total))),
 		Facts: map[string]float64{"samples": float64(total), "window_s": float64(profBefore / sec)}}
@@ -478,25 +513,26 @@ func (s *Service) evProfile(ctx context.Context, r model.ExitReport) *model.Evid
 		e.Facts["crash_func_pct"] = pct
 		e.Lines = append(e.Lines, fmt.Sprintf("죽은 함수 %s가 든 표본 %s%%", f.Func, fmtNum(pct)))
 	}
-	return e
+	return e, hot
 }
 
 var levelMark = map[string]string{"error": "(E)", "warn": "(W)"}
 
 // evLogs는 그 서버의 업무 로그 E·W [E−2분, E+30초]다. 건수는 모두 세고, 줄은 E에 가까운 20개를 시각순으로.
-func (s *Service) evLogs(ctx context.Context, r model.ExitReport) *model.Evidence {
+// 둘째 값은 자기 오류 줄의 메시지(가린 것, E에 가까운 것부터 ownErrMax개)다(소스 근거가 문구를 찾는다).
+func (s *Service) evLogs(ctx context.Context, r model.ExitReport) (*model.Evidence, []string) {
 	if s.d.Metrics == nil {
-		return nil
+		return nil, nil
 	}
 	E := r.EndedAt
 	evs, err := s.d.Metrics.QueryLogs(ctx, model.LogQuery{Hosts: []string{r.Host}, Levels: []string{"error", "warn"},
 		From: E - logBefore, To: E + logAfter, Limit: logScan})
 	if err != nil {
 		slog.Warn("근거 묶음: 로그 조회 실패", "host", r.Host, "err", err)
-		return nil
+		return nil, nil
 	}
 	if len(evs) == 0 {
-		return nil
+		return nil, nil
 	}
 	// 자기 줄: 이 프로세스의 실행 ID나 서비스 주인 키로 쌓인 줄. 같은 서버의 다른 실행 줄과 구별해야
 	// 규칙이 남의 (E) 줄을 원인으로 쓰지 않는다(own_errors·own_warns).
@@ -534,6 +570,12 @@ func (s *Service) evLogs(ctx context.Context, r model.ExitReport) *model.Evidenc
 		}
 		return near[i].ID < near[j].ID
 	})
+	var ownErrs []string
+	for _, ev := range near {
+		if ev.Level == "error" && own(ev) && len(ownErrs) < ownErrMax {
+			ownErrs = append(ownErrs, cut(model.MaskSecrets(ev.Message), maxLineBytes))
+		}
+	}
 	near = head(near, logShow)
 	sort.SliceStable(near, func(i, j int) bool {
 		if near[i].TS != near[j].TS {
@@ -560,7 +602,7 @@ func (s *Service) evLogs(ctx context.Context, r model.ExitReport) *model.Evidenc
 			e.Refs = append(e.Refs, ev.ExecID) // 실행 ID만
 		}
 	}
-	return e
+	return e, ownErrs
 }
 
 // hostRuns는 같은 서버의 실행이다(scheduled_at [E−24시간, E+10초]). runs·audit 근거가 함께 쓴다.
@@ -724,8 +766,9 @@ func (s *Service) evAudit(ctx context.Context, r model.ExitReport, run model.Run
 	return e
 }
 
-// evPrev는 같은 서버·같은 프로그램(comm)의 [E−24시간, E) 종료다.
-func (s *Service) evPrev(ctx context.Context, r model.ExitReport) *model.Evidence {
+// prevExits는 같은 서버·같은 프로그램(comm)의 [E−24시간, E) 종료다(이 보고서 제외, 끝난 시각 내림차순).
+// prev 근거와 소스 근거(first_on_build)가 함께 쓴다.
+func (s *Service) prevExits(ctx context.Context, r model.ExitReport) []model.ExitReport {
 	E := r.EndedAt
 	recs, err := s.d.State.ListExits(ctx, model.ExitFilter{Host: r.Host, Comm: r.Comm, From: E - prevSpan, To: E, Limit: 1000})
 	if err != nil {
@@ -738,6 +781,11 @@ func (s *Service) evPrev(ctx context.Context, r model.ExitReport) *model.Evidenc
 			prev = append(prev, x.Report)
 		}
 	}
+	return prev
+}
+
+// evPrev는 같은 서버·같은 프로그램(comm)의 [E−24시간, E) 종료다.
+func (s *Service) evPrev(r model.ExitReport, prev []model.ExitReport) *model.Evidence {
 	if len(prev) == 0 {
 		return nil
 	}

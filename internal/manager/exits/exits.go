@@ -15,6 +15,7 @@ import (
 	"github.com/oklog/ulid/v2"
 
 	"eum/internal/manager/alert"
+	"eum/internal/manager/coderepo"
 	"eum/internal/manager/exitdiag"
 	"eum/internal/manager/llm"
 	"eum/internal/manager/procs"
@@ -22,7 +23,8 @@ import (
 	"eum/internal/model"
 )
 
-// Deps는 종료 보고서 부품이 쓰는 것이다. Rule·Ask가 nil이면 exitdiag.Rule·exitdiag.AskLLM(시험은 가짜를 넣는다).
+// Deps는 종료 보고서 부품이 쓰는 것이다. Rule·Ask·AskTools·Parse가 nil이면 exitdiag.Rule·AskLLM·AskLLMTools·ParseAnswer
+// (시험은 가짜를 넣는다).
 type Deps struct {
 	Metrics store.MetricStore
 	State   store.StateStore
@@ -34,6 +36,12 @@ type Deps struct {
 	Ask     func(ctx context.Context, l llm.LLM, p model.ExitPack) (model.ExitDiagnosis, error)
 	// Procs는 프로세스 기록(06, 카드 P-C)이다. 보고서를 저장하면 LinkExit로 그 프로세스에 보고서 ID를 붙인다. nil이면 하지 않는다.
 	Procs *procs.Registry
+	// Code는 업무 코드 저장소(카드 Q)다. nil이거나 Enabled가 거짓이면 소스 근거를 넣지 않는다.
+	Code coderepo.Set
+	// AskTools는 도구 탐색(code.llm: tools, LLM이 llm.ToolLLM, 그 프로세스의 Reader가 있을 때)이다.
+	AskTools func(ctx context.Context, l llm.ToolLLM, p model.ExitPack, r coderepo.Reader) (model.ExitDiagnosis, error)
+	// Parse는 밖의 LLM 답 붙여넣기의 검사다(POST analyze {"answer"}).
+	Parse func(out string, p model.ExitPack) (model.ExitDiagnosis, error)
 }
 
 const (
@@ -81,7 +89,46 @@ func New(d Deps) *Service {
 	if d.Ask == nil {
 		d.Ask = exitdiag.AskLLM
 	}
+	if d.AskTools == nil {
+		d.AskTools = exitdiag.AskLLMTools
+	}
+	if d.Parse == nil {
+		d.Parse = exitdiag.ParseAnswer
+	}
 	return &Service{d: d, memo: map[string]memo{}}
+}
+
+// code는 쓸 수 있는 저장소 묶음이다. 없거나 꺼져 있으면 nil.
+func (s *Service) code() coderepo.Set {
+	if s.d.Code == nil || !s.d.Code.Enabled() {
+		return nil
+	}
+	return s.d.Code
+}
+
+// codeMode는 LLM에 코드를 보내는 범위다: "" 저장소 없음 | off | snippets | tools(ExitDetail.CodeMode).
+func (s *Service) codeMode() string {
+	if c := s.code(); c != nil {
+		return c.Mode()
+	}
+	return ""
+}
+
+// reader는 그 보고서의 프로세스가 맡은 저장소다. 없으면 nil.
+func (s *Service) reader(r model.ExitReport) coderepo.Reader {
+	c := s.code()
+	if c == nil {
+		return nil
+	}
+	return c.For(coderepo.Proc{Comm: r.Comm, Exe: r.Exe, BuildID: r.BuildID})
+}
+
+// forLLM은 LLM에 보내는 묶음이다: code.llm이 off면 코드 토막·버전·source 근거를 뺀 사본, 아니면 그대로.
+func (s *Service) forLLM(p model.ExitPack) model.ExitPack {
+	if s.codeMode() == coderepo.ModeOff {
+		return exitdiag.StripCode(p)
+	}
+	return p
 }
 
 // Mount는 에이전트 수신(mountIngest)과 조회·분석 API(mountAPI)를 붙인다. 에이전트 토큰 확인은 manager가 감싼다.
@@ -94,12 +141,14 @@ func (s *Service) Mount(mux *http.ServeMux) {
 func (s *Service) llmAvailable() bool { return s.d.LLM != nil && s.d.LLM.Name() != "none" }
 
 // rule은 보고서의 규칙 진단이다. 고정된 기억이 있으면 그것, 없으면 근거 묶음을 엮어 계산한다.
+// 규칙은 코드를 읽지 않으므로 소스 근거 없이 엮는다(목록·알림이 저장소를 읽지 않게).
 func (s *Service) rule(ctx context.Context, rec model.ExitRecord) memo {
 	now := s.d.Now().UnixMilli()
 	if m, ok := s.cached(rec.Report.ID, now); ok {
 		return m
 	}
-	return s.remember(s.pack(ctx, rec), now)
+	p, _ := s.build(ctx, rec)
+	return s.remember(p, now)
 }
 
 // cached는 고정된 기억을 꺼낸다.

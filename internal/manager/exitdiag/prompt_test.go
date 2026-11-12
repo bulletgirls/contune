@@ -35,7 +35,7 @@ func packOf(t *testing.T, prompt string) model.ExitPack {
 func TestPromptShape(t *testing.T) {
 	p := nullPack()
 	req := Prompt(p)
-	if req.Temperature != 0 || req.MaxTokens != 800 {
+	if req.Temperature != 0 || req.MaxTokens != 1500 { // 카드 Q: code_refs·fix가 늘어 800 → 1500
 		t.Errorf("temperature %v max_tokens %d", req.Temperature, req.MaxTokens)
 	}
 	for _, s := range []string{"근거 묶음", "unknown", "JSON", `"evidence_ids"`, `"next_checks"`, "crash.null", "killed.run", "exit.ok"} {
