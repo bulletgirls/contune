@@ -3,8 +3,9 @@
 .ai-mark { color:var(--ai); font-weight:700; }
 
 /* 상황 브리핑 카드 */
-.ai-brief { position:relative; background:var(--surface); border:1px solid color-mix(in srgb, var(--ai) 35%, var(--line)); border-radius:8px; padding:10px 14px 12px 16px; overflow:hidden; }
-.ai-brief::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:linear-gradient(180deg, var(--ai), color-mix(in srgb, var(--ai) 30%, var(--accent))); }
+.ai-brief { position:relative; background:var(--surface); border:1px solid color-mix(in srgb, var(--ai) 35%, var(--line)); border-radius:8px; padding:10px 14px 12px 16px; overflow-x:clip; }
+.ai-brief::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; border-radius:7px 0 0 7px; background:linear-gradient(180deg, var(--ai), color-mix(in srgb, var(--ai) 30%, var(--accent))); }
+.ai-h .tip .tipbox { left:auto; right:0; } /* ⓘ 말풍선: 오른쪽 끝이라 왼쪽으로 펴고, 카드 아래로 넘쳐도 보이게(세로는 자르지 않는다) */
 .ai-brief.lv-crit { border-color:color-mix(in srgb, var(--crit) 40%, var(--line)); }
 .ai-h { display:flex; align-items:center; gap:8px; min-width:0; }
 .ai-h h2 { font-size:13px; font-weight:700; margin:0; color:var(--ai-ink); letter-spacing:.2px; }

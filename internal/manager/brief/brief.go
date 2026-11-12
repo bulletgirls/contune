@@ -197,7 +197,7 @@ func (s *Service) Trace(ctx context.Context, a model.Alert) Trace {
 	fresh := e != nil && (e.t.Final || now-e.at < traceRecompute)
 	s.mu.Unlock()
 	if !fresh {
-		t := s.compute(ctx, a, now)
+		t := s.compute(context.WithoutCancel(ctx), a, now) // 함께 쓰는 기억이라 한 요청이 끊겨도 끝까지 계산한다
 		s.mu.Lock()
 		if e = s.tr[a.ID]; e == nil {
 			e = &traceEntry{}
@@ -280,7 +280,7 @@ func (s *Service) askTrace(id int64, t Trace) {
 	}
 	e.pending = false
 	if err != nil {
-		e.llmErr = cut(err.Error(), 200)
+		e.llmErr, e.llmAt = cut(err.Error(), 200), now // 다시 부르기까지(llmRetry)는 실패한 때부터 잰다
 		slog.Warn("원인 추적 LLM 초안 실패", "alert", id, "err", err)
 		return
 	}
@@ -350,11 +350,23 @@ func (s *Service) Brief(ctx context.Context, g string) Brief {
 	}
 	s.mu.Unlock()
 
-	rule, sig, pack := s.ruleBrief(ctx, g, now)
+	rule, sig, pack := s.ruleBrief(context.WithoutCancel(ctx), g, now) // 함께 쓰는 기억이라 한 요청이 끊겨도 끝까지 계산한다
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if e = s.br[g]; e == nil {
-		s.gcBriefsLocked()
+		// g는 주소에서 오는 값이다. 서버가 한 대도 없는 범위이거나 자리가 없으면(남은 범위가 모두 LLM 답을 기다리는 중)
+		// 기억하지도 LLM을 부르지도 않고 규칙 문장만 돌려준다: 없는 범위마다 LLM 호출이 줄을 서지 않게.
+		if !s.knownScope(g) {
+			rule.AI = AIState{State: "none"}
+			return rule
+		}
+		if !s.gcBriefsLocked() {
+			rule.AI = AIState{State: "none"}
+			if s.llmOn() {
+				rule.AI = AIState{State: "wait", Model: s.d.LLM.Name()}
+			}
+			return rule
+		}
 		e = &briefEntry{}
 		s.br[g] = e
 	}
@@ -370,20 +382,35 @@ func (s *Service) Brief(ctx context.Context, g string) Brief {
 	return s.composeLocked(e, now)
 }
 
-// gcBriefsLocked는 범위(g)별 기억이 maxScopes개를 넘지 않게 가장 오래된 것부터 지운다(g는 주소에서 오는 값이다). s.mu를 잡고 부른다.
-func (s *Service) gcBriefsLocked() {
+// knownScope는 g가 전체이거나 그 아래에 서버가 있는 그룹인지다(서버 목록을 모르면 참).
+func (s *Service) knownScope(g string) bool {
+	if g == "" || s.d.Live == nil {
+		return true
+	}
+	for _, h := range s.d.Live.Hosts() {
+		if inGroup(h.Group, g) {
+			return true
+		}
+	}
+	return false
+}
+
+// gcBriefsLocked는 범위(g)별 기억이 maxScopes개를 넘지 않게 가장 오래된 것부터 지우고, 새 범위를 넣을 자리가 있는지 돌려준다.
+// LLM 답을 기다리는 범위는 지우지 않는다(답이 돌아올 곳). s.mu를 잡고 부른다.
+func (s *Service) gcBriefsLocked() bool {
 	for len(s.br) >= maxScopes {
-		old, at := "", int64(0)
+		old, at, found := "", int64(0), false // 전체 범위의 열쇠가 ""라 "못 찾음"은 따로 둔다
 		for g, e := range s.br {
-			if !e.pending && (old == "" || e.at < at) {
-				old, at = g, e.at
+			if !e.pending && (!found || e.at < at) {
+				old, at, found = g, e.at, true
 			}
 		}
-		if old == "" {
-			return
+		if !found {
+			return false
 		}
 		delete(s.br, old)
 	}
+	return true
 }
 
 // composeLocked는 보일 브리핑이다: 지금 상황(sig)에 맞는 LLM 문장이 있으면 그것, 없으면 규칙 문장. s.mu를 잡고 부른다.
@@ -397,7 +424,8 @@ func (s *Service) composeLocked(e *briefEntry, now int64) Brief {
 	rule := e.b
 	rule.Rule = nil
 	switch {
-	case e.llm != nil && e.llmSig == e.sig:
+	case e.llm != nil && e.llmSig == e.sig && e.llm.Level == e.b.Level && e.llmHead == e.b.Headline:
+		// 서명이 같아도(서버 경고는 서명에 없다) 수준이나 규칙 머리글이 그때와 다르면 아래로 내려가 규칙 문장을 보인다.
 		l := *e.llm
 		l.Evidence, l.Trace, l.Level, l.At = e.b.Evidence, e.b.Trace, e.b.Level, e.b.At
 		l.AI = AIState{State: "ok", Model: name, At: l.WrittenAt}
@@ -441,7 +469,7 @@ func (s *Service) askBrief(g, sig string, rule Brief, pack briefPack) {
 	}
 	e.pending = false
 	if err != nil {
-		e.llmErr, e.errSig = cut(err.Error(), 200), sig
+		e.llmErr, e.errSig, e.llmAt = cut(err.Error(), 200), sig, now // 다시 부르기까지(llmRetry)는 실패한 때부터 잰다
 		slog.Warn("상황 브리핑 LLM 초안 실패", "err", err)
 		return
 	}
@@ -859,7 +887,7 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 	sum := sha256.Sum256([]byte(strings.Join(sig, "\n")))
 	pack := briefPack{Now: clock(now, s.d.Loc), Scope: orAll(g)}
 	for _, e := range b.Evidence {
-		pack.Evidence = append(pack.Evidence, packEvidence{ID: e.ID, Title: e.Title, Lines: e.Lines})
+		pack.Evidence = append(pack.Evidence, packEvidence{ID: e.ID, Title: cut(model.MaskSecrets(e.Title), 200), Lines: maskLines(e.Lines)})
 	}
 	pack.Evidence = append(pack.Evidence, packEvidence{ID: "scope", Title: fmt.Sprintf("범위 %s · 서버 %d대 · 진행 중 알림 %d건", orAll(g), nHosts, len(live))})
 	b.Evidence = append(b.Evidence, Evidence{ID: "scope", Kind: "scope", Label: "범위", Title: fmt.Sprintf("범위 %s · 서버 %d대 · 진행 중 알림 %d건", orAll(g), nHosts, len(live))})
@@ -1003,9 +1031,24 @@ type failedFlow struct {
 func (s *Service) failedFlows(ctx context.Context, now int64, g string) []failedFlow {
 	day := time.UnixMilli(now).In(s.d.Loc)
 	day0 := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, s.d.Loc).UnixMilli()
-	runs, err := s.d.State.ListRuns(ctx, model.RunFilter{From: day0, Status: []model.RunStatus{model.StatusFailed, model.StatusTimeout, model.StatusLost, model.StatusKilled}, Limit: 5000})
+	all, err := s.d.State.ListRuns(ctx, model.RunFilter{From: day0, Limit: 5000})
 	if err != nil {
 		return nil
+	}
+	// 스텝별 마지막 시도만 본다: 재시도·재실행으로 성공한 스텝의 앞 실패는 "끝내 실패"가 아니다.
+	last := map[[2]string]int{}
+	for _, r := range all {
+		k := [2]string{r.FlowRunID, r.StepID}
+		last[k] = max(last[k], r.Attempt)
+	}
+	var runs []model.Run
+	for _, r := range all {
+		switch r.Status {
+		case model.StatusFailed, model.StatusTimeout, model.StatusLost, model.StatusKilled:
+			if r.Attempt == last[[2]string{r.FlowRunID, r.StepID}] {
+				runs = append(runs, r)
+			}
+		}
 	}
 	boards := map[string]string{}
 	if s.d.Flows != nil {

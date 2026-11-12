@@ -67,7 +67,7 @@ func tracePrompt(t Trace, loc *time.Location) llm.Request {
 		Subject  string         `json:"subject"`
 		Evidence []packEvidence `json:"evidence"`
 	}
-	p := packed{Alert: fmt.Sprintf("%s · %s · %s 열림", levelText(t.Alert.Level), t.Alert.Message, clock(t.Alert.TS, loc)), Subject: t.subject()}
+	p := packed{Alert: fmt.Sprintf("%s · %s · %s 열림", levelText(t.Alert.Level), model.MaskSecrets(t.Alert.Message), clock(t.Alert.TS, loc)), Subject: t.subject()}
 	var ids []string
 	for _, e := range t.Evidence {
 		p.Evidence = append(p.Evidence, packEvidence{ID: e.ID, Title: cut(model.MaskSecrets(e.Title), 200), Lines: maskLines(e.Lines)})
@@ -90,9 +90,9 @@ func briefPrompt(rule Brief, p briefPack) llm.Request {
 		body = packJSON(p)
 	}
 	var r strings.Builder
-	r.WriteString(rule.Headline + "\n")
+	r.WriteString(model.MaskSecrets(rule.Headline) + "\n") // 로그 알림 문구에는 로그 줄 원문이 들어 있다
 	for _, l := range rule.Lines {
-		r.WriteString("- " + l.Text + " [" + strings.Join(l.Refs, ", ") + "]\n")
+		r.WriteString("- " + model.MaskSecrets(l.Text) + " [" + strings.Join(l.Refs, ", ") + "]\n")
 	}
 	prompt := "다음은 지금 상황의 근거 묶음(JSON)입니다.\n" + body + "\n\n규칙 문장(참고):\n" + r.String()
 	return llm.Request{System: briefSystem, Prompt: prompt, MaxTokens: briefMaxTokens, Temperature: 0}

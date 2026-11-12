@@ -383,6 +383,13 @@ func (s *Service) functions(t *Trace, pa, pb model.Profile) {
 	sort.SliceStable(rows, func(i, j int) bool { return math.Abs(rows[i].Diff) > math.Abs(rows[j].Diff) })
 	if len(rows) > maxFuncs {
 		rows = rows[:maxFuncs]
+		in := false
+		for _, r := range rows {
+			in = in || (t.Top != nil && r.Leaf == t.Top.Leaf)
+		}
+		if t.Top != nil && !in { // 원인 후보는 늘 표와 근거(fn:<후보>)에 있다: 규칙 판단과 LLM이 그 ID를 인용한다
+			rows[maxFuncs-1] = *t.Top
+		}
 	}
 	t.Functions = rows
 	for _, r := range rows {

@@ -598,19 +598,270 @@ func TestBriefAlertReadFailureIsNotNormal(t *testing.T) {
 	}
 }
 
-// 범위(g)는 주소에서 오는 값이라 기억 수에 상한을 둔다.
+// blockLLM은 gate를 닫을 때까지 답을 붙잡아 둔다(답을 기다리는 범위 만들기).
+type blockLLM struct {
+	gate chan struct{}
+	n    atomic.Int64
+}
+
+func (b *blockLLM) Name() string { return "block" }
+func (b *blockLLM) Complete(ctx context.Context, req llm.Request) (string, error) {
+	b.n.Add(1)
+	<-b.gate
+	return `{"headline":"전체 정상","lines":[{"text":"알림 없음","evidence_ids":["scope"]}],"next_checks":[]}`, nil
+}
+
+// 범위(g)는 주소에서 오는 값이다: 서버가 없는 범위는 기억하지도 LLM을 부르지도 않고,
+// 있는 범위도 LLM을 켠 채로 기억 수가 상한을 넘지 않는다(답을 기다리는 범위는 지우지 못한다).
 func TestBriefScopesAreBounded(t *testing.T) {
 	w := newWorld(t, t0+60_000)
+	bl := &blockLLM{gate: make(chan struct{})}
+	defer close(bl.gate)
+	w.llm = bl
 	s := w.svc()
+	count := func() int { s.mu.Lock(); defer s.mu.Unlock(); return len(s.br) }
 	for i := 0; i < maxScopes*2; i++ {
-		s.Brief(context.Background(), fmt.Sprintf("없는그룹/%d", i))
+		if b := s.Brief(context.Background(), fmt.Sprintf("없는그룹/%d", i)); b.AI.State != "none" || b.By != "rule" {
+			t.Fatalf("없는 범위: %+v", b.AI)
+		}
+	}
+	if n := count(); n != 0 || bl.n.Load() != 0 {
+		t.Fatalf("없는 범위를 %d개 기억하고 LLM을 %d번 부름", n, bl.n.Load())
+	}
+	for i := 0; i < maxScopes*2; i++ {
+		w.lv.Put(fmt.Sprintf("h-%d", i), fmt.Sprintf("그룹%d", i), []model.Sample{{TS: w.now, Name: "host.cpu.pct", Value: 1}}, w.now)
+	}
+	var last Brief
+	for i := 0; i < maxScopes*2; i++ {
+		last = s.Brief(context.Background(), fmt.Sprintf("그룹%d", i))
 		w.clk.Add(1)
 	}
+	if n := count(); n > maxScopes {
+		t.Fatalf("범위 기억 %d개(상한 %d)", n, maxScopes)
+	}
+	if last.By != "rule" || last.AI.State != "wait" || !strings.HasPrefix(last.Headline, "전체 정상") {
+		t.Fatalf("자리가 없을 때: by=%s ai=%+v headline=%q", last.By, last.AI, last.Headline)
+	}
+	// 전체 범위("")가 가장 오래된 것이어도 그것부터 지운다("못 찾음" 표시와 겹치지 않는다)
 	s.mu.Lock()
+	s.br = map[string]*briefEntry{"": {at: 1}}
+	for i := 1; i < maxScopes; i++ {
+		s.br[fmt.Sprintf("g%d", i)] = &briefEntry{at: int64(100 + i)}
+	}
+	ok := s.gcBriefsLocked()
+	_, kept := s.br[""]
 	n := len(s.br)
 	s.mu.Unlock()
-	if n > maxScopes {
-		t.Fatalf("범위 기억 %d개(상한 %d)", n, maxScopes)
+	if !ok || kept || n != maxScopes-1 {
+		t.Fatalf("gc: ok=%v 전체 범위 남음=%v 남은 수=%d", ok, kept, n)
+	}
+}
+
+// 서버 경고는 상황 서명에 없다: 서명이 같아도 수준·규칙 머리글이 AI가 쓴 때와 다르면 규칙 문장을 보인다.
+func TestBriefSameSignatureButHeadlineChanged(t *testing.T) {
+	w := newWorld(t, t0+60_000)
+	f := &fakeLLM{brief: `{"headline":"전체 정상","lines":[{"text":"진행 중 알림 없음","evidence_ids":["scope"]}],"next_checks":[]}`}
+	w.llm = f
+	s := w.svc()
+	ctx := context.Background()
+	var b Brief
+	waitFor(t, "LLM 브리핑이 오지 않음", func() bool { w.clk.Add(briefCache); b = s.Brief(ctx, ""); return b.By == "llm" && !b.Stale })
+	h := w.alert(t, model.Alert{TS: w.clk.Load(), Kind: "host", DedupKey: "host:match-01:disk", Level: "warn", State: "firing", Host: "match-01",
+		Group: "매매/체결", Message: "match-01 서버 경고: 디스크 사용률 ≥ 80%"})
+	w.clk.Add(briefAskGap + briefCache)
+	if b = s.Brief(ctx, ""); b.By != "rule" || b.Level != "warn" || !strings.Contains(b.Headline, "match-01") {
+		t.Fatalf("서버 경고가 열렸는데 by=%s level=%s headline=%q", b.By, b.Level, b.Headline)
+	}
+	// 경고가 풀리면 그때의 AI 문장("전체 정상")이 다시 맞는다. LLM은 처음 한 번만 불렀다.
+	if err := w.st.ResolveAlert(ctx, h.ID, w.clk.Load()); err != nil {
+		t.Fatal(err)
+	}
+	w.clk.Add(briefCache)
+	if b = s.Brief(ctx, ""); b.By != "llm" || b.Stale || b.Headline != "전체 정상" || b.Level != "ok" {
+		t.Fatalf("경고가 풀렸는데 by=%s stale=%v level=%s headline=%q", b.By, b.Stale, b.Level, b.Headline)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.reqs) != 1 {
+		t.Fatalf("LLM을 %d번 부름", len(f.reqs))
+	}
+}
+
+// 로그 알림 문구에는 로그 줄 원문이 들어 있다: 두 프롬프트 어디에도 비밀 값이 그대로 나가지 않는다.
+func TestPromptsMaskSecrets(t *testing.T) {
+	w := newWorld(t, t0+60_000)
+	f := &fakeLLM{trace: `{"title":"t","detail":"d","confidence":"low","evidence_ids":["alert"],"next_checks":[]}`,
+		brief: `{"headline":"h","lines":[{"text":"x","evidence_ids":["scope"]}],"next_checks":[]}`}
+	w.llm = f
+	a := w.alert(t, model.Alert{TS: t0, Kind: "log", DedupKey: "log:match-01:matching", Level: "crit", State: "firing", Host: "match-01",
+		ExecID: owner0, Name: "matching", Group: "매매/체결", Message: "(E) 1건 · db connect failed user=trade password=hunter2 host=db-01"})
+	s := w.svc()
+	ctx := context.Background()
+	n := func() int { f.mu.Lock(); defer f.mu.Unlock(); return len(f.reqs) }
+	waitFor(t, "브리핑·추적 요청이 가지 않음", func() bool { w.clk.Add(briefCache); s.Brief(ctx, ""); return n() >= 2 })
+	f.mu.Lock()
+	for _, r := range f.reqs {
+		if strings.Contains(r.Prompt, "hunter2") || !strings.Contains(r.Prompt, "password=") {
+			t.Errorf("프롬프트에 비밀 값이 그대로 있거나 알림 문구가 없음:\n%s", r.Prompt)
+		}
+	}
+	f.mu.Unlock()
+	if p := tracePrompt(s.Trace(ctx, a), seoul).Prompt; strings.Contains(p, "hunter2") {
+		t.Errorf("원인 추적 프롬프트에 비밀 값:\n%s", p)
+	}
+}
+
+// 재시도·재실행으로 성공한 스텝의 앞 실패는 "오늘 실패한 배치"가 아니다. 마지막 시도가 실패면 센다.
+func TestBriefFailedFlowsCountLastAttemptOnly(t *testing.T) {
+	w := newWorld(t, t0+60_000)
+	ctx := context.Background()
+	sched := t0 - 45*60_000
+	mk := func(id, flow string, attempt int, to model.RunStatus, end int64) {
+		t.Helper()
+		if err := w.st.CreateRuns(ctx, []model.Run{{ExecID: id, FlowRunID: "fr-" + flow, FlowID: flow, StepID: "load", Host: "match-01",
+			Trigger: model.TriggerSchedule, Attempt: attempt, Status: model.StatusWaiting, ScheduledAt: sched}}, "scheduler", "t"); err != nil {
+			t.Fatal(err)
+		}
+		st := sched + 1000
+		for _, tr := range []model.Transition{
+			{ExecID: id, From: []model.RunStatus{model.StatusWaiting}, To: model.StatusRunning, TS: st, Actor: "a", Patch: model.RunPatch{StartedAt: &st}},
+			{ExecID: id, From: []model.RunStatus{model.StatusRunning}, To: to, TS: end, Actor: "a", Patch: model.RunPatch{EndedAt: &end}},
+		} {
+			if ok, err := w.st.Transition(ctx, tr); err != nil || !ok {
+				t.Fatalf("%s → %s: %v %v", id, tr.To, ok, err)
+			}
+		}
+	}
+	mk("e1", "eod-settle", 1, model.StatusFailed, t0-40*60_000)
+	mk("e2", "eod-settle", 2, model.StatusSucceeded, t0-35*60_000)
+	mk("e3", "ext-send", 1, model.StatusFailed, t0-30*60_000)
+	mk("e4", "ext-send", 2, model.StatusFailed, t0-25*60_000)
+	b := w.svc().Brief(ctx, "")
+	if hasEvidence(b.Evidence, "flow:eod-settle") || !hasEvidence(b.Evidence, "flow:ext-send") {
+		t.Fatalf("끝내 실패한 배치만 써야 함: %+v", b.Lines)
+	}
+	for _, l := range b.Lines {
+		if strings.Contains(l.Text, "eod-settle") || (strings.Contains(l.Text, "ext-send") && !strings.Contains(l.Text, "ext-send(1회")) {
+			t.Fatalf("줄: %q", l.Text)
+		}
+	}
+}
+
+// ctxState는 끊긴 요청(ctx 취소)이면 실제 저장소처럼 에러를 돌려준다.
+type ctxState struct{ store.StateStore }
+
+func (c ctxState) ListAlerts(ctx context.Context, f model.AlertFilter) ([]model.Alert, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return c.StateStore.ListAlerts(ctx, f)
+}
+
+// 브라우저가 연결을 끊은 요청이 계산한 것도 함께 쓰는 기억에 들어간다: 끊겼다고 "알림을 읽지 못함"이 남지 않는다.
+func TestBriefCanceledRequestStillComputes(t *testing.T) {
+	w := newWorld(t, t0+60_000)
+	s := New(Deps{Metrics: w.ms, State: ctxState{w.st}, Live: w.lv, Panels: panelsFixture, Services: servicesFixture,
+		Loc: seoul, Now: func() time.Time { return time.UnixMilli(w.clk.Load()) }})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if b := s.Brief(ctx, ""); !strings.HasPrefix(b.Headline, "전체 정상") || b.Level != "ok" {
+		t.Fatalf("끊긴 요청: level=%s headline=%q", b.Level, b.Headline)
+	}
+}
+
+// slowFailLLM은 took(ms)만큼 걸린 뒤 실패한다(시계를 그만큼 민다).
+type slowFailLLM struct {
+	w    *world
+	took int64
+	n    atomic.Int64
+}
+
+func (l *slowFailLLM) Name() string { return "slowfail" }
+func (l *slowFailLLM) Complete(ctx context.Context, req llm.Request) (string, error) {
+	l.n.Add(1)
+	l.w.clk.Add(l.took)
+	return "", errors.New("시간 초과")
+}
+
+// 실패 뒤 다시 부르기까지(llmRetry)는 부르기 시작한 때가 아니라 실패한 때부터 잰다(90초 걸려 실패해도 곧바로 다시 부르지 않는다).
+func TestLLMRetryCountsFromFailure(t *testing.T) {
+	ctx := context.Background()
+	// 브리핑(알림이 없어 원인 추적은 부르지 않는다)
+	w := newWorld(t, t0+60_000)
+	l := &slowFailLLM{w: w, took: int64(llmTimeout / time.Millisecond)}
+	w.llm = l
+	s := w.svc()
+	s.Brief(ctx, "")
+	waitFor(t, "브리핑 LLM 호출이 끝나지 않음", func() bool { s.mu.Lock(); defer s.mu.Unlock(); return !s.br[""].pending })
+	for i := 0; i < 5; i++ {
+		w.clk.Add(briefCache)
+		if b := s.Brief(ctx, ""); b.AI.State != "error" {
+			t.Fatalf("브리핑 %d번째: ai=%+v", i, b.AI)
+		}
+	}
+	if n := l.n.Load(); n != 1 {
+		t.Fatalf("브리핑: 실패 뒤 60초 안에 LLM을 %d번 부름", n)
+	}
+	w.clk.Add(llmRetry)
+	s.Brief(ctx, "")
+	waitFor(t, "브리핑: 60초 뒤 다시 부르지 않음", func() bool { return l.n.Load() == 2 })
+
+	// 원인 추적
+	w = newWorld(t, t0+60_000)
+	l = &slowFailLLM{w: w, took: int64(llmTimeout / time.Millisecond)}
+	w.llm = l
+	a := w.alert(t, p99Alert())
+	s = w.svc()
+	s.Trace(ctx, a)
+	waitFor(t, "추적 LLM 호출이 끝나지 않음", func() bool { s.mu.Lock(); defer s.mu.Unlock(); return !s.tr[a.ID].pending })
+	for i := 0; i < 5; i++ {
+		w.clk.Add(briefCache)
+		if tr := s.Trace(ctx, a); tr.AI.State != "error" {
+			t.Fatalf("추적 %d번째: ai=%+v", i, tr.AI)
+		}
+	}
+	if n := l.n.Load(); n != 1 {
+		t.Fatalf("추적: 실패 뒤 60초 안에 LLM을 %d번 부름", n)
+	}
+}
+
+// 원인 후보는 내부 프레임을 건너뛰고 고르므로 변화 큰 순 5줄 밖일 수 있다: 그래도 표와 근거(fn:<후보>)에 있어야 한다.
+func TestTraceTopIsAlwaysInTable(t *testing.T) {
+	w := newWorld(t, t0+60_000)
+	ctx := context.Background()
+	own := model.ServiceOwner("quote", "feed-01")
+	var ps []model.Profile
+	for ts := t0 - 5*60_000; ts < t0+50_000; ts += 10_000 {
+		st := map[string]int64{"q;main;f1": 30, "q;main;f2": 25, "q;main;f3": 20, "q;main;base": 25}
+		if ts >= t0-30_000 {
+			st = map[string]int64{"q;[unknown]": 25, "q;main;__memcpy_avx": 12, "q;main;parse_tick": 8, "q;main;f1": 10, "q;main;f2": 10, "q;main;f3": 10, "q;main;base": 25}
+		}
+		ps = append(ps, model.Profile{Host: "feed-01", ExecID: own, TS: ts, DurMS: 10_000, Hz: 49, Stacks: st})
+	}
+	if err := w.ms.WriteProfiles(ctx, ps); err != nil {
+		t.Fatal(err)
+	}
+	a := w.alert(t, model.Alert{TS: t0, Kind: "log", DedupKey: "log:feed-01:quote", Level: "crit", State: "firing", Host: "feed-01",
+		ExecID: own, Message: "(E) 3건 · 시세 원천 끊김"})
+	s := w.svc()
+	tr := s.Trace(ctx, a)
+	if tr.Top == nil || tr.Top.Leaf != "parse_tick" || len(tr.Functions) != maxFuncs {
+		t.Fatalf("top=%+v 표 %d줄", tr.Top, len(tr.Functions))
+	}
+	in := false
+	for _, r := range tr.Functions {
+		in = in || r.Leaf == "parse_tick"
+	}
+	if !in {
+		t.Fatalf("원인 후보가 표에 없음: %+v", tr.Functions)
+	}
+	for _, id := range tr.Rule.EvidenceIDs {
+		if !hasEvidence(tr.Evidence, id) {
+			t.Errorf("규칙 판단의 근거 %s가 묶음에 없음", id)
+		}
+	}
+	if b := s.Brief(ctx, ""); !hasEvidence(b.Evidence, "trace.fn:parse_tick") {
+		t.Errorf("브리핑 근거에 trace.fn:parse_tick 없음")
 	}
 }
 

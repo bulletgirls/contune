@@ -253,7 +253,7 @@ export function traceView(t, ctx = {}) {
   steps.push(step(1, '알림',
     el('div', { class: 'ts-line' }, el('span', { class: `badge ${esc(a.level)}`, text: LEVEL_TEXT[a.level] || a.level || DASH }), ' ', a.message || DASH),
     el('div', { class: 'ts-sub', text: `${fmtClock(a.ts)} 열림${a.state === 'resolved' ? ` · ${fmtClock(a.resolved_at)} 해소` : ' · 진행 중'}` })));
-  if (t.state === 'exit' || t.state === 'no_owner') {
+  if (t.state === 'exit' || t.state === 'no_owner' || t.state === 'down') { // 함수 비교를 하지 않는 추적: 구간·표 대신 갈 곳만
     steps.push(step(2, '따라갈 곳', el('div', { class: 'ts-line', text: t.note || DASH }),
       t.state === 'exit' && a.dedup_key ? el('a', { href: `#exit/${enc(String(a.dedup_key).replace(/^exit:/, ''))}`, onclick: closeDrawer, text: '종료 보고서 →' }) : null));
   } else {
@@ -312,7 +312,7 @@ export function traceView(t, ctx = {}) {
   box.append(judge);
 
   box.append(el('div', { class: 'at-act' },
-    href ? el('a', { class: 'ai-btn primary', href, onclick: closeDrawer, text: t.service ? '타임머신에서 A·B 비교 열기 →' : '실행 화면 →' }) : null,
+    href ? el('a', { class: 'ai-btn primary', href, onclick: closeDrawer, text: t.state === 'down' ? '서비스 타임머신 →' : t.service ? '타임머신에서 A·B 비교 열기 →' : '실행 화면 →' }) : null,
     ctx.alertHref && a.kind ? el('a', { class: 'ai-btn', href: ctx.alertHref(a), onclick: closeDrawer, text: '알림 화면 →' }) : null));
   // 칩을 눌러 다른 화면으로 가면 서랍을 닫는다
   box.querySelectorAll('a.ai-ref').forEach((x) => x.addEventListener('click', closeDrawer));

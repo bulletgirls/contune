@@ -320,12 +320,21 @@ function mockTrace(c, a) {
     const d = { title: '종료 알림은 종료 보고서가 원인(신호·스택·커널 기록)을 따로 가립니다', detail: '', confidence: 'low', evidence_ids: ['alert'], next_checks: ['종료 보고서에서 신호·호출 스택·커널 기록 확인'], by: 'rule' };
     return { ...base, state: 'exit', note: d.title, rule: d, diag: d, ai: { state: 'none' } };
   }
+  if (a.kind === 'service') { // 서비스 미기동: 함수 비교 대신 기동·종료 기록으로(매니저의 state down과 같은 모양)
+    const title = String(a.message || '').split('(')[0] || a.name;
+    const note = '서비스가 떠 있지 않다는 알림이라 함수 비교 대신 기동·종료 기록(종료 보고서)을 봅니다';
+    const d = { title: `${title} · ${a.host}: 서비스 미기동 — 기동·종료 기록 확인`, detail: note, confidence: 'low', evidence_ids: ['alert'],
+      next_checks: ['서비스 타임머신 사건 탭에서 마지막 종료 보고서와 기동한 실행 확인', '기동 배치(플로우)가 실패·대기 중인지 확인'], by: 'rule' };
+    return { ...base, state: 'down', note, owner: `svc:${a.name}@${a.host}`, service: a.name, service_title: title, host: a.host, found: '서비스 알림',
+      a: { from: 0, to: 0, samples: 0 }, b: { from: 0, to: 0, samples: 0 }, compared: false, rule: d, diag: d, ai: { state: 'none' } };
+  }
   if (!TRACE_IDS.has(a.id) || !c.sig.surge) {
     const d = { title: `${a.host || a.group || '이 알림'}: 따라갈 함수 추적 서비스가 없습니다`, detail: '', confidence: 'low', evidence_ids: ['alert'], next_checks: [], by: 'rule' };
     return { ...base, state: 'no_owner', note: d.title, rule: d, diag: d, ai: { state: 'none' } };
   }
   const T = a.ts;
-  const A = { from: T - 5 * MIN, to: T - 90 * SEC, samples: 861 }, B = { from: T - 30 * SEC, to: Math.min(now, T + 30 * SEC), samples: 2412 };
+  // A 끝은 mock 폭주가 시작되는 지금-4분 앞으로 자른다(타임머신의 A·B 비교가 추적과 같은 모양을 보이게)
+  const A = { from: T - 5 * MIN, to: Math.min(T - 90 * SEC, now - 4 * MIN), samples: 861 }, B = { from: T - 30 * SEC, to: Math.min(now, T + 30 * SEC), samples: 2412 };
   const fns = [
     { leaf: 'book_insert', pct_a: 2.4, pct_b: 61.8, diff: 59.4 }, { leaf: 'check_risk', pct_a: 71.2, pct_b: 18.1, diff: -53.1 },
     { leaf: 'rebuild_book', pct_a: 0, pct_b: 9.5, diff: 9.5 }, { leaf: 'price_cross', pct_a: 14.3, pct_b: 6.2, diff: -8.1 }, { leaf: 'expire_orders', pct_a: 8.9, pct_b: 3.1, diff: -5.8 },
@@ -350,7 +359,9 @@ function mockTrace(c, a) {
 }
 
 function trace(c, m) {
-  const a = buildAlerts(c).find((x) => x.id === Number(m[1]));
+  // 화면 목록과 같은 /alerts(mock/services.js가 서비스 미기동 알림을 끼워 넣은 뒤)에서 찾는다
+  const list = routes.find(([mt, re]) => mt === 'GET' && re.test('/alerts'))[2]({ ...c, q: new URLSearchParams('state=all&limit=100000') });
+  const a = ((list.body && list.body.alerts) || []).find((x) => x.id === Number(m[1]));
   return a ? ok(mockTrace(c, a)) : err(404, '없는 알림');
 }
 
@@ -359,7 +370,7 @@ function brief(c) {
   const firing = buildAlerts(c).filter((a) => a.state === 'firing');
   const ev = [], lines = [];
   const alertEv = (a) => { const id = `alert:${a.id}`; ev.push({ id, kind: 'alert', label: a.kind === 'host' ? a.host : (a.message.split(' · ')[1] || a.message).replace(/\s[\d,.]+.*$/, ''), title: a.message, alert_id: a.id, alert: a, host: a.host }); return id; };
-  const biz = firing.filter((a) => a.group === '매매/체결' && a.kind !== 'host' && a.kind !== 'exit');
+  const biz = firing.filter((a) => a.group === '매매체결' && a.kind !== 'host' && a.kind !== 'exit');
   const hosts = firing.filter((a) => a.kind === 'host');
   let tb = null;
   if (biz.length) {
@@ -384,7 +395,7 @@ function brief(c) {
   return ok({ ...rule, by: 'llm', model: 'mock-llm', written_at: now - 4 * SEC, ai: { state: 'ok', model: 'mock-llm', at: now - 4 * SEC }, rule: { ...rule, rule: undefined },
     headline: biz.length ? '체결 응답 지연 — 원인 후보 book_insert, 주문 유입 4배' : rule.headline,
     lines: biz.length ? [
-      { text: '체결 p99 응답 시간·대기 큐 위험 · match-01', level: 'crit', refs: ev.filter((e) => e.kind === 'alert' && e.alert.group === '매매/체결').map((e) => e.id) },
+      { text: '체결 p99 응답 시간·대기 큐 위험 · match-01', level: 'crit', refs: ev.filter((e) => e.kind === 'alert' && e.alert.group === '매매체결').map((e) => e.id) },
       { text: '원인 후보 book_insert: Self 비중 2.4% → 61.8%, 같은 시각 주문 유입 4배', level: 'crit', refs: ['trace'] },
       ...lines.filter((l) => l.text.startsWith('서버')),
     ] : rule.lines });
