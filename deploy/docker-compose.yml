@@ -35,6 +35,11 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     command: [manager, --config, /etc/eum/manager.yaml]
+    environment:                 # 공통(HOME·TZ) + AI 초안(카드 N): 띄우는 셸의 EUM_LLM·ANTHROPIC_API_KEY를 매니저에만(키는 파일에 두지 않는다)
+      HOME: /tmp
+      TZ: Asia/Seoul
+      EUM_LLM: ${EUM_LLM:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports: ["8080:8080"]
     volumes:
       - eum-data:/data
