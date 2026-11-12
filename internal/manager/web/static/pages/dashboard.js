@@ -6,6 +6,7 @@ import { el, esc, fmtNum, fmtClock, relTime, numUnit, badgeHTML, info, EMPTY, DA
 import { flowState } from '../tree.js';
 import { groupCmp, setGroupOrder } from '../grouporder.js';
 import { openValue, openLevel, acceptsOf, todoFactors, baselineText, placeText, factorHref, incidentText } from '../riskfmt.js';
+import { renderBrief, openTrace, traceable, AI_MARK } from '../ai.js';
 
 // ---- 순수 함수 (DOM 없이 호출) ----
 const inGroup = (group, g) => !g || group === g || String(group || '').startsWith(g + '/');
@@ -548,7 +549,10 @@ export function eventList(alerts, panels, hs, flows) {
     row.innerHTML = `<span class="wm ${esc(a.level)}" title="${esc(LEVEL_TEXT[a.level] || a.level)}">${ALERT_MARK[a.level] || '•'}</span><span class="wt">${esc(alertName(a))}</span>` +
       `<span class="wr">${esc(alertReason(a))}</span>` +
       (ack ? `<span class="wa" title="${esc(ack.title)}">${esc(ack.text)}</span>` : '') +
+      (traceable(a) ? `<button type="button" class="wtr" title="이 알림에서 원인 함수까지 추적(서비스 → 구간 A·B → 함수 비교 → 호출 경로)">${AI_MARK} 원인</button>` : '') +
       `<span class="we">${esc(relTime(a.ts, now))}</span>`;
+    const tb = row.querySelector('.wtr');
+    if (tb) tb.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); openTrace(a.id, { alertHref: (x) => alertTarget(x, panels) }); });
     list.append(row);
   }
   if (!alerts.length) list.append(el('p', { class: 'empty', text: DASH }));
@@ -626,19 +630,25 @@ export function render(el0, params, query) {
   const g = (query && query.g) || '';
   el0.innerHTML = '';
   const root = el('div', { class: 'dash' });
+  // 맨 위 AI 상황 브리핑은 자기 서명으로만 다시 그린다(타자 효과가 2초마다 다시 돌지 않게). 나머지는 main에 그린다.
+  const briefSlot = el('div', { class: 'ai-slot' });
+  const main = el('div', { class: 'dash-main' });
+  root.append(briefSlot, main);
   el0.append(root);
   let lastSig = '';
   let pick = null, hoursNow = []; // 시간대별 배치에서 고른 칸(from ms)과 마지막으로 그린 시간 칸
   const onPick = (v) => {
     pick = v;
-    const old = root.querySelector('.dtl');
+    const old = main.querySelector('.dtl');
     if (old) old.replaceWith(timeline(hoursNow, Date.now(), pick, onPick));
   };
   poll(async () => {
-    const [h, f, p, a, r, hz] = await Promise.all([
+    const [h, f, p, a, r, hz, bf] = await Promise.all([
       api('/hosts'), api('/flows'), api('/panels'), api('/alerts?state=firing'), api('/risk').catch(() => null),
-      api('/flows/hours').catch(() => null)]);
+      api('/flows/hours').catch(() => null), api('/brief' + (g ? `?g=${encodeURIComponent(g)}` : '')).catch(() => null)]);
     const now = Date.now();
+    const allPanels = p.panels || [];
+    renderBrief(briefSlot, bf, { alertHref: (x) => alertTarget(x, allPanels), onTrace: (id) => openTrace(id, { alertHref: (x) => alertTarget(x, allPanels) }) });
     const hs = hostsInScope(h.hosts || [], g);
     const ids = new Set(hs.map((x) => x.id));
     setGroupOrder(p.panels || []);
@@ -649,14 +659,14 @@ export function render(el0, params, query) {
     // 바뀐 것이 없으면 다시 그리지 않는다(시간대별 배치의 "지금" 선은 분 단위로 움직인다).
     const hours = hz && Array.isArray(hz.hours) && hz.hours.length ? hz.hours : hoursFromFlows(flows, now);
     const sig = JSON.stringify([hs, panels, flows, alerts, r, bsum, hours, Math.floor(now / 60000)]);
-    if (sig === lastSig && root.childNodes.length) return;
+    if (sig === lastSig && main.childNodes.length) return;
     lastSig = sig;
     hoursNow = hours;
     if (pick != null && !hours.some((o) => o.from === pick)) pick = null; // 날이 바뀌면 고른 칸을 푼다
     const cards = el('div', { class: 'cards' }, riskCard(r, { hosts: h.hosts || [], panels: p.panels || [] }, now), serverCard(hs, alerts), batchCard(bsum, flows, now), bizCard(kpiTiles(panels)));
     // 아래쪽: 왼쪽에 서버 맵과 시간대별 배치, 오른쪽에 두 줄 높이의 실시간 이벤트
     const lower = el('div', { class: 'lower' }, serverMap(hs), eventList(alerts, panels, hs, flows), timeline(hours, now, pick, onPick));
-    root.replaceChildren(cards, lower);
+    main.replaceChildren(cards, lower);
     fitMap(root);
   }, 2000);
   // 다시 그릴 때마다 맵이 새로 생기므로 칸 너비는 root의 CSS 변수(--cw)로 둔다. 화면 폭이 바뀌면 다시 잰다.

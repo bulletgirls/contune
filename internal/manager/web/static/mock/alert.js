@@ -308,7 +308,91 @@ function riskDataset(c) {
   return { status: 200, body: lines.join('\n') + '\n', contentType: 'text/csv; charset=utf-8' };
 }
 
+// ---- 관제 AI(GET /brief, GET /alerts/{id}/trace) ----
+// 매니저(internal/manager/brief)와 같은 모양. 폭주 장면의 체결 알림(12·13·14)은 book_insert까지 따라가고,
+// ?llm=1이면 AI 초안(mock-llm)으로, 아니면 규칙 문장(LLM 미연결)으로 보인다.
+const TRACE_IDS = new Set([12, 13, 14, 11]);
+function mockTrace(c, a) {
+  const { now } = c;
+  const ai = c.flags.llm ? { state: 'ok', model: 'mock-llm', at: now - 4 * SEC } : { state: 'none' };
+  const base = { alert_id: a.id, alert: a, final: true, at: now, functions: [], metrics: [], logs: [], log_count: 0, audit: [], evidence: [{ id: 'alert', kind: 'alert', label: '알림', title: a.message, alert_id: a.id, alert: a }], ai };
+  if (a.kind === 'exit') {
+    const d = { title: '종료 알림은 종료 보고서가 원인(신호·스택·커널 기록)을 따로 가립니다', detail: '', confidence: 'low', evidence_ids: ['alert'], next_checks: ['종료 보고서에서 신호·호출 스택·커널 기록 확인'], by: 'rule' };
+    return { ...base, state: 'exit', note: d.title, rule: d, diag: d, ai: { state: 'none' } };
+  }
+  if (!TRACE_IDS.has(a.id) || !c.sig.surge) {
+    const d = { title: `${a.host || a.group || '이 알림'}: 따라갈 함수 추적 서비스가 없습니다`, detail: '', confidence: 'low', evidence_ids: ['alert'], next_checks: [], by: 'rule' };
+    return { ...base, state: 'no_owner', note: d.title, rule: d, diag: d, ai: { state: 'none' } };
+  }
+  const T = a.ts;
+  const A = { from: T - 5 * MIN, to: T - 90 * SEC, samples: 861 }, B = { from: T - 30 * SEC, to: Math.min(now, T + 30 * SEC), samples: 2412 };
+  const fns = [
+    { leaf: 'book_insert', pct_a: 2.4, pct_b: 61.8, diff: 59.4 }, { leaf: 'check_risk', pct_a: 71.2, pct_b: 18.1, diff: -53.1 },
+    { leaf: 'rebuild_book', pct_a: 0, pct_b: 9.5, diff: 9.5 }, { leaf: 'price_cross', pct_a: 14.3, pct_b: 6.2, diff: -8.1 }, { leaf: 'expire_orders', pct_a: 8.9, pct_b: 3.1, diff: -5.8 },
+  ];
+  const path = ['matching_svc', 'main', 'handle_order', 'book_insert'];
+  const metrics = [
+    { name: 'biz.order.in_tps', title: '주문 유입량', unit: 'TPS', signal: 'traffic', a: 1500, b: 6000, peak: 6006 },
+    { name: 'svc.cpu.pct', title: '서비스 CPU 사용률', unit: '%', signal: 'saturation', a: 21, b: 100, peak: 108 },
+    { name: 'biz.order.latency_p99_ms', title: 'p99 응답 시간', unit: 'ms', signal: 'latency', a: 18, b: 142, peak: 210 },
+  ];
+  const ev = [...base.evidence,
+    { id: 'owner', kind: 'owner', label: '체결 · match-01', title: '따라간 주인: 체결 · match-01', lines: ['찾은 길: 업무 패널 \'체결\'의 서비스'], host: 'match-01', service: 'matching' },
+    { id: 'window', kind: 'window', label: '구간', title: 'A(평소) · B(알림 구간)', lines: [`A 함수 표본 861개 · B 함수 표본 2,412개`] },
+    ...fns.map((f) => ({ id: 'fn:' + f.leaf, kind: 'fn', label: f.leaf, title: '함수 ' + f.leaf, lines: [`Self 비중 A ${f.pct_a}% → B ${f.pct_b}%`] })),
+    { id: 'path', kind: 'path', label: '호출 경로', title: '호출 경로(B에서 가장 많은 스택)', lines: [path.join(' › ')] },
+    ...metrics.map((m) => ({ id: 'metric:' + m.name, kind: 'metric', label: m.title, title: m.title, lines: [`평균 A ${fmtN(m.a)} → B ${fmtN(m.b)} ${m.unit}`] })),
+  ];
+  const rule = { title: '원인 후보: book_insert (Self 비중 2.4% → 61.8%)', detail: '체결 · match-01의 함수 표본을 A(평소)와 B(알림 구간)로 나눠 비교했습니다. book_insert의 Self 비중이 2.4%에서 61.8%로 +59.4%p 바뀌어 가장 크게 늘었습니다. 호출 경로는 matching_svc › main › handle_order › book_insert입니다. 같은 구간 주문 유입량 1,500 → 6,000 TPS(×4.0).', confidence: 'high', evidence_ids: ['alert', 'owner', 'window', 'fn:book_insert', 'path', 'metric:biz.order.in_tps'], next_checks: ['타임머신 B 구간 플레임 그래프에서 book_insert를 부른 경로 확인', '주문 유입량 증가가 정상 거래인지, 비정상 호출·재시도인지 확인', 'book_insert 코드에서 입력 크기에 비례하는 반복·탐색·잠금 대기가 있는지 확인'], by: 'rule' };
+  const llm = { title: 'book_insert 비중 급증 — 주문 유입 4배에 호가 탐색 비용이 커짐', detail: '알림 구간(B)에서 book_insert가 CPU 표본의 61.8%를 차지해 평소(2.4%)보다 크게 늘었고, 같은 시각 주문 유입량이 1,500에서 6,000 TPS로 4배가 됐습니다. 유입이 늘며 호가 깊이에 비례하는 삽입 비용이 커진 것으로 보입니다.', confidence: 'high', evidence_ids: ['fn:book_insert', 'path', 'metric:biz.order.in_tps'], next_checks: ['호가 깊이(미체결 지정가 수)가 B 구간에 얼마나 늘었는지 확인', '주문 유입 증가가 정상 거래인지 확인'], by: 'llm', model: 'mock-llm', at: now - 4 * SEC };
+  return { ...base, state: 'ok', owner: 'svc:matching@match-01', service: 'matching', service_title: '체결', host: 'match-01', found: '업무 패널 \'체결\'의 서비스',
+    a: A, b: B, compared: true, functions: fns, top: fns[0], path, path_pct: 48.2, metrics, evidence: ev, rule, llm: c.flags.llm ? llm : undefined, diag: c.flags.llm ? llm : rule };
+}
+
+function trace(c, m) {
+  const a = buildAlerts(c).find((x) => x.id === Number(m[1]));
+  return a ? ok(mockTrace(c, a)) : err(404, '없는 알림');
+}
+
+function brief(c) {
+  const { now } = c;
+  const firing = buildAlerts(c).filter((a) => a.state === 'firing');
+  const ev = [], lines = [];
+  const alertEv = (a) => { const id = `alert:${a.id}`; ev.push({ id, kind: 'alert', label: a.kind === 'host' ? a.host : (a.message.split(' · ')[1] || a.message).replace(/\s[\d,.]+.*$/, ''), title: a.message, alert_id: a.id, alert: a, host: a.host }); return id; };
+  const biz = firing.filter((a) => a.group === '매매/체결' && a.kind !== 'host' && a.kind !== 'exit');
+  const hosts = firing.filter((a) => a.kind === 'host');
+  let tb = null;
+  if (biz.length) {
+    const ids = biz.map(alertEv);
+    lines.push({ text: `체결: ${biz.slice(0, 2).map((a) => a.message.split(' · ').slice(1).join(' · ')).join(', ')}${biz.length > 2 ? ` 외 ${biz.length - 2}건` : ''}`, level: 'crit', refs: ids });
+    const t = mockTrace(c, biz.find((a) => a.kind === 'tile') || biz[0]);
+    tb = { alert_id: t.alert_id, message: t.alert.message, level: t.alert.level, state: t.state, final: true, service: t.service, service_title: t.service_title, host: t.host, a: t.a, b: t.b, compared: t.compared, top: t.top, path: t.path, metric: '주문 유입량 1,500 → 6,000 TPS(×4.0)', diag: t.diag, ai: t.ai };
+    ev.push({ id: 'trace', kind: 'trace', label: '원인 추적', title: '원인 추적: ' + t.alert.message, lines: [t.diag.title], alert_id: t.alert_id, host: t.host, service: t.service });
+    lines.push({ text: '원인 후보 book_insert: Self 비중 2.4% → 61.8%(+59.4%p), 같은 시각 주문 유입량 1,500 → 6,000 TPS(×4.0)', level: 'crit', refs: ['trace'] });
+  }
+  if (hosts.length) {
+    const ids = hosts.map(alertEv);
+    lines.push({ text: `서버 이상 ${hosts.length}대: ${hosts.slice(0, 3).map((a) => a.message.replace(' · ', ' ')).join(', ')}`, level: 'crit', refs: ids });
+  }
+  ev.push({ id: 'risk', kind: 'risk', label: '위험도', title: '장애 위험 지수' });
+  const level = firing.some((a) => a.level === 'crit') ? 'crit' : firing.length ? 'warn' : 'ok';
+  const rule = { at: now, written_at: now, level, by: 'rule', evidence: ev, trace: tb, lines: lines.slice(0, 4),
+    headline: biz.length ? '체결 응답 지연(위험) — 원인 후보 book_insert' : hosts.length ? `위험 ${hosts.length}건 — ${hosts[0].message}` : '전체 정상 — 진행 중 알림 없음',
+    next_checks: biz.length ? ['타임머신 B 구간 플레임 그래프에서 book_insert를 부른 경로 확인', '주문 유입량 증가가 정상 거래인지, 비정상 호출·재시도인지 확인'] : [],
+    ai: { state: 'none' } };
+  if (!c.flags.llm) return ok(rule);
+  return ok({ ...rule, by: 'llm', model: 'mock-llm', written_at: now - 4 * SEC, ai: { state: 'ok', model: 'mock-llm', at: now - 4 * SEC }, rule: { ...rule, rule: undefined },
+    headline: biz.length ? '체결 응답 지연 — 원인 후보 book_insert, 주문 유입 4배' : rule.headline,
+    lines: biz.length ? [
+      { text: '체결 p99 응답 시간과 대기 큐가 위험 수준으로 올랐습니다(match-01).', level: 'crit', refs: ev.filter((e) => e.kind === 'alert' && e.alert.group === '매매/체결').map((e) => e.id) },
+      { text: '원인 후보는 book_insert입니다. 알림 구간 CPU 표본의 61.8%(평소 2.4%)를 차지했고, 같은 시각 주문 유입이 4배로 늘었습니다.', level: 'crit', refs: ['trace'] },
+      ...lines.filter((l) => l.text.startsWith('서버')),
+    ] : rule.lines });
+}
+
 export const routes = [
+  ['GET', /^\/brief$/, brief],
+  ['GET', /^\/alerts\/(\d+)\/trace$/, trace],
   ['GET', /^\/alerts$/, alerts],
   ['POST', /^\/alerts\/(\d+)\/ack$/, ack],
   ['GET', /^\/risk$/, risk],

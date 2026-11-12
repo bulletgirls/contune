@@ -5,6 +5,8 @@
 #          EUM_COMPOSE(compose 파일, 기본 deploy/docker-compose.yml) EUM_DEV_FLAGS(eum dev에 더 넘길 플래그)
 #          EUM_HOSTS(up이 기다리는 호스트 수, 기본 46) EUM_BIN(eum 실행 파일, 기본 deploy/bin/eum) EUM_TOKEN(기본 dev)
 #          EUM_USER·EUM_PASS(화면 로그인 계정, 기본 admin/eum-admin. 로그인이 꺼져 있으면 쓰지 않음)
+#          EUM_SURGE_PEAK(surge가 6000건/초를 유지하는 초, 기본 60)
+#          EUM_LLM(up이 eum dev에 넘길 LLM 종류: claude-code면 관제 AI를 Claude Code로. 먼저 `claude auth login`) EUM_LLM_MODEL(그 모델)
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -84,8 +86,11 @@ cmd_up() {
   else
     [ -x "$EUM_BIN" ] || go build -o "$EUM_BIN" ./cmd/eum
     mkdir -p "$EUM_DATA"
+    llm_flags=""
+    [ -z "$EUM_LLM" ] || llm_flags="--llm $EUM_LLM"
+    [ -z "$EUM_LLM_MODEL" ] || llm_flags="$llm_flags --llm-model $EUM_LLM_MODEL"
     # shellcheck disable=SC2086
-    nohup "$EUM_BIN" dev --fleet deploy/fleet.yaml --data "$EUM_DATA" $EUM_DEV_FLAGS \
+    nohup "$EUM_BIN" dev --fleet deploy/fleet.yaml --data "$EUM_DATA" $llm_flags $EUM_DEV_FLAGS \
       > "$EUM_DATA/dev.log" 2>&1 < /dev/null &
     echo $! > "$EUM_DATA/dev.pid"
   fi

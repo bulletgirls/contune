@@ -1007,7 +1007,7 @@ faults:                        # 열지도·이상 서버 목록 장면용
 - 이야기를 끌고 가는 시연 플로우는 2개입니다(나머지는 보조 플로우).
   - `flows/개장준비/market-open.yaml`: §9와 같은 모양. 배치 스텝은 `eum burn`으로 실제 CPU를 쓰고, `load-equity`는 첫 시도만 실패해 재시도를 보여 줍니다. `start-matching`이 체결 서비스를 띄웁니다.
   - `flows/정산/daily-settle.yaml`: §9와 같은 모양(`settle` → `settle-report`, `eum burn`). 리소스 게이트를 넓히기에서 만들면 "체결 대기가 남아 있는 동안 정산이 HELD로 대기" 장면에 씁니다.
-- 폭주는 `demo.sh surge`가 `match-01`의 접수율 파일을 20초마다 3000, 4500, 6000으로 바꾼 뒤 1500으로 되돌려 만듭니다.
+- 폭주는 `demo.sh surge`가 `match-01`의 접수율 파일을 20초마다 3000, 4500으로, 이어 6000으로 바꿔 60초(`EUM_SURGE_PEAK`) 둔 뒤 1500으로 되돌려 만듭니다.
 - 데이터 주권 장면은 `docker compose exec manager eum sql --data /data "<질의>"`로 실행합니다(§6.1의 질의 2개: 접수량 구간별 p99, 밀린 구간과 평시의 함수 비중. 배포 전후 비교 질의는 선택).
 - **사전 점검(코드 아님):** 시연 노트북의 Docker에서 `docker run --rm --cap-add PERFMON alpine:3.20 sh -c 'apk add -q perf && su -s /bin/sh nobody -c "perf stat -e cpu-clock -- true"'`가 성공하는지 확인합니다.
 - Docker를 쓸 수 없으면 `eum dev`(매니저 + 에이전트 3개를 한 프로세스로)로 같은 시연을 합니다. 이때 함수 추적은 노트북의 perf 권한에 따릅니다.

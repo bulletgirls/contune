@@ -21,6 +21,7 @@ import (
 
 	"eum/internal/manager/alert"
 	"eum/internal/manager/assist"
+	"eum/internal/manager/brief"
 	"eum/internal/manager/collect"
 	"eum/internal/manager/dash"
 	"eum/internal/manager/editor"
@@ -196,6 +197,11 @@ func New(cfg Config) (*Manager, error) {
 	m.engine.Mount(m.mux)
 	audit.New(audit.Deps{State: m.state, Now: now, TZ: loc}).Mount(m.mux)
 	m.watcher.Mount(m.mux)
+	// 관제 AI(상황 브리핑 · 알림 → 원인 함수 추적): 근거는 결정론적으로 모으고 LLM은 문장만 쓴다.
+	brief.New(brief.Deps{
+		Metrics: m.metrics, State: m.state, Live: lv, Panels: panels.Panels, Flows: reg.List, Services: svc.List,
+		Risk: engine.Current, RiskOpen: engine.Open, LLM: lm, Loc: loc, Now: now,
+	}).Mount(m.mux)
 	ex.Mount(m.mux)
 	web.Mount(m.mux)
 

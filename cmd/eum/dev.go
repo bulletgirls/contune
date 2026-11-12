@@ -109,6 +109,8 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 	pushPort := fs.Int("push-port", 9101, "match-01(체결 서비스)의 push 수신 포트")
 	quotePushPort := fs.Int("quote-push-port", 9102, "feed-01(시세 서비스)의 push 수신 포트")
 	demoDir := fs.String("demo-dir", "./deploy", "에이전트 vars.DEMO(시연 폴더)")
+	llmKind := fs.String("llm", "", "관제 AI·종료 보고서·배치 초안이 쓸 LLM 종류(none | claude-code | openai). 비면 설정 그대로(기본 none)")
+	llmModel := fs.String("llm-model", "", "--llm의 모델(claude-code 기본 claude-opus-5-5)")
 	if err := parse(fs, args); err != nil {
 		return devSetup{}, err
 	}
@@ -165,6 +167,19 @@ func parseDev(args []string, hasPerf bool, stderr io.Writer) (devSetup, error) {
 	override("panels", &cfg.Panels, *panels)
 	override("services", &cfg.Services, *services)
 	override("dashboards", &cfg.Dashboards, *dashboards)
+	// LLM(관제 AI, 2026-11-12): --llm을 주면 설정 파일의 llm을 그 종류로 바꾼다(같은 종류면 다른 칸은 남긴다).
+	if *llmKind != "" {
+		if old, _ := cfg.LLM["type"].(string); old != *llmKind || cfg.LLM == nil {
+			cfg.LLM = map[string]any{}
+		}
+		cfg.LLM["type"] = *llmKind
+	}
+	if *llmModel != "" {
+		if cfg.LLM == nil {
+			cfg.LLM = map[string]any{"type": "none"}
+		}
+		cfg.LLM["model"] = *llmModel
+	}
 	if *cfgPath == "" {
 		// 수집 설정(05 §17): dev는 데이터 폴더 안에 두고 화면에서 고칠 수 있게 켠다.
 		cfg.Collect = collect.Config{Dir: filepath.Join(cfg.Data, "collect"), Enabled: true}
