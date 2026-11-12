@@ -1,7 +1,10 @@
 /* 시연용 체결 서비스. 제품이 아니라 추적 대상이다(02 §13).
  * 합성 주문을 접수해 처리하고, 호가 깊이에 비례하는 book_insert 때문에
- * 접수율이 높으면 실제로 처리가 밀린다. 표준 라이브러리만, 단일 스레드. */
+ * 접수율이 높으면 실제로 처리가 밀린다. 표준 라이브러리만, 단일 스레드.
+ * --bus <폴더>면 주문을 스스로 만들지 않고 채널의 orders 저널을 읽어 처리하고, 처리한 주문마다 fills에 한 건 쓴다
+ * (카드 V §4). --bus가 없으면 예전 그대로 스스로 만든다. */
 #define _GNU_SOURCE
+#include "flow.h"
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <signal.h>
@@ -38,6 +41,9 @@
 #define W_HIST  70.0
 #define E_HIST  90.0
 #define LOG_EVERY_SEC 5
+#define W_TAT   80.0           /* --bus: TAT p99(ms), 패널 기준과 같게 */
+#define E_TAT   300.0
+#define STAT_EVERY_SEC 5
 
 typedef struct { int64_t t_ns; int32_t price; int32_t side; } order_t;   /* side 0=매수 1=매도 */
 typedef struct { int32_t price; int32_t sec; } quote_t;
@@ -51,6 +57,9 @@ static int hist_n;
 static volatile sig_atomic_t stop_flag;
 static volatile uint64_t sink;
 static int64_t cur_sec;
+/* --bus: 안쪽 큐 칸마다 저널 레코드(번호·접수 시각·종목·수량). 큐와 같은 자리를 쓴다 */
+typedef struct { uint64_t seq; int64_t t0_ns; uint32_t sym; int32_t qty; } ometa_t;
+static ometa_t *meta_buf;
 static int fault_armed;        /* 접수율 파일에 crash(또는 음수)가 있으면 1: book_insert의 결함 경로를 연다(시연 T6) */
 static quote_t **cold_head;    /* 호가 줄 머리 캐시. 시연 결함 경로만 읽고, 채워 준 적이 없어 NULL이다(calloc이라 컴파일러가 모른다) */
 
@@ -196,13 +205,14 @@ static void alert(int idx, double v, double w, double e, int64_t *last, time_t n
 }
 
 int main(int argc, char **argv) {
-    const char *rate_path = NULL, *push = "127.0.0.1:9101";
+    const char *rate_path = NULL, *push = "127.0.0.1:9101", *bus = NULL;
     int stats = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--rate") && i + 1 < argc) rate_path = argv[++i];
+        else if (!strcmp(argv[i], "--bus") && i + 1 < argc) bus = argv[++i];
         else if (!strcmp(argv[i], "--push") && i + 1 < argc) push = argv[++i];
         else if (!strcmp(argv[i], "--stats")) stats = 1;
-        else { fprintf(stderr, "usage: %s [--rate file] [--push host:port] [--stats]\n", argv[0]); return 2; }
+        else { fprintf(stderr, "usage: %s [--bus dir] [--rate file] [--push host:port] [--stats]\n", argv[0]); return 2; }
     }
     setvbuf(stdout, NULL, _IOLBF, 0);
 
@@ -216,6 +226,16 @@ int main(int argc, char **argv) {
     if (!cold_head) { perror("calloc"); return 1; }
     if (!queue_buf || !book[0] || !book[1]) { perror("malloc"); return 1; }
 
+    fl_reader rd; fl_writer wr;
+    static fl_rec_t rbuf[4096];
+    static fl_lat tat;
+    if (bus) {
+        meta_buf = malloc(sizeof(ometa_t) * QUEUE_CAP);
+        if (!meta_buf) { perror("malloc"); return 1; }
+        fl_ropen(&rd, bus, "orders", "matching");
+        if (fl_wopen(&wr, bus, "fills") < 0) { fprintf(stderr, "fills 저널을 열 수 없음: %s/fills.jnl: %s\n", bus, strerror(errno)); return 1; }
+    }
+
     char host[64] = "127.0.0.1"; int port = 9101;
     const char *colon = strrchr(push, ':');
     if (colon) { snprintf(host, sizeof host, "%.*s", (int)(colon - push), push); port = atoi(colon + 1); }
@@ -226,24 +246,49 @@ int main(int argc, char **argv) {
     const char *eid = getenv("EUM_EXEC_ID");
 
     int rate = read_rate(rate_path, DEFAULT_RATE);
-    logf_('I', "START", "rate=%d push=%s", rate, push);
+    if (bus) logf_('I', "START", "bus=%s push=%s", bus, push);
+    else logf_('I', "START", "rate=%d push=%s", rate, push);
 
     int64_t start = now_ns(), tick = start, sec_end = start + 1000000000LL;
     double acc = 0;
-    int64_t last_alert[3] = {-100, -100, -100};
+    int64_t last_alert[4] = {-100, -100, -100, -100};
     int64_t accepted = 0, processed = 0;
+    int64_t in_last = 0, prev_lag = 0, nsec = 0;   /* --bus: 지난 1초 수신 건수(체결 안 되는 지정가 비율), 저널 적체 */
     double lat[65536]; int nlat = 0; double lat_sum = 0;
     double drain_acc = 0;
     int ms_count = 0;
 
     while (!stop_flag) {
         int64_t t = now_ns();
-        double passive = PASSIVE_LO + (PASSIVE_HI - PASSIVE_LO) * clamp01((rate - RATE_LO) / (RATE_HI - RATE_LO));
+        double basis = bus ? (double)in_last : (double)rate;
+        double passive = PASSIVE_LO + (PASSIVE_HI - PASSIVE_LO) * clamp01((basis - RATE_LO) / (RATE_HI - RATE_LO));
         /* 접수: 지난 tick 이후 흐른 시간만큼 */
         acc += rate * (double)(t - tick) / 1e9;
         tick = t;
         cur_sec = (t - start) / 1000000000LL;
         int n = (int)acc; acc -= n;
+        if (bus) {                                 /* 채널 저널을 안쪽 큐가 받을 수 있는 만큼 전부 읽는다 */
+            n = 0; acc = 0;
+            for (;;) {
+                uint32_t room = QUEUE_CAP - (q_tail - q_head);
+                if (!room) break;
+                int k = fl_get(&rd, rbuf, room < 4096 ? (int)room : 4096);
+                if (k <= 0) break;
+                int64_t t1 = now_ns();
+                for (int j = 0; j < k; j++) {
+                    uint32_t slot = q_tail++ & (QUEUE_CAP - 1);
+                    order_t *o = &queue_buf[slot];
+                    o->t_ns = t1; o->side = rnd() & 1;
+                    int mid = 10000;
+                    if ((rnd() % 1000) < passive * 1000)
+                        o->price = o->side == 0 ? mid - 1 - (int)(rnd() % 300) : mid + 1 + (int)(rnd() % 300);
+                    else
+                        o->price = o->side == 0 ? mid + 1 + (int)(rnd() % 20) : mid - 1 - (int)(rnd() % 20);
+                    meta_buf[slot] = (ometa_t){rbuf[j].seq, rbuf[j].t0_ns, rbuf[j].sym, rbuf[j].qty};
+                    accepted++;
+                }
+            }
+        }
         for (int i = 0; i < n; i++) {
             if (q_tail - q_head >= QUEUE_CAP) break;
             order_t *o = &queue_buf[q_tail++ & (QUEUE_CAP - 1)];
@@ -266,13 +311,24 @@ int main(int argc, char **argv) {
         int64_t deadline = t + 1000000LL;
         while (q_head != q_tail) {
             order_t *o = &queue_buf[q_head & (QUEUE_CAP - 1)];
+            int opp_n = book_n[1 - o->side];
             sink += (uint64_t)handle_order(o);
             int64_t done = now_ns();
             if (nlat < 65536) { double l = (done - o->t_ns) / 1e6; lat[nlat++] = l; lat_sum += l; }
+            if (bus) {                             /* 체결(상대 호가 소진) 또는 호가 등록을 fills에 */
+                const ometa_t *mt = &meta_buf[q_head & (QUEUE_CAP - 1)];
+                fl_rec_t f = {.seq = mt->seq, .t0_ns = mt->t0_ns, .t1_ns = o->t_ns, .t_ns = done, .sym = mt->sym,
+                              .price = o->price, .qty = mt->qty, .side = (uint8_t)o->side,
+                              .kind = book_n[1 - o->side] < opp_n ? FL_FILL : FL_BOOK};
+                fl_put(&wr, &f);
+                fl_lat_add(&tat, (done - mt->t0_ns) / 1e6);
+                fl_trace(&f, "matching");
+            }
             if (hist_n < HIST_CAP) hist_ring[hist_n++] = o->t_ns;
             q_head++; processed++;
             if (done >= deadline) break;
         }
+        if (bus) fl_flush(&wr);
         int64_t after = now_ns();
 
         if (after >= sec_end) {
@@ -282,25 +338,47 @@ int main(int argc, char **argv) {
             double avg = nlat ? lat_sum / nlat : 0, p99 = 0;
             if (nlat) { qsort(lat, (size_t)nlat, sizeof(double), cmp_d); p99 = lat[(int)((nlat - 1) * 0.99)]; }
             double hist_pct = 100.0 * hist_n / HIST_CAP;
+            double tat_avg = avg, tat_p99 = p99;   /* --bus가 없으면 TAT = 지연 */
+            int64_t lag = 0, in_cnt = accepted;
+            if (bus) {
+                lag = fl_lag(&rd);
+                in_cnt = (int64_t)fl_in_tps(accepted, lag, &prev_lag);
+                tat_avg = fl_lat_avg(&tat); tat_p99 = fl_lat_p99(&tat); fl_lat_reset(&tat);
+                fl_commit(&rd, queue_len);
+                in_last = accepted;
+                queue_len += (int)lag;             /* 큐가 가득해 저널에 남은 것도 대기다 */
+            }
 
-            char buf[640]; int len = 0;
+            char buf[1024]; int len = 0;
             const char *sfx = eid && *eid ? eid : NULL;
             #define LINE(name, fmt, val) len += snprintf(buf + len, sizeof buf - len, "%s " fmt "%s%s\n", name, val, sfx ? " " : "", sfx ? sfx : "")
-            LINE("biz.order.in_tps", "%.0f", (double)accepted);
+            LINE("biz.order.in_tps", "%.0f", (double)in_cnt);
             LINE("biz.order.tps", "%.0f", (double)processed);
             LINE("biz.order.queue", "%.0f", (double)queue_len);
             LINE("biz.order.latency_avg_ms", "%.2f", avg);
             LINE("biz.order.latency_p99_ms", "%.2f", p99);
             LINE("biz.order.histbuf_pct", "%.1f", hist_pct);
+            LINE("biz.order.tat_avg_ms", "%.2f", tat_avg);
+            LINE("biz.order.tat_p99_ms", "%.2f", tat_p99);
             sendto(sock, buf, (size_t)len, 0, (struct sockaddr *)&dst, sizeof dst);
 
-            if (stats)
+            if (stats && bus)
+                fprintf(stderr, "in=%lld tps=%lld queue=%d avg=%.2f p99=%.2f hist=%.1f depth=%d/%d lag=%lld tat_avg=%.2f tat_p99=%.2f\n",
+                        (long long)in_cnt, (long long)processed, queue_len, avg, p99, hist_pct, book_n[0], book_n[1],
+                        (long long)lag, tat_avg, tat_p99);
+            else if (stats)
                 fprintf(stderr, "in=%lld tps=%lld queue=%d avg=%.2f p99=%.2f hist=%.1f depth=%d/%d\n",
                         (long long)accepted, (long long)processed, queue_len, avg, p99, hist_pct, book_n[0], book_n[1]);
 
             alert(0, queue_len, W_QUEUE, E_QUEUE, last_alert, wall, "QUEUE", "대기 큐", "건", 1);
             alert(1, p99, W_P99, E_P99, last_alert, wall, "LATENCY", "p99", "ms", 0);
             alert(2, hist_pct, W_HIST, E_HIST, last_alert, wall, "HISTBUF", "히스토리 버퍼 사용률", "%", 0);
+            if (bus) {
+                alert(3, tat_p99, W_TAT, E_TAT, last_alert, wall, "TAT", "p99", "ms", 0);
+                if (++nsec % STAT_EVERY_SEC == 0)
+                    logf_('I', "STAT", "in=%lld out=%lld lag=%lld p99_ms=%.2f tat_p99_ms=%.2f",
+                          (long long)in_cnt, (long long)processed, (long long)(queue_len), p99, tat_p99);
+            }
 
             int nr = read_rate(rate_path, rate);
             if (nr != rate) { logf_('I', "RATE", "%d -> %d", rate, nr); rate = nr; }
@@ -312,6 +390,7 @@ int main(int argc, char **argv) {
             if (rest > 0) { struct timespec ts = {0, (long)rest}; nanosleep(&ts, NULL); }
         }
     }
+    if (bus) { fl_flush(&wr); fl_commit(&rd, (int64_t)(q_tail - q_head)); }
     logf_('I', "STOP", "signal received");
     return 0;
 }
