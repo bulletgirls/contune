@@ -1,22 +1,28 @@
-# 업무 흐름(카드 U): 업무 패널 하나 = 상자 하나, 화살표 = 앞 업무의 out. 값·판정은 업무 패널 타일 그대로다(알림도 패널 것).
+# 업무 흐름(카드 U·V): 업무 패널 하나 = 상자 하나, 화살표 = 앞 업무의 out. 값·판정은 업무 패널 타일 그대로다(알림도 패널 것).
 id: bizflow
 title: 업무 흐름
-desc: 채널 → 매매체결 → 정보분배·지수산출·매매통계·청산결제 → rds 처리량과 대기
+desc: 채널 → 매매체결 → 시세 → 지수산출 → 분배, 매매체결 → 매매통계. 처리량·쌓임과 체결 RT·TAT, 통계 처리 적체
 range: 1h
 widgets:
   - id: flow
     type: bizflow
     title: 업무 흐름
     w: 12
-    h: 5
-    nodes:
-      - { panel: channel,  in: 주문 수신량, out: 주문 전달량, stock: 전달 대기, at: [0, 0] }
-      - { panel: matching, in: 주문 유입량, out: 체결 처리량, stock: 대기 큐,   at: [1, 0], from: [channel] }
-      - { panel: quote,    in: 시세 수신량, out: 시세 송출량, stock: 수신 대기, at: [2, 0], from: [matching, index] }
-      - { panel: index,    in: 체결 입력,   out: 지수 송출량, stock: 계산 대기, at: [2, 1], from: [matching] }
-      - { panel: stats,    in: 체결 수신량, out: 통계 반영량, stock: 반영 대기, at: [2, 2], from: [matching] }
-      - { panel: clearing, in: 체결 수신량, out: 청산 처리량, stock: 청산 대기, at: [2, 3], from: [matching] }
-      - { panel: rds,      in: 쓰기 요청,   out: 커밋 완료,   stock: 쓰기 대기, at: [3, 2], from: [stats, clearing] }
-  - { id: kpi, type: kpi, w: 4, h: 2 }
-  - { id: ev,  type: events, w: 4, h: 2, limit: 10 }
-  - { id: svc, type: services, w: 4, h: 2 }
+    h: 4
+    nodes:      # 지수산출만 한 줄 위: 시세 → 분배 직통 화살표가 상자를 가로지르지 않게
+      - { panel: channel,  in: 주문 수신량, out: 주문 전달량, stock: 전달 대기, at: [0, 1] }
+      - { panel: matching, in: 주문 유입량, out: 체결 처리량, stock: 대기 큐,   at: [1, 1], from: [channel] }
+      - { panel: quote,    in: 시세 수신량, out: 시세 생성량, stock: 수신 대기, at: [2, 1], from: [matching] }
+      - { panel: index,    in: 시세 입력,   out: 지수 송출량, stock: 계산 대기, at: [3, 0], from: [quote] }
+      - { panel: dist,     in: 시세 수신량, out: 송출량,      stock: 송출 대기, at: [4, 1], from: [quote, index] }
+      - { panel: stats,    in: 체결 수신량, out: 통계 반영량, stock: 처리 적체, at: [2, 2], from: [matching] }
+  - { id: rt,   type: stat, w: 3, ref: { panel: matching, tile: RT p99 } }
+  - { id: tat,  type: stat, w: 3, ref: { panel: matching, tile: TAT p99 } }
+  - { id: lag,  type: stat, w: 3, ref: { panel: stats,    tile: 처리 적체 } }
+  - { id: e2e,  type: stat, w: 3, ref: { panel: dist,     tile: 주문 → 분배 p99 } }
+  - { id: rttat, type: timeseries, title: 체결 RT · TAT, w: 6, h: 2, scope: { service: matching }, unit: ms,
+      queries: [{ metric: biz.order.latency_p99_ms, agg: max, label: RT p99 }, { metric: biz.order.tat_p99_ms, agg: max, label: TAT p99 }] }
+  - { id: lagts, type: timeseries, title: 통계 처리 적체, w: 6, h: 2, scope: { service: stats }, unit: 건,
+      queries: [{ metric: biz.stats.queue, agg: sum, label: 처리 적체 }] }
+  - { id: ev,  type: events, w: 6, h: 2, limit: 10 }
+  - { id: svc, type: services, w: 6, h: 2 }

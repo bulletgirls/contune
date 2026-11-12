@@ -1,16 +1,17 @@
 id: index
 title: 지수산출
 group: 지수산출
-# 업무 시뮬레이터(에이전트 probe type: stage)가 앞 업무의 실제 값을 받아 내는 지표 biz.index.*(카드 U). 앞 업무 값이 15초 넘게 없으면 값 없음.
+service: index
+# 지수산출 서비스(index_svc, idx-01)가 1초마다 push하는 지표 biz.index.*(카드 V). 시세 저널을 읽어 지수를 계산한다.
 # signal: 골든 시그널 묶음(traffic 트래픽 · latency 지연 시간 · errors 오류 · saturation 포화도). 없으면 기타(05 §14.10).
 tiles:
-  - { title: 체결 입력,      signal: traffic,    metric: biz.index.in_tps,         agg: sum, unit: TPS }
+  - { title: 시세 입력,      signal: traffic,    metric: biz.index.in_tps,         agg: sum, unit: TPS }
   - { title: 지수 송출량,    signal: traffic,    metric: biz.index.out_tps,        agg: sum, unit: 건/초 }
   - { title: 평균 산출 지연, signal: latency,    metric: biz.index.latency_avg_ms, agg: max, unit: ms, warn: 300, crit: 1000 }
   - { title: 산출 지연 p99,  signal: latency,    metric: biz.index.latency_p99_ms, agg: max, unit: ms, warn: 500, crit: 2000 }
   - { title: 계산 대기,      signal: saturation, metric: biz.index.queue,          agg: sum, unit: 건, warn: 5000, crit: 20000 }
 charts:
-  - { title: 체결 입력,   unit: TPS,   agg: sum, metrics: [biz.index.in_tps] }
+  - { title: 시세 입력,   unit: TPS,   agg: sum, metrics: [biz.index.in_tps] }
   - { title: 지수 송출량, unit: 건/초, agg: sum, metrics: [biz.index.out_tps] }
   - { title: 산출 지연,   unit: ms,    agg: max, metrics: [biz.index.latency_avg_ms, biz.index.latency_p99_ms] }
   - { title: 계산 대기,   unit: 건,    agg: sum, metrics: [biz.index.queue] }

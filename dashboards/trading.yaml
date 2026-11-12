@@ -8,7 +8,7 @@ group: 매매체결
 widgets:
   # 첫 줄: 체결·시세 패널 타일(3칸씩)
   - { id: queue,  type: stat, ref: { panel: matching, tile: 대기 큐 } }
-  - { id: p99,    type: stat, ref: { panel: matching, tile: p99 응답 시간 } }
+  - { id: p99,    type: stat, ref: { panel: matching, tile: RT p99 } }
   - { id: qdelay, type: stat, ref: { panel: quote, tile: 시세 지연 p99 } }
   - { id: qlost,  type: stat, ref: { panel: quote, tile: 시세 누락 } }
   # 둘째 줄: 서비스 범위 시계열

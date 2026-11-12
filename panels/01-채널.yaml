@@ -1,7 +1,8 @@
 id: channel
 title: 채널
 group: 채널
-# 업무 시뮬레이터(에이전트 probe type: stage)가 앞 업무의 실제 값을 받아 내는 지표 biz.channel.*(카드 U). 앞 업무 값이 15초 넘게 없으면 값 없음.
+service: channel
+# 채널 서비스(channel_svc, gw-01)가 1초마다 push하는 지표 biz.channel.*(카드 V). 주문을 접수해 매매체결로 넘긴다.
 # signal: 골든 시그널 묶음(traffic 트래픽 · latency 지연 시간 · errors 오류 · saturation 포화도). 없으면 기타(05 §14.10).
 tiles:
   - { title: 주문 수신량,    signal: traffic,    metric: biz.channel.in_tps,         agg: sum, unit: TPS }

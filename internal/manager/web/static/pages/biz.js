@@ -89,7 +89,7 @@ export function chartThresholds(chart, tiles) {
   const cand = (tiles || []).filter((t) => chart.metrics.includes(t.metric) && hasLimit(t));
   const t = cand.find((x) => x.kpi) || cand[0];
   if (!t) return [];
-  // 계열이 둘 이상이면 어느 지표의 선인지: 타일 제목에서 차트 제목을 뺀 말('p99 응답 시간' - '응답 시간' → 'p99')
+  // 계열이 둘 이상이면 어느 지표의 선인지: 타일 제목에서 차트 제목을 뺀 말('RT p99' 에서 차트 'RT · TAT' 가 안 겹치면 타일 제목 그대로)
   const who = chart.metrics.length > 1 ? (t.title.replace(chart.title, '').trim() || t.title) + ' ' : '';
   const out = [];
   const add = (v, level, pre) => { if (v != null) out.push({ value: v, level, label: `${who}${pre}${LEVEL_TEXT[level]} ${fmtNum(v)}` }); };
