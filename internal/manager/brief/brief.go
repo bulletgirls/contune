@@ -56,6 +56,7 @@ const (
 	recentResolved = 10 * 60_000 // 최근 해소로 보는 기간
 	staleKeep      = 3 * 60_000  // 새 문장을 쓰는 동안 앞 AI 문장을 보이는 최대 나이
 	llmTimeout     = 90 * time.Second
+	maxScopes      = 64 // 범위(g)별 브리핑 기억 수
 )
 
 // Service는 브리핑·원인 추적이다.
@@ -82,6 +83,7 @@ type briefEntry struct {
 	sig     string
 	llm     *Brief // LLM이 쓴 것(sig는 llmSig)
 	llmSig  string
+	llmHead string // 그때의 규칙 머리글(앞 AI 문장을 계속 보여도 되는지 가린다)
 	llmErr  string
 	errSig  string
 	llmAt   int64
@@ -352,15 +354,36 @@ func (s *Service) Brief(ctx context.Context, g string) Brief {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if e = s.br[g]; e == nil {
+		s.gcBriefsLocked()
 		e = &briefEntry{}
 		s.br[g] = e
 	}
 	e.b, e.at, e.sig = rule, now, sig
+	if sig == "" { // 근거를 못 읽음: 앞서 쓴 AI 문장도 보이지 않는다
+		e.llm, e.llmSig = nil, ""
+		return s.composeLocked(e, now)
+	}
 	if s.llmOn() && !e.pending && e.llmSig != sig && (e.errSig != sig || now-e.llmAt >= llmRetry) && now-e.llmAt >= briefAskGap {
 		e.pending, e.llmAt = true, now
 		go s.askBrief(g, sig, rule, pack)
 	}
 	return s.composeLocked(e, now)
+}
+
+// gcBriefsLocked는 범위(g)별 기억이 maxScopes개를 넘지 않게 가장 오래된 것부터 지운다(g는 주소에서 오는 값이다). s.mu를 잡고 부른다.
+func (s *Service) gcBriefsLocked() {
+	for len(s.br) >= maxScopes {
+		old, at := "", int64(0)
+		for g, e := range s.br {
+			if !e.pending && (old == "" || e.at < at) {
+				old, at = g, e.at
+			}
+		}
+		if old == "" {
+			return
+		}
+		delete(s.br, old)
+	}
 }
 
 // composeLocked는 보일 브리핑이다: 지금 상황(sig)에 맞는 LLM 문장이 있으면 그것, 없으면 규칙 문장. s.mu를 잡고 부른다.
@@ -380,9 +403,10 @@ func (s *Service) composeLocked(e *briefEntry, now int64) Brief {
 		l.AI = AIState{State: "ok", Model: name, At: l.WrittenAt}
 		l.Rule = &rule
 		return l
-	case e.llm != nil && e.llm.Level == e.b.Level && now-e.llm.WrittenAt < staleKeep:
-		// 상황이 조금 바뀌어(알림이 흔들림, 새 실패 배치) 새 문장을 쓰는 동안 앞 AI 문장을 그 때의 근거와 함께 보인다.
-		// 수준이 바뀌었으면(정상 → 위험) 이 길로 오지 않는다: 위험한데 "전체 정상"이 남지 않게 규칙 문장을 바로 보인다.
+	case e.llm != nil && e.llm.Level == e.b.Level && e.llmHead == e.b.Headline && now-e.llm.WrittenAt < staleKeep:
+		// 상황이 조금 바뀌어(같은 업무의 알림이 더 열림, 새 실패 배치) 새 문장을 쓰는 동안 앞 AI 문장을 그 때의 근거와 함께 보인다.
+		// 수준이나 규칙 머리글이 바뀌었으면(정상 → 위험, 새 업무 알림, 원인 후보가 나옴) 이 길로 오지 않는다: 새 소식이 앞 문장에
+		// 가리지 않게 규칙 문장을 바로 보인다. 수준만 보면 늘 위험인 서버가 한 대라도 있을 때 새 업무 알림이 LLM 답이 올 때까지 가린다.
 		l := *e.llm
 		l.Stale = true
 		l.Rule = &rule
@@ -423,7 +447,7 @@ func (s *Service) askBrief(g, sig string, rule Brief, pack briefPack) {
 	}
 	b.WrittenAt = now
 	b.Evidence, b.Trace, b.Level, b.At = rule.Evidence, rule.Trace, rule.Level, rule.At // 앞 문장으로 보일 때 쓸 그 때의 근거
-	e.llm, e.llmSig, e.llmErr = &b, sig, ""
+	e.llm, e.llmSig, e.llmHead, e.llmErr = &b, sig, rule.Headline, ""
 }
 
 // briefPack은 LLM에 보내는 근거 묶음이다.
@@ -491,8 +515,15 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 	}
 
 	// 알림: 진행 중 + 최근 해소(서버 알림은 진행 중만: 흔들리는 경고가 많다)
-	all, _ := s.d.State.ListAlerts(ctx, model.AlertFilter{Since: now - recentResolved})
-	firing, _ := s.d.State.ListAlerts(ctx, model.AlertFilter{State: "firing"})
+	all, err := s.d.State.ListAlerts(ctx, model.AlertFilter{Since: now - recentResolved})
+	firing, err2 := s.d.State.ListAlerts(ctx, model.AlertFilter{State: "firing"})
+	if err = errors.Join(err, err2); err != nil {
+		// 알림을 못 읽었는데 "전체 정상"이라고 쓰지 않는다. 서명을 비워 LLM도 부르지 않는다.
+		slog.Warn("상황 브리핑: 알림을 읽지 못했습니다", "err", err)
+		b.Level, b.Headline = "warn", "알림을 읽지 못함 — 지금 상황을 알 수 없음"
+		b.NextChecks = []string{"매니저 로그에서 저장소(state.db) 오류 확인"}
+		return b, "", briefPack{}
+	}
 	var live, gone []model.Alert
 	for _, a := range firing {
 		if scoped(a) {
@@ -895,7 +926,7 @@ func (s *Service) alertGroup(ctx context.Context, a model.Alert) (string, string
 		return "svc:" + a.Name, s.serviceTitle(ctx, a.Name), "down"
 	}
 	if a.Kind == "log" {
-		return "log:" + a.Host, a.Host + " 오류 로그", "errors"
+		return "log:" + a.Host, a.Host + " 오류 로그", "log"
 	}
 	return "alert:" + a.DedupKey, orDash(a.Group), ""
 }
@@ -911,7 +942,8 @@ func (s *Service) serviceTitle(ctx context.Context, id string) string {
 
 // signalWord는 머리글 말이다: "응답 지연", "오류 증가", "포화", "유입 이상".
 func signalWord(signal, level string) string {
-	w := map[string]string{"latency": "응답 지연", "errors": "오류 증가", "saturation": "처리 포화", "traffic": "유입 이상", "down": "서비스 중단"}[signal]
+	w := map[string]string{"latency": "응답 지연", "errors": "오류 증가", "saturation": "처리 포화", "traffic": "유입 이상", "down": "서비스 중단",
+		"log": "발생"}[signal] // 오류 로그 묶음: "batch-01 오류 로그 발생(위험)"
 	if w == "" {
 		w = "이상"
 	}

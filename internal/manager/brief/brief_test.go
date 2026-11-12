@@ -3,6 +3,7 @@ package brief
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -462,6 +463,17 @@ func TestBriefStaleWhileRewriting(t *testing.T) {
 	if b.By != "llm" || !b.Stale || b.Headline != "체결 응답 지연" || b.Rule == nil {
 		t.Fatalf("같은 수준: by=%s stale=%v headline=%q", b.By, b.Stale, b.Headline)
 	}
+	// 수준은 그대로인데 다른 업무(시세)의 알림이 먼저 열려 규칙 머리글이 바뀜: 앞 문장에 가리지 않게 규칙 문장을 바로
+	waitFor(t, "앞 브리핑 요청이 끝나지 않음", func() bool { s.mu.Lock(); defer s.mu.Unlock(); return !s.br[""].pending })
+	q := w.alert(t, model.Alert{TS: t0 - 1_000, Kind: "service", DedupKey: "service:quote@feed-01", Level: "warn", State: "firing", Host: "feed-01",
+		Group: "매매/시세", Name: "quote", Message: "시세(feed-01) 서비스 미기동: 살아 있는 프로세스 0 / 1"})
+	w.clk.Add(briefCache)
+	if b = s.Brief(ctx, ""); b.By != "rule" || b.Level != "warn" || !strings.HasPrefix(b.Headline, "quote ") {
+		t.Fatalf("머리글이 바뀌었는데 by=%s level=%s headline=%q", b.By, b.Level, b.Headline)
+	}
+	if err := w.st.ResolveAlert(ctx, q.ID, t0+7_000); err != nil {
+		t.Fatal(err)
+	}
 	// 위험으로 오름: 규칙 문장을 바로
 	w.alert(t, model.Alert{TS: t0 + 6_000, Kind: "host", DedupKey: "host:dw-02", Level: "crit", State: "firing", Host: "dw-02", Message: "dw-02 서버 위험: 메모리 사용률 ≥ 90%"})
 	waitFor(t, "앞 브리핑 요청이 끝나지 않음", func() bool { s.mu.Lock(); defer s.mu.Unlock(); return !s.br[""].pending })
@@ -555,4 +567,49 @@ func hasEvidence(ev []Evidence, id string) bool {
 		}
 	}
 	return false
+}
+
+// failState는 알림 읽기가 실패하는 저장소다.
+type failState struct{ store.StateStore }
+
+func (failState) ListAlerts(context.Context, model.AlertFilter) ([]model.Alert, error) {
+	return nil, errors.New("database is locked")
+}
+
+// 알림을 못 읽으면 "전체 정상"이라고 쓰지 않고, LLM도 부르지 않는다.
+func TestBriefAlertReadFailureIsNotNormal(t *testing.T) {
+	w := newWorld(t, t0+60_000)
+	f := &fakeLLM{brief: `{"headline":"전체 정상","lines":[{"text":"알림 없음","evidence_ids":["scope"]}],"next_checks":[]}`}
+	w.llm = f
+	s := New(Deps{Metrics: w.ms, State: failState{w.st}, Live: w.lv, Panels: panelsFixture, Services: servicesFixture,
+		LLM: w.llm, Loc: seoul, Now: func() time.Time { return time.UnixMilli(w.clk.Load()) }})
+	for i := 0; i < 3; i++ {
+		b := s.Brief(context.Background(), "")
+		if strings.Contains(b.Headline, "정상") || b.Level != "warn" || b.By != "rule" || len(b.NextChecks) == 0 {
+			t.Fatalf("b=%+v", b)
+		}
+		w.clk.Add(briefAskGap + briefCache)
+	}
+	time.Sleep(20 * time.Millisecond)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.reqs) != 0 {
+		t.Fatalf("근거를 못 읽었는데 LLM을 %d번 부름", len(f.reqs))
+	}
+}
+
+// 범위(g)는 주소에서 오는 값이라 기억 수에 상한을 둔다.
+func TestBriefScopesAreBounded(t *testing.T) {
+	w := newWorld(t, t0+60_000)
+	s := w.svc()
+	for i := 0; i < maxScopes*2; i++ {
+		s.Brief(context.Background(), fmt.Sprintf("없는그룹/%d", i))
+		w.clk.Add(1)
+	}
+	s.mu.Lock()
+	n := len(s.br)
+	s.mu.Unlock()
+	if n > maxScopes {
+		t.Fatalf("범위 기억 %d개(상한 %d)", n, maxScopes)
+	}
 }

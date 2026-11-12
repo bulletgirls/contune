@@ -799,6 +799,8 @@ func levelText(l string) string {
 		return "위험"
 	case "warn":
 		return "경고"
+	case "ok":
+		return "정상"
 	case "error":
 		return "오류"
 	case "info":
