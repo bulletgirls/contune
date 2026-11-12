@@ -138,11 +138,12 @@ module.exports = async (d) => {
         세 번째 효과는 데이터입니다. 화면은 DB를 보는 방법 가운데 하나일 뿐입니다.
         실행 이력, 서버 자원, 서비스 자원, 업무 지표, 함수 기록이 공개 스키마로 한 DB에 있어서, 읽기 전용 SQL 한 번으로 엮을 수 있습니다.
         왼쪽은 실제로 실행한 질의 결과입니다. 체결이 밀린 구간과 평시의 함수별 CPU 비중입니다. 오른쪽은 그 결과를 그대로 그린 것입니다. 호가 등록 함수가 11%에서 69%로 커졌습니다.
+        앞에서 본 0%와 다른 까닭은, 이 질의의 평시가 응답이 밀리지 않은 모든 구간이기 때문입니다. 3,000건과 4,500건 구간이 들어 있습니다.
         같은 방법으로 용량을 판단하고, 배포 전후를 비교하고, 위험 지수의 학습 데이터를 꺼내 다른 모델을 돌릴 수 있습니다. 데이터의 주인이 우리입니다.
       `,
     });
     const lw = 6.35, y0 = 2.42;
-    box(s, MX, y0, lw, 2.5, { fill: C.text2, name: '터미널' });
+    box(s, MX, y0, lw, 2.38, { fill: C.text2, name: '터미널' });
     const out = [
       ['$ deploy/demo.sh sql', C.accent2, true],
       ['-- slow-functions.sql', C.accent6, false],
@@ -153,11 +154,11 @@ module.exports = async (d) => {
       ['price_cross   |       29.3 |     11.3', C.background1, false],
       ['expire_orders |        5.7 |      0.8', C.background1, false],
     ];
-    T(s, out.map(([t, color, bold], i) => ({ text: t, options: { color, bold, breakLine: i < out.length - 1 } })), { x: MX + 0.3, y: y0 + 0.2, w: lw - 0.6, h: 2.16, fontFace: MONO, fontSize: 12.5, lineSpacingMultiple: 1.12, name: '질의 결과' });
-    T(s, '실제 실행 결과에서 위 네 줄입니다. 체결이 밀린 구간과 평시의 함수별 CPU 비중(%)입니다.', { x: MX, y: y0 + 2.56, w: lw, h: 0.28, fontSize: 11.5, color: C.accent5, valign: 'middle' });
+    T(s, out.map(([t, color, bold], i) => ({ text: t, options: { color, bold, breakLine: i < out.length - 1 } })), { x: MX + 0.3, y: y0 + 0.18, w: lw - 0.6, h: 2.04, fontFace: MONO, fontSize: 12.5, lineSpacingMultiple: 1.1, name: '질의 결과' });
+    T(s, '실제 실행 결과의 위 네 줄입니다. 여기서 평시는 p99가 50ms 이하인 모든 구간이라, 초당 1,500건 구간만 고른 타임머신의 A 구간(0%)보다 높게 나옵니다.', { x: MX, y: y0 + 2.46, w: lw, h: 0.46, fontSize: 11.5, color: C.accent5, valign: 'middle', lineSpacingMultiple: 1.08 });
 
     const uses = [
-      ['LuChartLine', '용량 판단', '업무 지표 + 자원', '유입량별 지연을 한 질의로'],
+      ['LuChartLine', '용량 판단', '업무 지표 + 자원', '유입량별 지연 조회'],
       ['LuFlame', '코드 개선', '업무 지표 + 함수', '지연 때 커지는 함수 찾기'],
       ['LuBrain', '위험 예측', '장애 기록 + 지표', '학습 데이터를 CSV로'],
     ];

@@ -56,7 +56,7 @@ module.exports = async (d) => {
     const y = 2.34;
     const h1 = screen(s, 'scr-quote-biz', MX, y, 5.7, { label: '정보분배 패널: 시세 지연·누락 위험', url: '#biz/quote', alt: '정보분배 업무 패널: 시세 지연 p99, 시세 누락 타일이 위험' });
     screen(s, 'scr-quote-profile', MX + 6.0, y, 6.33, { label: '시세 서비스 프로파일: 평시와 폭주 구간', url: '#svc/quote', alt: '시세 서비스 플레임 그래프 비교: rebuild_book이 새로 나타남' });
-    const fy = y + h1 + 0.16;
+    const fy = y + h1 + 0.14;
     const facts = [['수신', '2,000→8,000건/초'], ['시세 지연 p99', '638ms'], ['수신 대기', '최대 4,089건']];
     facts.forEach(([k, v], i) => {
       const fx = MX + i * 1.925;

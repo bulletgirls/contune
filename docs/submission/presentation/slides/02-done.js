@@ -149,24 +149,24 @@ module.exports = async (d) => {
     const h1 = screen(s, 'scr-tm-tracks5', MX, y, 5.9, { label: '① 지표: 한 시간축에서 A·B 구간 선택', url: '#svc/matching', alt: '서비스 타임머신: 처리량·응답 시간·대기 큐·서비스 CPU와 A·B 구간' });
     screen(s, 'scr-tm-profile', MX + 6.2, y, 6.13, { label: '② 프로파일: 두 구간의 함수 비교', url: '#svc/matching', alt: '플레임 그래프 A·B와 함수별 CPU 비중 비교 표' });
     // 왼쪽 틀 아래: 그 구간의 실측값
-    const fy = y + h1 + 0.14;
+    const fy = y + h1 + 0.1;
     const facts = [['유입', '1,500→6,000건/초'], ['p99 응답', '0.6→1,031ms'], ['대기 큐', '0→6,031건']];
     facts.forEach(([k, v], i) => {
       const fx = MX + i * 1.99;
-      box(s, fx, fy, 1.92, 0.36, { r: 0.06, name: '실측' });
-      T(s, [{ text: k + '  ', options: { color: C.accent5, fontSize: 10.5 } }, { text: v, options: { bold: true, fontSize: 11 } }], { x: fx, y: fy, w: 1.92, h: 0.36, align: 'center', valign: 'middle' });
+      box(s, fx, fy, 1.92, 0.32, { r: 0.06, name: '실측' });
+      T(s, [{ text: k + '  ', options: { color: C.accent5, fontSize: 10.5 } }, { text: v, options: { bold: true, fontSize: 11 } }], { x: fx, y: fy, w: 1.92, h: 0.32, align: 'center', valign: 'middle' });
     });
     // 결과 띠
-    const by = 6.36;
-    box(s, MX, by, CW, 0.5, { fill: C.text2, r: 0.07, name: '결과 띠' });
-    tag(s, '결과', MX + 0.16, by + 0.1, 0.62, { mono: false });
+    const by = 6.38;
+    box(s, MX, by, CW, 0.48, { fill: C.text2, r: 0.07, name: '결과 띠' });
+    tag(s, '결과', MX + 0.16, by + 0.09, 0.62, { mono: false });
     T(s, [
       { text: '가장 늘어난 함수 ', options: { color: C.background1 } },
       { text: 'book_insert', options: { color: C.accent2, bold: true, fontFace: MONO } },
       { text: ' · CPU 비중 ', options: { color: C.background1 } },
       { text: '0% → 70%', options: { color: C.accent2, bold: true, fontSize: 18 } },
-    ], { x: MX + 0.94, y: by, w: 5.6, h: 0.5, fontSize: 14, valign: 'middle' });
-    T(s, '서버 증설보다 호가 등록 코드를 먼저 볼 근거가 재현 없이 나옵니다.', { x: MX + 6.5, y: by, w: CW - 6.7, h: 0.5, fontSize: 13, color: C.accent6, align: 'right', valign: 'middle' });
+    ], { x: MX + 0.94, y: by, w: 5.6, h: 0.48, fontSize: 14, valign: 'middle' });
+    T(s, '서버 증설보다 호가 등록 코드를 먼저 볼 근거가 재현 없이 나옵니다.', { x: MX + 6.5, y: by, w: CW - 6.7, h: 0.48, fontSize: 13, color: C.accent6, align: 'right', valign: 'middle' });
   }
 
   // ── 9. 약속보다 더 만든 것 ─────────────────────────────────────────────────
