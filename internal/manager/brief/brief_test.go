@@ -613,3 +613,17 @@ func TestBriefScopesAreBounded(t *testing.T) {
 		t.Fatalf("범위 기억 %d개(상한 %d)", n, maxScopes)
 	}
 }
+
+// 두 프롬프트 모두 공통 말투 안내를 싣는다(llm.Style 한 곳에서 고친다).
+func TestPromptsCarryStyle(t *testing.T) {
+	w := newWorld(t, t0+60_000)
+	a := w.alert(t, p99Alert())
+	s := w.svc()
+	tr := s.Trace(context.Background(), a)
+	if req := tracePrompt(tr, seoul); !strings.Contains(req.System, llm.Style) {
+		t.Error("원인 추적 System에 말투 안내 없음")
+	}
+	if req := briefPrompt(Brief{}, briefPack{}); !strings.Contains(req.System, llm.Style) {
+		t.Error("브리핑 System에 말투 안내 없음")
+	}
+}

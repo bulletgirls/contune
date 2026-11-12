@@ -163,7 +163,7 @@ func (h *handler) prompt(text, board string) string {
 	sort.Strings(bl)
 	examples := h.examples()
 	var sb strings.Builder
-	sb.WriteString("아래 형식의 YAML 하나만 ```yaml 블록으로 출력하세요. 블록 앞에 한 줄 설명을 붙여도 됩니다.\n\n형식 예시:\n```yaml\n" + example + "\n```\n\n")
+	sb.WriteString("아래 형식의 YAML 하나만 ```yaml 블록으로 출력하세요. 블록 앞에 무엇을 만들었는지 한 줄 설명을 붙여도 됩니다. 설명은 한 문장으로, 명사나 \"~함\"으로 끝냅니다(\"~습니다\"로 끝내지 않음). 그 밖의 글은 쓰지 않습니다.\n\n형식 예시:\n```yaml\n" + example + "\n```\n\n")
 	sb.WriteString("명령(command)은 반드시 다음 허용 목록(정규식, 명령을 공백으로 이은 문자열에 대응) 중 하나에 맞아야 합니다:\n")
 	for _, a := range h.d.Editor.Allow {
 		sb.WriteString("- " + a + "\n")

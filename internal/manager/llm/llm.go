@@ -42,6 +42,14 @@ type ToolLLM interface {
 	CompleteTools(ctx context.Context, req Request, tools []Tool, maxSteps int) (string, error)
 }
 
+// Style은 화면에 그대로 걸릴 글을 LLM에 쓰게 할 때 System에 붙이는 말투 안내다(관제 AI 브리핑·원인 추적, 종료 보고서 분석).
+// LLM은 그냥 두면 "~한 것으로 보입니다" 같은 풀어 쓴 설명문으로 답한다. 말투는 여기 한 곳에서 고친다.
+const Style = `말투: 답의 글은 운영 화면에 그대로 걸리고, 운영자는 장애를 다루는 중에 훑어 읽습니다. 풀어 쓴 설명문보다 사실만 남긴 짧은 메모가 쓸모 있습니다.
+- 문장은 명사나 "~함", "~됨", "~임"으로 끝냅니다. "~습니다"로 끝내지 않습니다.
+- 한 문장에 사실 하나만 담습니다. 수치·단위·이름은 받은 그대로 씁니다.
+- 인사와 맺음말, "분석 결과"나 "근거를 보면" 같은 머리말, 앞 문장을 다른 말로 되풀이하는 문장은 넣지 않습니다.
+- 확실하지 않은 것은 무엇을 모르는지 한 번만 적습니다. 문장마다 "~로 보임", "~일 수 있음"을 붙이지 않습니다.`
+
 // ErrNotConfigured는 LLM이 연결되지 않았을 때의 에러다.
 var ErrNotConfigured = errors.New("llm not configured")
 

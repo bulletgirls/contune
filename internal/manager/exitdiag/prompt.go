@@ -55,6 +55,8 @@ var system = func() string {
 
 답은 프로그램이 그대로 읽고 검사하므로 JSON 객체 하나만 씁니다. 앞뒤에 설명 글을 붙이지 않습니다. evidence_ids가 묶음에 없는 id를 가리키거나 code_refs가 받은 코드 밖을 가리키면 답 전체가 버려지니, 실제로 본 것만 가리켜 주세요.
 
+` + llm.Style + `
+
 스키마:
 {"category": "...", "title": "...", "detail": "...", "confidence": "high|medium|low", "evidence_ids": ["..."], "next_checks": ["..."], "code_refs": [{"file": "...", "start": 1, "end": 1, "note": "..."}], "fix": "..."}
 - category: 다음 중 하나
@@ -62,11 +64,11 @@ var system = func() string {
 	for _, c := range categories {
 		fmt.Fprintf(&b, "  %s (%s)\n", c.id, c.text)
 	}
-	b.WriteString(`- title: 한국어 한 줄, 200자 이내. 예: "book_insert에서 NULL 역참조(주소 0x8)"
-- detail: 두세 문장. 판단에 쓴 사실을 적습니다.
+	b.WriteString(`- title: 한국어 한 줄, 되도록 60자 안(길어도 200자). 예: "book_insert에서 NULL 역참조(주소 0x8)"
+- detail: 두세 문장. 판단에 쓴 사실만 적습니다. 예: "SIGABRT, 죽은 곳 flush_batch ← write_log. 출력 끝 줄 'double free or corruption'. 직전 5분 RSS 1.2GB → 3.8GB"
 - confidence: high | medium | low
 - evidence_ids: 판단에 쓴 근거의 id(근거 묶음 evidence[].id)만, 1개 이상. 코드를 썼고 묶음에 source 근거가 있으면 그것도 넣습니다.
-- next_checks: 운영자가 다음에 확인할 일, 최대 5개
+- next_checks: 운영자가 다음에 확인할 일, 최대 5개. 항목마다 한 줄, "~ 확인"처럼 할 일로 끝냅니다
 - code_refs: 판단에 쓴 코드 자리, 최대 5개. file은 코드 토막 머리의 경로 그대로, start·end는 왼쪽 줄 번호(한 줄이면 같은 값), note는 그 자리가 왜 중요한지 한 줄. 코드를 쓰지 않았으면 []
 - fix: 코드로 보아 고칠 방향 한두 문장. 코드 없이는 말할 수 없으면 ""`)
 	return b.String()
