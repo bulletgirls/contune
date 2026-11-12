@@ -313,6 +313,30 @@ func TestTraceLLMDraftIsCheckedAndUsed(t *testing.T) {
 	}
 }
 
+// 같은 조건이 흔들려 다시 열린 알림은 앞 알림의 초안을 쓰고 LLM을 다시 부르지 않는다.
+func TestTraceLLMReusedForFlappingAlert(t *testing.T) {
+	w := newWorld(t, t0+60_000)
+	f := &fakeLLM{trace: `{"title":"book_insert 비중 급증","detail":"d","confidence":"high","evidence_ids":["fn:book_insert"],"next_checks":[]}`}
+	w.llm = f
+	s := w.svc()
+	ctx := context.Background()
+	a := w.alert(t, p99Alert())
+	waitFor(t, "첫 초안이 오지 않음", func() bool { return s.Trace(ctx, a).AI.State == "ok" })
+	b := p99Alert()
+	b.TS, b.Level = t0+5_000, "crit" // 5초 뒤 위험으로 다시 열림
+	w.clk.Store(t0 + 65_000)
+	b = w.alert(t, b)
+	tr := s.Trace(ctx, b)
+	if tr.AI.State != "ok" || tr.Diag.By != "llm" {
+		t.Fatalf("ai=%+v diag=%+v", tr.AI, tr.Diag)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.reqs) != 1 {
+		t.Fatalf("LLM을 %d번 부름", len(f.reqs))
+	}
+}
+
 func TestTraceLLMUnknownEvidenceFallsBackToRule(t *testing.T) {
 	w := newWorld(t, t0+60_000)
 	w.llm = &fakeLLM{trace: `{"title":"x","detail":"","confidence":"high","evidence_ids":["src:matching_svc.c:110"],"next_checks":[]}`}
@@ -416,6 +440,38 @@ func TestBriefLLMLinesAreChecked(t *testing.T) {
 	})
 	if b.Headline != "체결 응답 지연 — 원인 후보 book_insert" || b.AI.State != "ok" || b.Rule == nil || b.Rule.By != "rule" || len(b.Evidence) == 0 || b.Trace == nil {
 		t.Fatalf("llm brief=%+v", b)
+	}
+}
+
+// 상황이 조금 바뀌면 새 문장을 쓰는 동안 앞 AI 문장(stale)을, 수준이 바뀌면 규칙 문장을 보인다.
+func TestBriefStaleWhileRewriting(t *testing.T) {
+	w := newWorld(t, t0+60_000)
+	f := &fakeLLM{trace: `{"title":"t","detail":"d","confidence":"low","evidence_ids":["alert"],"next_checks":[]}`,
+		brief: `{"headline":"체결 응답 지연","lines":[{"text":"p99 80ms","evidence_ids":["trace"]}],"next_checks":[]}`}
+	w.llm = f
+	w.alert(t, p99Alert())
+	s := w.svc()
+	ctx := context.Background()
+	var b Brief
+	waitFor(t, "LLM 브리핑이 오지 않음", func() bool { w.clk.Add(briefCache); b = s.Brief(ctx, ""); return b.By == "llm" && !b.Stale })
+	// 같은 수준(경고)의 다른 업무 알림이 더 열림: 서명이 바뀌어 다시 쓰는 동안 앞 문장
+	w.alert(t, model.Alert{TS: t0 + 5_000, Kind: "tile", DedupKey: "tile:matching/대기 큐", Level: "warn", State: "firing", Host: "match-01",
+		Group: "매매/체결", Message: "체결 · 대기 큐 672건 (경고 500)"})
+	w.clk.Add(briefAskGap)
+	b = s.Brief(ctx, "")
+	if b.By != "llm" || !b.Stale || b.Headline != "체결 응답 지연" || b.Rule == nil {
+		t.Fatalf("같은 수준: by=%s stale=%v headline=%q", b.By, b.Stale, b.Headline)
+	}
+	// 위험으로 오름: 규칙 문장을 바로
+	w.alert(t, model.Alert{TS: t0 + 6_000, Kind: "host", DedupKey: "host:dw-02", Level: "crit", State: "firing", Host: "dw-02", Message: "dw-02 서버 위험: 메모리 사용률 ≥ 90%"})
+	waitFor(t, "앞 브리핑 요청이 끝나지 않음", func() bool { s.mu.Lock(); defer s.mu.Unlock(); return !s.br[""].pending })
+	w.clk.Add(briefCache)
+	f.mu.Lock()
+	f.err = errors.New("느림") // 새 문장이 오지 않는 동안
+	f.mu.Unlock()
+	b = s.Brief(ctx, "")
+	if b.By != "rule" || b.Level != "crit" {
+		t.Fatalf("수준이 바뀌었는데 by=%s level=%s headline=%q", b.By, b.Level, b.Headline)
 	}
 }
 

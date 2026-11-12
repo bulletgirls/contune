@@ -54,6 +54,7 @@ const (
 	briefAskGap    = 20_000      // 브리핑 LLM을 다시 부르는 최소 간격
 	llmRetry       = 60_000      // LLM이 실패한 뒤 다시 부르기까지
 	recentResolved = 10 * 60_000 // 최근 해소로 보는 기간
+	staleKeep      = 3 * 60_000  // 새 문장을 쓰는 동안 앞 AI 문장을 보이는 최대 나이
 	llmTimeout     = 90 * time.Second
 )
 
@@ -223,11 +224,35 @@ func (s *Service) Trace(ctx context.Context, a model.Alert) Trace {
 	case e.llmErr != "" && now-e.llmAt < llmRetry:
 		out.AI = AIState{State: "error", Model: s.d.LLM.Name(), Error: e.llmErr, At: e.llmAt}
 	default:
+		// 같은 조건이 흔들려 알림이 여러 번 열리면(경고 ↔ 위험) 알림마다 LLM을 부르지 않는다:
+		// 같은 주인·같은 원인 후보 함수·가까운 B 구간(1분 안)의 초안이 있으면 그것을 쓴다.
+		if d := s.sameTraceDraftLocked(a.ID, out); d != nil {
+			e.llm = d
+			out.AI = AIState{State: "ok", Model: d.Model, At: d.At}
+			out.LLM, out.Diag = d, *d
+			break
+		}
 		e.pending, e.llmAt = true, now
 		out.AI = AIState{State: "pending", Model: s.d.LLM.Name()}
 		go s.askTrace(a.ID, out)
 	}
 	return out
+}
+
+// sameTraceDraftLocked는 t와 같은 주인·원인 후보·가까운 B 구간인 다른 알림의 LLM 초안이다(없으면 nil). s.mu를 잡고 부른다.
+func (s *Service) sameTraceDraftLocked(id int64, t Trace) *Diagnosis {
+	if t.Top == nil {
+		return nil
+	}
+	for oid, o := range s.tr {
+		if oid == id || o.llm == nil || o.t.Owner != t.Owner || o.t.Top == nil || o.t.Top.Leaf != t.Top.Leaf {
+			continue
+		}
+		if d := o.t.B.From - t.B.From; d > -60_000 && d < 60_000 {
+			return o.llm
+		}
+	}
+	return nil
 }
 
 func (s *Service) gcTraces(now int64) {
@@ -303,7 +328,8 @@ type Brief struct {
 	Model      string      `json:"model,omitempty"`
 	WrittenAt  int64       `json:"written_at"` // 문장을 쓴 때(LLM이면 LLM 답을 받은 때)
 	AI         AIState     `json:"ai"`
-	Rule       *Brief      `json:"rule,omitempty"` // By가 llm이면 같은 근거의 규칙 문장(비교용)
+	Rule       *Brief      `json:"rule,omitempty"`  // By가 llm이면 같은 근거의 규칙 문장(비교용)
+	Stale      bool        `json:"stale,omitempty"` // By가 llm인데 지금 상황보다 앞서 쓴 문장(새 문장을 쓰는 중이거나 기다리는 중)
 }
 
 func (s *Service) handleBrief(w http.ResponseWriter, r *http.Request) {
@@ -345,14 +371,26 @@ func (s *Service) composeLocked(e *briefEntry, now int64) Brief {
 		return out
 	}
 	name := s.d.LLM.Name()
+	rule := e.b
+	rule.Rule = nil
 	switch {
 	case e.llm != nil && e.llmSig == e.sig:
 		l := *e.llm
-		rule := e.b
-		rule.Rule = nil
 		l.Evidence, l.Trace, l.Level, l.At = e.b.Evidence, e.b.Trace, e.b.Level, e.b.At
 		l.AI = AIState{State: "ok", Model: name, At: l.WrittenAt}
 		l.Rule = &rule
+		return l
+	case e.llm != nil && e.llm.Level == e.b.Level && now-e.llm.WrittenAt < staleKeep:
+		// 상황이 조금 바뀌어(알림이 흔들림, 새 실패 배치) 새 문장을 쓰는 동안 앞 AI 문장을 그 때의 근거와 함께 보인다.
+		// 수준이 바뀌었으면(정상 → 위험) 이 길로 오지 않는다: 위험한데 "전체 정상"이 남지 않게 규칙 문장을 바로 보인다.
+		l := *e.llm
+		l.Stale = true
+		l.Rule = &rule
+		st := "wait"
+		if e.pending {
+			st = "pending"
+		}
+		l.AI = AIState{State: st, Model: name, At: l.WrittenAt}
 		return l
 	case e.pending:
 		out.AI = AIState{State: "pending", Model: name}
@@ -384,6 +422,7 @@ func (s *Service) askBrief(g, sig string, rule Brief, pack briefPack) {
 		return
 	}
 	b.WrittenAt = now
+	b.Evidence, b.Trace, b.Level, b.At = rule.Evidence, rule.Trace, rule.Level, rule.At // 앞 문장으로 보일 때 쓸 그 때의 근거
 	e.llm, e.llmSig, e.llmErr = &b, sig, ""
 }
 
@@ -480,6 +519,9 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 	for _, a := range live {
 		if lvl(a.Level) > lvl(b.Level) {
 			b.Level = a.Level
+		}
+		if a.Kind == "host" && a.Level != "crit" {
+			continue // 서버 경고는 몇 초마다 열리고 닫혀 서명에 넣지 않는다(문장은 규칙이 바로 고친다)
 		}
 		sig = append(sig, "a:"+a.DedupKey+"="+a.Level)
 	}
@@ -616,7 +658,7 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 		if tb.Top != nil {
 			top = tb.Top.Leaf
 		}
-		sig = append(sig, fmt.Sprintf("t:%d:%s:%s:%v", tb.AlertID, tb.State, top, tb.Final))
+		sig = append(sig, fmt.Sprintf("t:%s@%s:%s:%s", tb.Service, tb.Host, tb.State, top))
 	}
 
 	// 진행 중 장애
@@ -645,9 +687,13 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 		}
 		add(Evidence{ID: "risk", Kind: "risk", Label: "위험도", Title: fmt.Sprintf("장애 위험 지수 %s (%s)", num(oi), levelText(orOK(ol))),
 			Lines: []string{fmt.Sprintf("원래 지수 %s · 경고 30 · 위험 60", num(sc.Index))}})
+		hot := ol == "warn" || ol == "crit"
 		facs := notable(sc.Factors)
 		if len(facs) > 2 {
 			facs = facs[:2]
+		}
+		if !hot {
+			facs = nil
 		}
 		var parts []string
 		ids := []string{"risk"}
@@ -668,7 +714,7 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 			}
 			parts = append(parts, p)
 		}
-		if ol == "warn" || ol == "crit" {
+		if hot {
 			text := fmt.Sprintf("장애 위험 지수 %s(%s)", num(oi), levelText(ol))
 			if len(parts) > 0 {
 				text += " · 주요 요인 " + strings.Join(parts, ", ")

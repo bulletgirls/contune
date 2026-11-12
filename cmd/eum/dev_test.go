@@ -240,6 +240,32 @@ func TestDevFlagsConfig(t *testing.T) {
 	}
 }
 
+func TestDevFlagsLLM(t *testing.T) {
+	s, err := parseDev([]string{"--llm", "claude-code", "--llm-model", "claude-sonnet-5-5"}, false, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Manager.LLM["type"] != "claude-code" || s.Manager.LLM["model"] != "claude-sonnet-5-5" {
+		t.Errorf("llm=%v", s.Manager.LLM)
+	}
+	s, err = parseDev(nil, false, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Manager.LLM["type"] != "none" {
+		t.Errorf("--llm 없이 llm=%v", s.Manager.LLM)
+	}
+	p := filepath.Join(t.TempDir(), "m.yaml")
+	os.WriteFile(p, []byte("llm: { type: openai, base_url: http://x, model: m }\n"), 0o644)
+	s, err = parseDev([]string{"--config", p, "--llm", "claude-code"}, false, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Manager.LLM) != 1 || s.Manager.LLM["type"] != "claude-code" {
+		t.Errorf("종류가 바뀌면 다른 칸을 버려야 함: %v", s.Manager.LLM)
+	}
+}
+
 func TestDialAddr(t *testing.T) {
 	for in, want := range map[string]string{":8080": "127.0.0.1:8080", "0.0.0.0:1": "127.0.0.1:1", "127.0.0.1:2": "127.0.0.1:2", "[::]:3": "127.0.0.1:3"} {
 		if got := dialAddr(in); got != want {

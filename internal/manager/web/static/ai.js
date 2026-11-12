@@ -61,9 +61,9 @@ export function aiBadge(by, ai) {
   if (by === 'llm') return { cls: 'llm', text: `${AI_MARK} AI 초안${model ? ' · ' + model : ''}`, title: 'LLM이 근거 묶음만 보고 쓴 문장. 근거 ID 검사를 통과했다' };
   switch (st) {
     case 'pending': return { cls: 'pend', text: `${AI_MARK} AI가 쓰는 중…`, title: '그동안은 규칙 문장을 보인다' };
-    case 'error': return { cls: 'err', text: '규칙 대체 · AI 답 거부', title: `LLM 답을 쓰지 않음: ${(ai && ai.error) || ''}` };
+    case 'error': return { cls: 'err', text: '규칙 대체 · AI 오류', title: `LLM 답을 쓰지 못함(규칙 문장을 보임): ${(ai && ai.error) || ''}` };
     case 'wait': return { cls: 'wait', text: '규칙 문장 · AI 대기', title: '데이터가 다 모이거나 다시 쓸 차례가 되면 AI가 쓴다' };
-    default: return { cls: 'rule', text: '규칙 문장 · LLM 미연결', title: '매니저 설정 llm(type: openai, base_url, model)을 연결하면 AI가 같은 근거로 문장을 쓴다' };
+    default: return { cls: 'rule', text: '규칙 문장 · LLM 미연결', title: '매니저 설정 llm(type: claude-code 또는 openai)을 연결하면 AI가 같은 근거로 문장을 쓴다' };
   }
 }
 
@@ -74,7 +74,7 @@ const ppText = (v) => `${v >= 0 ? '+' : ''}${(Number(v) || 0).toFixed(1)}%p`;
 // 브리핑 서명: 같은 문장이면 다시 그리지 않는다(타자 효과도 새 문장에만)
 export function briefSig(b) {
   if (!b) return '';
-  return JSON.stringify([b.by, b.headline, (b.lines || []).map((l) => [l.text, l.refs]), b.next_checks, b.ai && b.ai.state,
+  return JSON.stringify([b.by, b.stale, b.headline, (b.lines || []).map((l) => [l.text, l.refs]), b.next_checks, b.ai && b.ai.state,
     b.trace && [b.trace.alert_id, b.trace.state, b.trace.top && b.trace.top.leaf, b.trace.diag && b.trace.diag.title, b.trace.ai && b.trace.ai.state]]);
 }
 
@@ -138,7 +138,8 @@ export function renderBrief(slot, b, ctx = {}) {
   const sig = briefSig(b);
   const at = slot.querySelector('.ai-at');
   const evN = (b.evidence || []).filter((e) => e.kind !== 'scope').length;
-  const atText = `근거 ${evN}개 · ${fmtClock(b.written_at || b.at)} ${b.by === 'llm' ? '작성' : '갱신'}`;
+  const fresh = b.stale ? ` · 새 상황 반영 중${b.ai && b.ai.state === 'pending' ? '…' : ''}` : '';
+  const atText = `근거 ${evN}개 · ${fmtClock(b.written_at || b.at)} ${b.by === 'llm' ? '작성' : '갱신'}${fresh}`;
   if (slot.dataset.sig === sig) { if (at) at.textContent = atText; return; }
   const first = !slot.dataset.sig;
   slot.dataset.sig = sig;
@@ -161,8 +162,10 @@ export function renderBrief(slot, b, ctx = {}) {
       info('알림·장애 위험도·서버·배치·진행 중 장애를 이음이 모으고(근거), AI는 그 근거로 문장만 쓴다. 줄 끝 칩이 그 줄의 근거이고 누르면 그 화면으로 간다. LLM이 없거나 답이 근거와 맞지 않으면 같은 근거로 만든 규칙 문장을 보인다')),
     el('div', { class: 'ai-body' }, main, side));
   slot.replaceChildren(card);
-  // 처음 그릴 때와 AI가 새로 쓴 문장은 타자 효과로
-  if (first || b.by === 'llm') typeIn([head, ...card.querySelectorAll('.ai-lines .ai-t')]);
+  // 처음 그릴 때와 AI가 새로 쓴 문장은 타자 효과로(같은 문장을 상태만 바꿔 다시 그릴 때는 그대로)
+  const text = JSON.stringify([b.headline, (b.lines || []).map((l) => l.text)]);
+  if (first || (b.by === 'llm' && slot.dataset.text !== text)) typeIn([head, ...card.querySelectorAll('.ai-lines .ai-t')]);
+  slot.dataset.text = text;
 }
 
 // 브리핑 오른쪽 칸: 대표 알림의 원인 추적 요약
@@ -305,7 +308,7 @@ export function traceView(t, ctx = {}) {
     judge.append(el('details', { class: 'aj-rule' }, el('summary', { text: '같은 근거의 규칙 판단' }),
       el('p', { class: 'aj-t', text: t.rule.title }), el('p', { class: 'aj-d', text: t.rule.detail || '' })));
   }
-  if (t.ai && t.ai.state === 'error') judge.append(el('p', { class: 'aj-err', text: `AI 답을 쓰지 않음: ${t.ai.error || ''}` }));
+  if (t.ai && t.ai.state === 'error') judge.append(el('p', { class: 'aj-err', text: `AI 답을 쓰지 못함: ${t.ai.error || ''}` }));
   box.append(judge);
 
   box.append(el('div', { class: 'at-act' },
