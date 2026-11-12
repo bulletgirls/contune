@@ -34,9 +34,22 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+      args:
+        CLAUDE_CLI: "${EUM_CLAUDE_CLI:-0}"   # 1이면 이미지에 Claude CLI를 넣는다(llm.type: claude-cli)
     command: [manager, --config, /etc/eum/manager.yaml]
     ports: ["8080:8080"]
+    # LLM(카드 N·Q)은 매니저만 쓴다. 값은 셸 환경에서 온다: 직접 주거나(EUM_LLM=… demo.sh up) deploy/.env.local(커밋하지 않는 파일)에
+    # 적어 두면 demo.sh가 읽어 넘긴다. 비면 none.
+    #   Claude API:  EUM_LLM=anthropic  + ANTHROPIC_API_KEY
+    #   Claude CLI:  EUM_LLM=claude-cli + CLAUDE_CODE_OAUTH_TOKEN(PC에서 `claude setup-token`으로 만든 1년 토큰) + EUM_CLAUDE_CLI=1(이미지에 CLI)
+    environment:
+      HOME: /tmp
+      TZ: Asia/Seoul
+      EUM_LLM: "${EUM_LLM:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      CLAUDE_CODE_OAUTH_TOKEN: "${CLAUDE_CODE_OAUTH_TOKEN:-}"
     volumes:
+      - ../demo:/src/demo:ro       # 업무 코드(카드 Q): 종료 보고서의 소스 근거가 읽는다
       - eum-data:/data
       - ../flows:/flows            # 쓰기 가능: 화면 편집기가 파일을 쓴다
       - ../collect:/collect        # 쓰기 가능: 수집 설정 화면(#collect)이 파일을 쓴다(05 §17)

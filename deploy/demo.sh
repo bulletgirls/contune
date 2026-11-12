@@ -13,6 +13,10 @@ set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# LLM 설정(카드 N·Q): deploy/.env.local(커밋하지 않는 파일)이 있으면 읽어 dev 매니저와 compose에 넘긴다.
+#   EUM_LLM=anthropic + ANTHROPIC_API_KEY=…  |  EUM_LLM=claude-cli(+ compose면 CLAUDE_CODE_OAUTH_TOKEN=…, EUM_CLAUDE_CLI=1)
+if [ -f deploy/.env.local ]; then set -a; . deploy/.env.local; set +a; fi
+
 EUM_URL="${EUM_URL:-http://localhost:8080}"
 EUM_MODE="${EUM_MODE:-dev}"
 EUM_DATA="${EUM_DATA:-./data-dev}"
