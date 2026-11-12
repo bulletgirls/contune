@@ -114,8 +114,8 @@ func TestSQLReadOnly(t *testing.T) {
 
 func TestSQLDesignQueries(t *testing.T) {
 	dir := seed(t)
-	q1 := `SELECT CAST(i.value / 1500 AS INT) * 1500 AS in_tps, COUNT(*) AS seconds,
-       ROUND(AVG(p.value), 1) AS avg_p99_ms, MAX(p.value) AS max_p99_ms
+	q1 := `SELECT CAST((i.value + 75) / 1500 AS INT) * 1500 AS in_tps, COUNT(*) AS seconds,
+       ROUND(AVG(p.value), 1) AS avg_p99_ms, ROUND(MAX(p.value), 1) AS max_p99_ms
 FROM v_samples i JOIN v_samples p ON p.exec_id = i.exec_id AND p.ts = i.ts AND p.name = 'biz.order.latency_p99_ms'
 WHERE i.host = 'match-01' AND i.name = 'biz.order.in_tps' GROUP BY 1 ORDER BY 1`
 	q2 := `WITH w AS (

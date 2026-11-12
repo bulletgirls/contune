@@ -91,7 +91,8 @@ func TestDesignQueries(t *testing.T) {
 	const exec = "E1"
 	var batch []model.Sample
 	// 접수량 1500·3000·6000 구간, 6000에서 p99가 밀림. 초당 샘플.
-	tps := []float64{1500, 1500, 3000, 3000, 6000, 6000}
+	// 잰 접수율은 목표값 주변에서 몇 건씩 흔들린다. 경계 바로 아래 값(1497·2996·5994)도 그 구간으로 세야 한다.
+	tps := []float64{1497, 1503, 2996, 3004, 5994, 6005}
 	p99 := []float64{5, 6, 10, 12, 80, 90}
 	for i := range tps {
 		ts := int64(1000 * (i + 1))
@@ -116,19 +117,34 @@ func TestDesignQueries(t *testing.T) {
 	if _, err := s.w.Exec(`INSERT INTO runs VALUES ('E1','F1','매칭','start-matching','match-01')`); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := s.r.Query(`SELECT CAST(i.value / 1500 AS INT) * 1500 AS in_tps, COUNT(*), ROUND(AVG(p.value), 1), MAX(p.value)
+	rows, err := s.r.Query(`SELECT CAST((i.value + 75) / 1500 AS INT) * 1500 AS in_tps, COUNT(*), ROUND(AVG(p.value), 1), ROUND(MAX(p.value), 1)
 FROM v_samples i JOIN v_samples p ON p.exec_id = i.exec_id AND p.ts = i.ts AND p.name = 'biz.order.latency_p99_ms'
 WHERE i.host = 'match-01' AND i.name = 'biz.order.in_tps' GROUP BY 1 ORDER BY 1`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := 0
+	// 구간마다 한 줄: 접수율 구간, 초 수, 평균 p99, 최대 p99
+	type bucket struct {
+		tps, seconds int64
+		avg, max     float64
+	}
+	var got []bucket
 	for rows.Next() {
-		n++
+		var b bucket
+		if err := rows.Scan(&b.tps, &b.seconds, &b.avg, &b.max); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, b)
 	}
 	rows.Close()
-	if n != 3 {
-		t.Fatalf("질의1 행 %d", n)
+	want := []bucket{{1500, 2, 5.5, 6}, {3000, 2, 11, 12}, {6000, 2, 85, 90}}
+	if len(got) != len(want) {
+		t.Fatalf("질의1 구간 %+v, 원하는 값 %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("질의1 구간 %d: %+v, 원하는 값 %+v", i, got[i], want[i])
+		}
 	}
 	rows, err = s.r.Query(`WITH w AS (
   SELECT p.leaf, p.samples,
@@ -144,7 +160,7 @@ FROM w GROUP BY leaf ORDER BY slow_pct DESC LIMIT 5`)
 	defer rows.Close()
 	var first string
 	var np, sp float64
-	n = 0
+	n := 0
 	for rows.Next() {
 		var leaf string
 		var a, b float64
