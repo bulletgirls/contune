@@ -38,12 +38,11 @@ const (
 	buildIDShow = 8  // first_on_build 줄에 보이는 build-id 앞부분
 )
 
-// 토막을 뽑은 까닭(CodeSnippet.Why).
+// 토막을 뽑은 까닭(CodeSnippet.Why). 화면이 이 네 가지 앞말을 믿는다. 자기 오류 로그의 문구도 whyOutput(계약 그대로).
 const (
-	whyCrash   = "죽은 곳 #%d"
+	whyCrash   = "죽은 곳 #%d" // n은 core 칸 번호(호출 스택 카드의 #n과 같다)
 	whyCall    = "호출 #%d"
 	whyOutput  = "출력 끝 줄의 문구"
-	whyLog     = "오류 로그의 문구"
 	whyProfile = "직전 프로파일 1위"
 )
 
@@ -84,16 +83,21 @@ type picker struct {
 func (k *picker) full() bool { return len(k.out) >= k.max }
 
 // read는 [start, end]를 읽어 까닭·강조 줄을 붙인다. 강조 줄이 줄 한도 밖이면 그 줄이 가운데 오게 시작을 옮긴다.
+// End는 실제로 담긴 마지막 줄(Start + len(Lines) − 1)로 맞춘다(화면이 믿는다). 빈 토막은 버린다.
 // Func은 Reader가 채운 것 그대로다(호출자가 고친다).
 func (k *picker) read(repo, file string, start, end, mark int, why string) (model.CodeSnippet, bool) {
 	if mark > 0 && k.lines > 0 && mark > start+k.lines-1 {
 		start = max(start, mark-k.lines/2)
 	}
 	sn, err := k.rd.Read(k.ctx, repo, file, start, end)
-	if err != nil {
+	if err != nil || len(sn.Lines) == 0 {
 		slog.Debug("소스 근거: 읽지 못함", "repo", repo, "file", file, "start", start, "end", end, "err", err)
 		return model.CodeSnippet{}, false
 	}
+	if sn.Start < 1 {
+		sn.Start = start
+	}
+	sn.End = sn.Start + len(sn.Lines) - 1
 	if sn.Repo == "" {
 		sn.Repo = repo
 	}
@@ -173,7 +177,7 @@ func (k *picker) phrases(tail, ownErrs []string) {
 	}
 	tried := map[string]bool{}
 	k.phrase(last, whyOutput, tried)
-	k.phrase(head(ownErrs, phraseLogs), whyLog, tried)
+	k.phrase(head(ownErrs, phraseLogs), whyOutput, tried)
 }
 
 func (k *picker) phrase(lines []string, why string, tried map[string]bool) {

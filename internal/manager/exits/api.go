@@ -148,8 +148,8 @@ func (s *Service) handlePrompt(w http.ResponseWriter, r *http.Request) {
 //
 // 본문 없음: LLM에 묻는다(code.llm 범위대로 토막을 보내거나 도구 탐색). LLM 없음 200 available false,
 // 성공 200 + 저장·감사, LLM 오류·계약 위반 502.
-// 본문 {"answer": "…"}: 밖의 LLM 답 붙여넣기(LLM이 없어도 된다). 검사 실패 422 {error}.
-// 응답은 둘 다 {available, llm}.
+// 본문 {"answer": "…"}: 밖의 LLM 답 붙여넣기(LLM이 없어도 된다). 검사 실패 422 {error}(검사 에러 글 그대로).
+// 성공 응답은 둘 다 {available(LLM 연결 여부), llm(저장한 초안)}.
 func (s *Service) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 	rec, ok := s.load(w, r)
 	if !ok {
@@ -257,8 +257,8 @@ func (s *Service) paste(w http.ResponseWriter, r *http.Request, rec model.ExitRe
 		return
 	}
 	d, err := s.d.Parse(answer, s.forLLM(s.pack(r.Context(), rec)))
-	if err != nil {
-		writeErr(w, http.StatusUnprocessableEntity, pasteError(err))
+	if err != nil { // 검사 에러 글(무엇을 고칠지까지)을 그대로: 화면이 받은 글 그대로 보인다
+		writeErr(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	d.By, d.Model, d.Via, d.Read = "llm", pasteModel, "paste", nil
@@ -267,34 +267,8 @@ func (s *Service) paste(w http.ResponseWriter, r *http.Request, rec model.ExitRe
 	s.save(w, r, rec, d, analyzeDetail(rec.Report, d, nil, false))
 }
 
-// pasteHints는 붙여넣기 검사 실패 글 뒤에 붙이는 "고칠 것"이다. 검사 에러 글에 key가 든 첫 줄을 쓰고,
-// 맞는 것이 없으면 pasteHintDefault. JSON을 맨 앞에 둔다(JSON 에러 글에는 답 앞부분이 그대로 들어 다른 낱말이 낄 수 있다).
-var pasteHints = []struct{ key, hint string }{
-	{"JSON", "LLM 답에서 { 로 시작해 } 로 끝나는 JSON 하나를 붙여 넣으세요"},
-	{"근거에 없는 코드", "code_refs를 프롬프트의 코드 토막 범위(파일:줄) 안으로 고치거나 지우세요"},
-	{"code_refs", "code_refs를 프롬프트의 코드 토막 범위(파일:줄) 안으로 고치거나 지우세요"},
-	{"근거에 없는 ID", "evidence_ids에는 프롬프트 근거 묶음의 id만 쓰세요"},
-	{"evidence_ids", "evidence_ids에는 프롬프트 근거 묶음의 id만 쓰세요"},
-	{"category", "category를 프롬프트에 적힌 종류 중 하나로 고치세요"},
-	{"confidence", "confidence를 high·medium·low 중 하나로 고치세요"},
-	{"title", "title을 한 줄로 채우세요"},
-}
-
-const pasteHintDefault = "프롬프트의 답 형식대로 고쳐 다시 붙여 넣으세요"
-
-// pasteError는 422의 글이다: "붙여 넣은 답을 저장하지 않았습니다: <검사 에러> — <고칠 것>".
-func pasteError(err error) string {
-	msg, hint := err.Error(), pasteHintDefault
-	for _, h := range pasteHints {
-		if strings.Contains(msg, h.key) {
-			hint = h.hint
-			break
-		}
-	}
-	return "붙여 넣은 답을 저장하지 않았습니다: " + msg + " — " + hint
-}
-
-// save는 LLM 초안을 저장하고 감사 기록(exit.analyze)을 남긴 뒤 200 {available: true, llm}을 쓴다.
+// save는 LLM 초안을 저장하고 감사 기록(exit.analyze)을 남긴 뒤 200 {available, llm}을 쓴다.
+// available은 LLM 연결 여부 그대로다(붙여넣기는 LLM 없이도 저장되므로 화면은 llm이 있는지로 성공을 가린다).
 func (s *Service) save(w http.ResponseWriter, r *http.Request, rec model.ExitRecord, d model.ExitDiagnosis, detail string) {
 	if err := s.d.State.SetExitLLM(r.Context(), rec.Report.ID, d); err != nil {
 		slog.Error("LLM 초안 저장 실패", "id", rec.Report.ID, "err", err)
@@ -302,7 +276,7 @@ func (s *Service) save(w http.ResponseWriter, r *http.Request, rec model.ExitRec
 		return
 	}
 	audit.Record(r, s.d.State, s.d.Now, "exit.analyze", rec.Report.ID, detail)
-	writeJSON(w, http.StatusOK, map[string]any{"available": true, "llm": d})
+	writeJSON(w, http.StatusOK, map[string]any{"available": s.llmAvailable(), "llm": d})
 }
 
 // analyzeDetail은 감사 exit.analyze의 내용이다: "<comm>@<host> → <category> (<model>)" 뒤에 갈래(tools·paste),

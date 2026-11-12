@@ -324,7 +324,7 @@ func TestSourcePhrase(t *testing.T) {
 		HowSource: model.HowFromWait, ExitCode: intp(1), OutputTail: []string{"시작",
 			"2026-11-12 09:00:01 ERROR fills 저널을 열 수 없음: /run/bus/fills.jnl: No such file or directory", "in=1 tps=2"}}
 	p := e.s.pack(ctx, model.ExitRecord{Report: rep})
-	want := []string{"출력 끝 줄의 문구|main|" + srcPath + ":50-75|60|false", "오류 로그의 문구||" + srcPath + ":90-120|105|false"}
+	want := []string{"출력 끝 줄의 문구|main|" + srcPath + ":50-75|60|false", "출력 끝 줄의 문구||" + srcPath + ":90-120|105|false"}
 	if got := snipKeys(p.Code); !reflect.DeepEqual(got, want) {
 		t.Fatalf("토막\n got %q\nwant %q", got, want)
 	}

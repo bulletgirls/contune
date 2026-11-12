@@ -234,9 +234,15 @@ func TestPaste(t *testing.T) {
 			if w.Code != 200 {
 				t.Fatalf("붙여넣기 %d %s", w.Code, w.Body)
 			}
+			// 성공은 llm이 있는지로 가린다. available은 LLM 연결 여부 그대로.
+			var raw map[string]json.RawMessage
+			json.Unmarshal(w.Body.Bytes(), &raw)
+			if _, ok := raw["llm"]; !ok {
+				t.Fatalf("붙여넣기 성공 응답에 llm 없음: %s", w.Body)
+			}
 			r := decode[analyzeResp](t, w)
-			if !r.Available || r.LLM.By != "llm" || r.LLM.Model != "붙여넣기" || r.LLM.Via != "paste" || r.LLM.Actor != "user:op" ||
-				r.LLM.At != E+90_000 || r.LLM.Fix != "NULL 검사" || len(r.LLM.CodeRefs) != 1 {
+			if r.Available != (name == "LLM 있음") || r.LLM.By != "llm" || r.LLM.Model != "붙여넣기" || r.LLM.Via != "paste" ||
+				r.LLM.Actor != "user:op" || r.LLM.At != E+90_000 || r.LLM.Fix != "NULL 검사" || len(r.LLM.CodeRefs) != 1 {
 				t.Fatalf("응답 %+v", r)
 			}
 			// 검사는 LLM에 보내는 묶음(/prompt와 같은 것)으로: off면 코드 없이
@@ -280,7 +286,7 @@ func TestPasteRejects(t *testing.T) {
 		code       int
 		msg        string
 	}{
-		{"검사 실패", ans("bad"), 422, "붙여 넣은 답을 저장하지 않았습니다: 근거에 없는 코드: demo/x.c:1-2 — code_refs를 프롬프트의 코드 토막 범위(파일:줄) 안으로 고치거나 지우세요"},
+		{"검사 실패(에러 글 그대로)", ans("bad"), 422, "근거에 없는 코드: demo/x.c:1-2"},
 		{"빈 답", ans("  \n"), 422, "붙여 넣은 답이 비었습니다 — LLM 답(JSON)을 붙여 넣으세요"},
 		{"64KB 넘음", ans(strings.Repeat("x", pasteMax+1)), 422, "붙여 넣은 답이 64KB를 넘습니다 — LLM 답의 JSON 부분만 붙여 넣으세요"},
 		{"깨진 본문", `{"answer":`, 400, `본문이 JSON {"answer": "…"}가 아닙니다`},
@@ -309,29 +315,51 @@ func TestPasteRejects(t *testing.T) {
 	}
 }
 
-// 기본 Parse(exitdiag.ParseAnswer)도 붙어 있다: 글만 붙여 넣으면 422.
+// 기본 Parse(exitdiag.ParseAnswer)도 붙어 있다: 글만 붙여 넣으면 422, error는 ParseAnswer의 글 그대로.
 func TestPasteDefaultParse(t *testing.T) {
 	e := newEnv(t, func(d *Deps) { d.Parse = nil })
-	seed(t, e)
-	w := e.do("POST", "/api/v1/exits/R1/analyze", `{"answer":"원인은 NULL 역참조로 보입니다"}`, opUser)
-	if got := decode[map[string]string](t, w)["error"]; w.Code != 422 || !strings.HasPrefix(got, "붙여 넣은 답을 저장하지 않았습니다: ") {
-		t.Errorf("%d %q", w.Code, got)
+	rep := seed(t, e)
+	answer := "원인은 NULL 역참조로 보입니다"
+	w := e.do("POST", "/api/v1/exits/R1/analyze", `{"answer":"`+answer+`"}`, opUser)
+	rec, _ := e.st.GetExit(context.Background(), rep.ID)
+	_, want := exitdiag.ParseAnswer(answer, e.s.forLLM(e.s.pack(context.Background(), rec)))
+	if got := decode[map[string]string](t, w)["error"]; w.Code != 422 || want == nil || got != want.Error() {
+		t.Errorf("%d %q, want %v", w.Code, got, want)
 	}
 }
 
-func TestPasteError(t *testing.T) {
-	for msg, hint := range map[string]string{
-		`llm 답이 JSON 하나가 아닙니다: invalid character (category)`: "LLM 답에서 { 로 시작해 } 로 끝나는 JSON 하나를 붙여 넣으세요",
-		"근거에 없는 ID: zz":                     "evidence_ids에는 프롬프트 근거 묶음의 id만 쓰세요",
-		`llm 답의 category "x"는 모르는 종류입니다`:    "category를 프롬프트에 적힌 종류 중 하나로 고치세요",
-		`llm 답의 confidence "x"는 high·…가 아님`: "confidence를 high·medium·low 중 하나로 고치세요",
-		"코드가 없는 묶음에 code_refs가 있습니다":        "code_refs를 프롬프트의 코드 토막 범위(파일:줄) 안으로 고치거나 지우세요",
-		"알 수 없는 문제":                         pasteHintDefault,
-	} {
-		if got, want := pasteError(errors.New(msg)), "붙여 넣은 답을 저장하지 않았습니다: "+msg+" — "+hint; got != want {
-			t.Errorf("%q\n got %q\nwant %q", msg, got, want)
-		}
+// 토막의 End는 실제로 담긴 마지막 줄이다(Reader가 다르게 주어도 맞춘다). 빈 토막은 버린다.
+func TestSnippetEnd(t *testing.T) {
+	repo := newRepo(60)
+	k := &picker{ctx: context.Background(), rd: badEnd{repo}, lines: 60, max: 4}
+	sn, ok := k.read("demo", srcPath, 10, 20, 15, "죽은 곳 #0")
+	if !ok || sn.Start != 10 || sn.End != 10+len(sn.Lines)-1 || sn.End != 20 || sn.Mark != 15 {
+		t.Errorf("End 맞춤 %d-%d (%d줄) mark %d", sn.Start, sn.End, len(sn.Lines), sn.Mark)
 	}
+	if _, ok := k.read("demo", srcPath, 200, 0, 0, "호출 #1"); ok {
+		t.Error("없는 줄")
+	}
+	if _, ok := (&picker{ctx: context.Background(), rd: emptyLines{repo}, lines: 60, max: 4}).read("demo", srcPath, 10, 20, 0, "호출 #1"); ok {
+		t.Error("빈 토막은 버림")
+	}
+}
+
+// badEnd는 End를 실제보다 크게 주는 Reader다.
+type badEnd struct{ *fakeRepo }
+
+func (b badEnd) Read(ctx context.Context, repo, file string, start, end int) (model.CodeSnippet, error) {
+	sn, err := b.fakeRepo.Read(ctx, repo, file, start, end)
+	sn.End += 7
+	return sn, err
+}
+
+// emptyLines는 줄 없는 토막을 주는 Reader다.
+type emptyLines struct{ *fakeRepo }
+
+func (b emptyLines) Read(ctx context.Context, repo, file string, start, end int) (model.CodeSnippet, error) {
+	sn, err := b.fakeRepo.Read(ctx, repo, file, start, end)
+	sn.Lines = nil
+	return sn, err
 }
 
 // 붙여넣기 권한은 analyze와 같다(운영): 조회 계정은 403, 프롬프트 보기는 된다.
