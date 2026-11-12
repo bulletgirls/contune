@@ -15,6 +15,7 @@
 | 6 | 도구 탐색은 선택 인터페이스 `llm.ToolLLM`(`anthropic`만 구현). 없으면 토막만 보내는 한 번 묻기 | 05 §12의 인터페이스 8개는 그대로 |
 | 7 | 밖의 LLM 답 **붙여넣기**: `POST /exits/{id}/analyze {"answer": …}` — LLM이 none이어도 검사·저장 | 인터넷 없는 시연장에서 전 과정을 보인다(보드 AI 초안과 같은 생각) |
 | 8 | 버전: 빌드가 `build-id → 커밋` 표(`builds.json`)를 남기고, 읽은 코드의 커밋과 견줘 `일치 · 다름 · 확인 안 됨` | 다른 버전의 코드를 근거로 단정하지 않게 |
+| 10 | LLM 구현 `claude-cli`: 이 PC에 로그인된 Claude CLI(`claude -p`)를 불러 답을 받는다. 도구 탐색은 매니저가 그 호출 동안만 여는 loopback MCP 서버로 같은 `llm.Tool`을 내준다 | API 키가 없어도(구독 로그인만으로) 한 번 묻기·도구 탐색이 다 돈다(사용자, 11-12). CLI의 내장 도구는 끈다: 읽은 범위 기록·경로 가두기가 그대로 |
 | 9 | 함수는 이름 색인으로 찾는다(디버그 정보의 `file:line`이 있으면 그것 먼저). 외부 도구는 `git`뿐(없으면 이력만 빠짐) | 시연 빌드는 `-g`가 없다. 외부 의존성(go.mod)은 늘리지 않는다 |
 
 하지 않는 것: 임베딩 검색, 저장소 clone·fetch(운영이 맡는다), 죽은 커밋 시점의 파일 읽기(지금 폴더를 읽고 버전을 견주기만), 분석 비동기·스트리밍, `openai`의 도구 호출, 규칙이 코드를 쓰는 것.
@@ -49,6 +50,7 @@ LLM 답 스키마(더한 것): `"code_refs": [{"file","start","end","note"}]`(�
 | Q-C LLM | `q-c` · `card-q-c` | `internal/manager/llm/**` |
 | Q-D 묶음·API | `q-d` · `card-q-d` | `internal/manager/exits/**` |
 | Q-E 화면 | `q-e` · `card-q-e` | `internal/manager/web/static/pages/exit.js`, `css/exit.css`, `mock/exit.js` |
+| Q-F Claude CLI | `q-f` · `card-q-f` | `internal/manager/llm/claudecli*.go` |
 | 오케스트레이터 | `q0` · `card-q` | 계약, `deploy/manager*.yaml`, 문서, 통합·리허설 |
 
 ### Q-A 저장소 (`coderepo`)
@@ -85,6 +87,16 @@ LLM 답 스키마(더한 것): `"code_refs": [{"file","start","end","note"}]`(�
 2. `Complete`와 같은 값(모델·max_tokens·fallbacks·거절·잘림 처리·오류 문구). 도구 탐색의 effort는 설정 `tools_effort`(기본 `medium`). 여러 도구를 한꺼번에 부르면 결과를 **한 user 메시지**로. `Run` 에러는 `is_error` 결과로. 되풀이되는 앞부분(system·도구)에 캐시 표시. `maxSteps`를 다 쓰면 `도구 탐색이 N번 안에 끝나지 않았습니다`.
 3. `openai`는 구현하지 않는다(주석 한 줄).
 4. 테스트: `httptest`로 Messages API 흉내 — 첫 답 tool_use → Run이 받은 입력·돌려보낸 tool_result → 둘째 답 글. Run 에러, maxSteps, 거절. `ANTHROPIC_API_KEY`가 있으면 실제 호출 한 번(없으면 건너뛰고 보고에 적음).
+
+### Q-F Claude CLI (`llm`, 종류 `claude-cli`)
+
+설정 `llm: { type: claude-cli, bin: claude, model: …, timeout: 300s, effort: …, tools_effort: … }`(모두 선택. `bin`은 PATH에서 찾거나 절대 경로, `model`·`effort`가 비면 CLI 기본). `Name()`은 `claude-cli`. 시연 설정의 `llm` 줄은 그대로 두고 `EUM_LLM=claude-cli`로 켠다(`api_key`·`max_tokens`·`fallbacks` 등 모르는 키는 무시).
+
+1. `Complete`: `claude -p --output-format json`에 System은 `--system-prompt`, Prompt는 **stdin**으로. 내장 도구는 모두 끄고(`--tools ""`), 이 저장소의 CLAUDE.md·메모리·hook·스킬·사용자 MCP가 섞이지 않게 한다(빈 임시 폴더를 작업 폴더로, `--setting-sources`·`--strict-mcp-config`·`--disable-slash-commands`·`--no-session-persistence` 가운데 이 버전이 받는 것). 답은 JSON의 `result`, `is_error`·`subtype`으로 실패를 가린다.
+2. `CompleteTools`: 호출 동안만 `127.0.0.1:0`에 MCP 서버(HTTP, JSON-RPC `initialize`·`notifications/initialized`·`ping`·`tools/list`·`tools/call`)를 열고 임의 Bearer 토큰으로 막는다. `--mcp-config`(inline JSON, 서버 이름 `eum`)·`--strict-mcp-config`·`--allowedTools mcp__eum__<이름>…`, 내장 도구는 끔. `tools/call`은 `Tool.Run`을 부르고(에러는 `isError`), 호출 수가 `maxSteps × 4`를 넘으면 오류 결과로 "한도 초과"를 돌려준다. 끝나면 서버를 닫는다. 표준 라이브러리만.
+3. 자식 프로세스: ctx 취소·`timeout`에 죽인다(프로세스 그룹째), stderr는 끝 2KB만 오류 글에. 환경에서 `CLAUDECODE`·`CLAUDE_CODE_ENTRYPOINT` 등 겹쳐 띄우기 표식은 지운다(매니저가 Claude Code 터미널에서 떴을 수 있다). `ANTHROPIC_API_KEY`는 넘기지 않는다(구독 로그인을 쓴다).
+4. 오류 문구(할 일까지): CLI 없음 → `claude CLI를 찾지 못했습니다 — 설치하거나 manager.yaml llm.bin에 경로를 적으세요`, 로그인 안 됨 → `Claude CLI 로그인이 필요합니다 — 매니저를 띄우는 계정으로 claude를 실행해 /login 하세요`, 시간 초과, 한도(사용량 제한) 등.
+5. 테스트: 가짜 `claude`(임시 셸 스크립트)로 인자·stdin·환경·오류 갈래·시간 초과, MCP 서버는 `httptest` 없이 실제 loopback에 JSON-RPC를 보내 `tools/list`·`tools/call`·토큰 없음 401. 이 PC에는 로그인된 CLI(2.1.310)가 있다: **실제 호출로** 한 번 묻기와 도구 탐색(도구 하나를 부르고 그 결과로 답)을 한 번씩 확인하고(작은 프롬프트로), MCP 연결이 안 되면 CLI의 디버그 출력으로 까닭을 찾아 맞춘다. 실제 호출 시험은 환경 변수(`EUM_CLAUDE_CLI_LIVE=1`)가 있을 때만 돈다.
 
 ### Q-D 묶음·API (`exits`)
 
